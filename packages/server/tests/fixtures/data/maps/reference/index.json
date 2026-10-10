@@ -1,0 +1,3 @@
+{"note": "reference only", "maps": [
+ {"file": "zeelandbrug/map.png", "title": "Some dive map", "site_ids": ["zeelandbrug"], "source": "Duikersgids", "page": "https://example.com", "public": false, "warning": "No redistribution."}
+]}

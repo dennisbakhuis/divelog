@@ -1,0 +1,34 @@
+<divelog program='subsurface' version='3'>
+<divesites>
+<site uuid='1a2b3c4d' name='Émergence du Ressel' gps='44.574100 1.908600'>
+  <notes>Lot cave, park at the road.</notes>
+</site>
+<site uuid='5e6f7a8b' name='Zeelandbrug' gps='51.625900 3.897400'/>
+</divesites>
+<dives>
+<trip date='2024-05-04' time='09:00:00' location='Lot'>
+<dive number='120' rating='5' tags='cave, scooter' date='2024-05-08' time='10:30:00' duration='84:20 min' divesiteid='1a2b3c4d'>
+  <buddy>Kim de Boer, Mark de Vries</buddy>
+  <suit>Drysuit</suit>
+  <notes>Scooter run to the second sump.</notes>
+  <cylinder size='11.1 l' workpressure='232.0 bar' description='AL80' o2='32.0%' />
+  <weightsystem weight='4.0 kg' description='belt' />
+  <divecomputer model='Shearwater Perdix 2' deviceid='deadbeef'>
+    <depth max='40.2 m' mean='24.8 m' />
+    <temperature water='13.0 C' air='19.0 C' />
+    <sample time='0:00 min' depth='0.0 m' temp='19.0 C' />
+    <sample time='1:00 min' depth='8.5 m' temp='13.5 C' />
+    <sample time='10:00 min' depth='40.2 m' temp='13.0 C' />
+    <sample time='60:00 min' depth='30.0 m' />
+    <sample time='84:20 min' depth='0.0 m' />
+  </divecomputer>
+</dive>
+</trip>
+<dive number='121' date='2024-06-01' time='14:00:00' duration='45 min' divesiteid='5e6f7a8b'>
+  <divecomputer model='Shearwater Perdix 2'>
+    <depth max='22.1 m' mean='15.0 m' />
+    <temperature water='16.0 C' />
+  </divecomputer>
+</dive>
+</dives>
+</divelog>

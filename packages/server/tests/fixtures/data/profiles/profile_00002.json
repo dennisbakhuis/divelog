@@ -1,0 +1,18 @@
+{
+ "computer_no": 2,
+ "log_dive_no": 2,
+ "date": "2024-01-02",
+ "time_in": "11:00",
+ "gf": "55/85",
+ "deco_model": "ZHL-16C GF",
+ "deco": false,
+ "gas_switches": [[0, "32"]],
+ "temp_min_c": 13,
+ "temp_max_c": 14,
+ "sample_interval_s": 10,
+ "t_s": [0, 600, 5400],
+ "depth_m": [0, 40, 0],
+ "temp_c": [14, 13, 13],
+ "ndl_min": [99, 5, 99],
+ "stop_depth_m": [0, 0, 0]
+}

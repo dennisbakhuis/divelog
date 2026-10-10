@@ -1,0 +1,20 @@
+{
+ "version": 3,
+ "kind": "stickmap",
+ "title": "Commons line",
+ "nodes": [
+  {"id": "a", "x": 0, "y": 0, "type": "entrance", "label": "Pool"},
+  {"id": "b", "x": 40, "y": 0},
+  {"id": "c", "x": 80, "y": 10}
+ ],
+ "edges": [
+  {"from": "a", "to": "b", "distance": 40},
+  {"from": "b", "to": "c", "distance": 41}
+ ],
+ "id": "fra-commons-only-1",
+ "site_id": "fra-commons-only",
+ "sort": 0,
+ "revision": 2,
+ "retired_nodes": [],
+ "renamed_nodes": {"old-b": "b"}
+}

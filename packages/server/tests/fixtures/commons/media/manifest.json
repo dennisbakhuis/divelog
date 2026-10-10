@@ -1,0 +1,9 @@
+{
+ "media/sites/fra-commons-only.jpg": {
+  "source": "fixture",
+  "page": "https://example.org/commons-spring",
+  "author": "Fixture photographer",
+  "licence": "CC-BY-SA-4.0",
+  "public": true
+ }
+}
