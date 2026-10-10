@@ -5,6 +5,7 @@
   import { confirmDialog } from '$lib/core/ui/confirm.js';
   import type { TripAdmin, TripIn } from '$lib/core/dive/types';
   import { toast } from '$lib/components/stores/toast.svelte';
+  import Field from '$lib/components/ui/Field.svelte';
   import { getDivelog } from '$lib/core/dive/context';
 
   const { urls } = getDivelog();
@@ -25,10 +26,12 @@
   // svelte-ignore state_referenced_locally
   let form = $state(fromTrip(data.trip));
   let error = $state('');
+  let fieldErrors = $state<Record<string, string>>({});
 
   async function save(e: SubmitEvent) {
     e.preventDefault();
     error = '';
+    fieldErrors = {};
     const body: TripIn = {
       slug: data.trip.slug,
       name: form.name.trim(),
@@ -46,6 +49,7 @@
       await invalidateAll();
     } catch (err) {
       error = err instanceof AdminApiError ? err.message : 'Save failed';
+      fieldErrors = err instanceof AdminApiError ? err.fieldErrors : {};
     }
   }
 
@@ -85,17 +89,27 @@
 
 <form class="dl-card form" onsubmit={save}>
   <div class="field-row">
-    <label>Name<input type="text" bind:value={form.name} required /></label>
-    <label>Slug<input type="text" value={data.trip.slug} disabled /></label>
+    <Field label="Name" error={fieldErrors.name} required>
+      {#snippet children(c)}<input {...c} type="text" bind:value={form.name} />{/snippet}
+    </Field>
+    <Field label="Slug" hint="Fixed: it is the trip's address.">
+      {#snippet children(c)}<input {...c} type="text" value={data.trip.slug} readonly />{/snippet}
+    </Field>
   </div>
   <div class="field-row">
-    <label>Start date<input type="date" bind:value={form.start_date} /></label>
-    <label>End date<input type="date" bind:value={form.end_date} /></label>
+    <Field label="Start date" error={fieldErrors.start_date}>
+      {#snippet children(c)}<input {...c} type="date" bind:value={form.start_date} />{/snippet}
+    </Field>
+    <Field label="End date" error={fieldErrors.end_date}>
+      {#snippet children(c)}<input {...c} type="date" bind:value={form.end_date} />{/snippet}
+    </Field>
   </div>
-  <label
-    >Description (markdown)<textarea rows="6" bind:value={form.description_md}></textarea></label
-  >
-  {#if error}<p class="error">{error}</p>{/if}
+  <Field label="Description (markdown)" error={fieldErrors.description_md}>
+    {#snippet children(c)}
+      <textarea {...c} rows="6" bind:value={form.description_md}></textarea>
+    {/snippet}
+  </Field>
+  {#if error}<p class="error" role="alert">{error}</p>{/if}
   <div class="actions">
     <button type="submit" class="dl-btn dl-btn-solid dl-btn-sm">Save</button>
   </div>

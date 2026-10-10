@@ -108,7 +108,7 @@
           {#if pulling}
             <p>Pulling the commons…</p>
           {:else if pullError}
-            <p class="error">{pullError}</p>
+            <p class="error" role="alert">{pullError}</p>
           {:else if pulled}
             <p class="dl-num">
               {#if pulled.previous_head === pulled.head}

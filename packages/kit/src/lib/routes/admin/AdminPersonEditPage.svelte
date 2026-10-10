@@ -5,6 +5,7 @@
   import { confirmDialog } from '$lib/core/ui/confirm.js';
   import type { PersonPrivate } from '$lib/core/dive/types';
   import { toast } from '$lib/components/stores/toast.svelte';
+  import Field from '$lib/components/ui/Field.svelte';
   import { getDivelog } from '$lib/core/dive/context';
 
   const { urls } = getDivelog();
@@ -29,6 +30,7 @@
   // svelte-ignore state_referenced_locally
   let form = $state(fromPerson(data.person));
   let error = $state('');
+  let fieldErrors = $state<Record<string, string>>({});
   let deleteError = $state('');
 
   function body() {
@@ -50,12 +52,14 @@
   async function save(e: SubmitEvent) {
     e.preventDefault();
     error = '';
+    fieldErrors = {};
     try {
       await adminJson(`/admin/people/${data.person.id}`, 'PUT', body());
       toast.show({ kind: 'success', message: `${form.first_name} saved` });
       await invalidateAll();
     } catch (err) {
       error = err instanceof AdminApiError ? err.message : 'Save failed';
+      fieldErrors = err instanceof AdminApiError ? err.fieldErrors : {};
     }
   }
 
@@ -96,29 +100,38 @@
 
 <form class="dl-card form" onsubmit={save}>
   <div class="field-row">
-    <label>First name<input type="text" bind:value={form.first_name} required /></label>
-    <label>Last name (private)<input type="text" bind:value={form.last_name} /></label>
-    <label>Alias (shown instead of first name)<input type="text" bind:value={form.alias} /></label>
-    <label>
-      Shown as
-      <select bind:value={form.display}>
-        <option value="alias-or-first">alias, else first name</option>
-        <option value="full">full name</option>
-        <option value="hidden">hidden everywhere</option>
-      </select>
-    </label>
+    <Field label="First name" error={fieldErrors.first_name} required>
+      {#snippet children(c)}<input {...c} type="text" bind:value={form.first_name} />{/snippet}
+    </Field>
+    <Field label="Last name (private)" error={fieldErrors.last_name}>
+      {#snippet children(c)}<input {...c} type="text" bind:value={form.last_name} />{/snippet}
+    </Field>
+    <Field label="Alias (shown instead of first name)" error={fieldErrors.alias}>
+      {#snippet children(c)}<input {...c} type="text" bind:value={form.alias} />{/snippet}
+    </Field>
+    <Field label="Shown as" error={fieldErrors.display}>
+      {#snippet children(c)}
+        <select {...c} bind:value={form.display}>
+          <option value="alias-or-first">alias, else first name</option>
+          <option value="full">full name</option>
+          <option value="hidden">hidden everywhere</option>
+        </select>
+      {/snippet}
+    </Field>
   </div>
   <div class="field-row">
-    <label
-      >Other / former names (comma separated)<input
-        type="text"
-        bind:value={form.aliases}
-        placeholder="Kim Jansen, K. Jansen"
-      /></label
-    >
-    <label>E-mail (private)<input type="email" bind:value={form.email} /></label>
+    <Field label="Other / former names (comma separated)" error={fieldErrors.aliases}>
+      {#snippet children(c)}
+        <input {...c} type="text" bind:value={form.aliases} placeholder="Kim Jansen, K. Jansen" />
+      {/snippet}
+    </Field>
+    <Field label="E-mail (private)" error={fieldErrors.email}>
+      {#snippet children(c)}<input {...c} type="email" bind:value={form.email} />{/snippet}
+    </Field>
   </div>
-  <label>Notes (private)<textarea rows="2" bind:value={form.notes}></textarea></label>
+  <Field label="Notes (private)" error={fieldErrors.notes}>
+    {#snippet children(c)}<textarea {...c} rows="2" bind:value={form.notes}></textarea>{/snippet}
+  </Field>
 
   <div class="avatar-row">
     <span class="avatar">
@@ -139,7 +152,7 @@
     <span class="muted">Square-cropped to 256 px, EXIF stripped.</span>
   </div>
 
-  {#if error}<p class="error">{error}</p>{/if}
+  {#if error}<p class="error" role="alert">{error}</p>{/if}
   <div class="actions">
     <button type="submit" class="dl-btn dl-btn-solid dl-btn-sm">Save</button>
   </div>
@@ -155,7 +168,7 @@
       Not named on any dive — safe to delete.
     {/if}
   </p>
-  {#if deleteError}<p class="error">{deleteError}</p>{/if}
+  {#if deleteError}<p class="error" role="alert">{deleteError}</p>{/if}
   <button
     type="button"
     class="dl-btn dl-btn-ghost dl-btn-sm danger"

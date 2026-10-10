@@ -604,6 +604,24 @@
     tick().then(() => menuEl?.querySelector<HTMLButtonElement>('button')?.focus());
   }
 
+  /** Arrow keys, Home and End move between the long-press menu's items, wrapping around. */
+  function onMenuKey(e: KeyboardEvent) {
+    const items = [
+      ...(menuEl?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? []),
+    ];
+    if (!items.length) return;
+    const at = items.indexOf(document.activeElement as HTMLButtonElement);
+    let next: number;
+    if (e.key === 'ArrowDown') next = (at + 1) % items.length;
+    else if (e.key === 'ArrowUp') next = (at - 1 + items.length) % items.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = items.length - 1;
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+    items[next].focus();
+  }
+
   function menuAction(action: () => void) {
     action();
     menu = null;
@@ -875,6 +893,8 @@
             role="menu"
             aria-label="Actions"
             bind:this={menuEl}
+            tabindex="-1"
+            onkeydown={onMenuKey}
             style:left="{menu.x}px"
             style:top="{menu.y}px"
           >
@@ -1471,7 +1491,7 @@
   {#if showJson}
     <div class="json">
       <textarea rows="10" bind:value={jsonText} spellcheck="false"></textarea>
-      {#if jsonError}<p class="error">{jsonError}</p>{/if}
+      {#if jsonError}<p class="error" role="alert">{jsonError}</p>{/if}
       <div class="json-actions">
         <button type="button" class="dl-btn dl-btn-solid dl-btn-sm" onclick={applyJson}
           >Apply JSON</button

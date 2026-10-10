@@ -1,3 +1,4 @@
+import { drawingToWorld } from '$lib/core/map/trace.js';
 import { describe, expect, it } from 'vitest';
 import {
   addArea,
@@ -318,6 +319,23 @@ describe('version 3: lines, objects and survey shots', () => {
       toLatLon({ ...shot.map, origin: { lat: 50, lon: 5 } }, { x: 0, y: -1113.2 })?.lat,
     ).toBeCloseTo(50.01, 5);
     expect(toLatLon(shot.map, { x: 0, y: 0 })).toBeNull();
+  });
+
+  it('turns a drawing point into a position the same way survey shots and the locator do', () => {
+    const origin = { lat: 0, lon: 0 };
+    for (const north of [0, 13, 90, 270, 357.6]) {
+      const map = { ...emptySiteMap('stickmap'), north, origin };
+      const shot = placeByBearing(0, 0, 1000, 90, north);
+      const east = toLatLon(map, shot)!;
+      expect(east.lat).toBeCloseTo(0, 5);
+      expect(east.lon * 111320).toBeCloseTo(1000, 0);
+      const world = drawingToWorld(shot, north);
+      expect(world.x).toBeCloseTo(1000, 1);
+      expect(world.y).toBeCloseTo(0, 1);
+    }
+    const up = toLatLon({ ...emptySiteMap('stickmap'), north: 90, origin }, { x: 0, y: -1000 })!;
+    expect(up.lon * 111320).toBeCloseTo(1000, 0);
+    expect(up.lat).toBeCloseTo(0, 5);
   });
 });
 

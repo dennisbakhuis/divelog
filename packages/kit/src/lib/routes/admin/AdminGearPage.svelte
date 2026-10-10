@@ -169,7 +169,7 @@
     >View ↗</a
   >
 </div>
-{#if error}<p class="error">{error}</p>{/if}
+{#if error}<p class="error" role="alert">{error}</p>{/if}
 
 <div class="columns">
   <section>

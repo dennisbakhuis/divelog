@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
+  import { onMount } from 'svelte';
+  import { beforeNavigate, goto, invalidateAll, replaceState } from '$app/navigation';
   import { adminJson, AdminApiError } from '$lib/core/admin/client';
   import { confirmDialog } from '$lib/core/ui/confirm.js';
   import SiteMapEditor, { type UnderlayOption } from '$lib/components/map/SiteMapEditor.svelte';
@@ -57,6 +58,8 @@
   let editorKey = $state(0);
   let note = $state('');
   let lastSaved = $state<SiteMapOut | null>(null);
+  /** True while the open draft is a blank map nobody has drawn on: nothing to lose yet. */
+  let blank = $state(false);
 
   const isNew = $derived(openId === NEW);
   const openMap = $derived(
@@ -76,8 +79,8 @@
         : null
       : (drawn[0]?.id ?? null),
   );
-  /** A new draft holds unsaved work from the start: it exists nowhere else yet. */
-  const unsaved = $derived(dirty || isNew);
+  /** A new draft holds unsaved work from the start (it exists nowhere else), unless blank. */
+  const unsaved = $derived(dirty || (isNew && !blank));
 
   $effect(() => {
     if (unsavedWork !== unsaved) unsavedWork = unsaved;
@@ -96,6 +99,7 @@
     openId = id;
     draft = map;
     dirty = changed;
+    blank = false;
     note = '';
     lastSaved = null;
     editorKey += 1;
@@ -115,8 +119,27 @@
   async function startBlank(kind: MapKind) {
     if (unsaved && !(await mayDiscard())) return;
     show(NEW, emptySiteMap(kind, origin), false);
+    blank = true;
     announce(`New ${defaultTitle(kind).toLowerCase()} open in the editor, not saved yet`);
   }
+
+  /** `?draft=sitemap|stickmap` (from "Create & draw a map") opens a blank map straight away. */
+  onMount(() => {
+    const search = window.location.search;
+    const kind = new URLSearchParams(search).get('draft');
+    if (kind !== 'sitemap' && kind !== 'stickmap') return;
+    const rest = search
+      .slice(1)
+      .split('&')
+      .filter((part) => part && !part.startsWith('draft='))
+      .join('&');
+    try {
+      replaceState(`${window.location.pathname}${rest ? `?${rest}` : ''}`, {});
+    } catch {
+      // before the router is ready the address keeps its query; the draft opens all the same
+    }
+    void startBlank(kind);
+  });
 
   /** Ask the server for a starter site map from OpenStreetMap and open it as an unsaved draft. */
   async function startFromOsm() {
@@ -245,7 +268,7 @@
   function noteKeydown(e: KeyboardEvent) {
     if (e.key !== 'Enter' || e.isComposing) return;
     e.preventDefault();
-    if (unsaved && !saving) save();
+    if ((unsaved || isNew) && !saving) save();
   }
 
   function beforeUnload(e: BeforeUnloadEvent) {
@@ -391,6 +414,7 @@
           onChange={(m) => {
             draft = m;
             dirty = true;
+            blank = false;
           }}
         />
       {/key}
@@ -414,7 +438,7 @@
           <button
             type="button"
             class="dl-btn dl-btn-solid dl-btn-sm"
-            disabled={!unsaved || saving}
+            disabled={!(unsaved || isNew) || saving}
             onclick={save}>{saving ? 'Saving…' : 'Save map'}</button
           >
         </span>

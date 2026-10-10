@@ -43,7 +43,9 @@ for (const { path, heading } of PAGES) {
 test('the home page shows the dive tile', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('Open the log →')).toBeVisible();
-  await expect(page.locator('.tile dd').first()).toHaveText(String(DIVE_NUMBERS.length));
+  const dives = page.locator('.tile dd').first();
+  await expect(dives.locator('.dl-visually-hidden')).toHaveText(String(DIVE_NUMBERS.length));
+  await expect(dives.locator('[aria-hidden="true"]')).toHaveText(String(DIVE_NUMBERS.length));
 });
 
 test('a commons site credits the commons and a personal site does not', async ({ page }) => {

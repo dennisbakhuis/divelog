@@ -65,7 +65,7 @@
       >Refused while {region.sites.length} site{region.sites.length === 1 ? '' : 's'} use it.</span
     >
   {/if}
-  {#if deleteError}<p class="error">{deleteError}</p>{/if}
+  {#if deleteError}<p class="error" role="alert">{deleteError}</p>{/if}
 </section>
 
 <style>

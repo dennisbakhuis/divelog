@@ -67,37 +67,23 @@
     <p class="tile-blurb">{blurb}</p>
   {/if}
   {#if summary}
+    {#snippet stat(label: string, value: number, text: string, decimals = 0, suffix = '')}
+      <div>
+        <dt>{label}</dt>
+        <dd class="dl-num">
+          <span aria-hidden="true" use:counter={{ value, decimals, suffix }}>{text}</span><span
+            class="dl-visually-hidden">{text}</span
+          >
+        </dd>
+      </div>
+    {/snippet}
     <dl class="stats">
-      <div>
-        <dt>Dives</dt>
-        <dd class="dl-num" use:counter={{ value: summary.total_dives }}>{summary.total_dives}</dd>
-      </div>
-      <div>
-        <dt>Hours down</dt>
-        <dd class="dl-num" use:counter={{ value: summary.total_hours, decimals: 0 }}>
-          {summary.total_hours}
-        </dd>
-      </div>
-      <div>
-        <dt>Deepest</dt>
-        <dd class="dl-num" use:counter={{ value: summary.max_depth_m, decimals: 0, suffix: ' m' }}>
-          {summary.max_depth_m} m
-        </dd>
-      </div>
-      <div>
-        <dt>Countries</dt>
-        <dd class="dl-num" use:counter={{ value: summary.countries }}>{summary.countries}</dd>
-      </div>
-      <div>
-        <dt>Cave dives</dt>
-        <dd class="dl-num" use:counter={{ value: summary.cave_dives }}>{summary.cave_dives}</dd>
-      </div>
-      <div>
-        <dt>Scooter dives</dt>
-        <dd class="dl-num" use:counter={{ value: summary.scooter_dives }}>
-          {summary.scooter_dives}
-        </dd>
-      </div>
+      {@render stat('Dives', summary.total_dives, String(summary.total_dives))}
+      {@render stat('Hours down', summary.total_hours, String(summary.total_hours))}
+      {@render stat('Deepest', summary.max_depth_m, `${summary.max_depth_m} m`, 0, ' m')}
+      {@render stat('Countries', summary.countries, String(summary.countries))}
+      {@render stat('Cave dives', summary.cave_dives, String(summary.cave_dives))}
+      {@render stat('Scooter dives', summary.scooter_dives, String(summary.scooter_dives))}
     </dl>
     {#if spark.line}
       <figure class="spark">

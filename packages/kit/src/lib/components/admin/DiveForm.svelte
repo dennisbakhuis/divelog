@@ -167,8 +167,8 @@
     const timer = setTimeout(async () => {
       lastKey = key;
       try {
-        const next = await adminJson<DiveTemplateOut>(templatePath(site, date));
-        const self = dive?.number;
+        const self = dive?.number ?? null;
+        const next = await adminJson<DiveTemplateOut>(templatePath(site, date, self));
         tpl = {
           ...next,
           previous: next.previous?.number === self ? (tpl?.previous ?? null) : next.previous,
@@ -1388,7 +1388,7 @@
         {#snippet children(c)}
           {#if previewing}
             <div class="preview dl-prose" aria-live="polite">
-              {#if previewError}<p class="error">{previewError}</p>
+              {#if previewError}<p class="error" role="alert">{previewError}</p>
               {:else}
                 <!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitised by the server's renderer -->
                 {@html previewHtml}
@@ -1666,7 +1666,7 @@
       <label>End<input type="date" bind:value={newTrip.end_date} /></label>
     </div>
     {#if slugify(newTrip.name)}<p class="muted">slug <code>{slugify(newTrip.name)}</code></p>{/if}
-    {#if tripError}<p class="error">{tripError}</p>{/if}
+    {#if tripError}<p class="error" role="alert">{tripError}</p>{/if}
     <div class="mini-actions">
       <button type="submit" class="dl-btn dl-btn-solid dl-btn-sm" disabled={tripBusy}
         >{tripBusy ? 'Creating…' : 'Create trip'}</button

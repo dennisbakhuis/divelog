@@ -722,6 +722,18 @@ function personPrivate(person) {
   };
 }
 
+/** The trip as the editor loads it. */
+function tripAdmin() {
+  return {
+    ...TRIP,
+    description_md: '',
+    day_index: null,
+    days: 8,
+    custom: false,
+    description_html: '',
+  };
+}
+
 /** The editor's lists and records the admin pages load, by path. */
 function adminFixtures() {
   return {
@@ -742,17 +754,12 @@ function adminFixtures() {
     ...Object.fromEntries(
       [...SITES, COMMONS_SITE].map((s) => [`/admin/sites/${s.slug}`, siteFull(s)]),
     ),
-    '/admin/trips': [
-      {
-        ...TRIP,
-        description_md: '',
-        day_index: null,
-        days: 8,
-        custom: false,
-        description_html: '',
-      },
-    ],
+    '/admin/trips': [tripAdmin()],
+    [`/admin/trips/${TRIP.slug}`]: tripAdmin(),
     '/admin/people': PEOPLE.map(personPrivate),
+    ...Object.fromEntries(PEOPLE.map((p) => [`/admin/people/${p.slug}`, personPrivate(p)])),
+    '/admin/regions': fixtures()['/dive/regions'],
+    '/admin/gear/items': GEAR_ITEMS,
     '/admin/gear/setups': [],
   };
 }
@@ -1024,9 +1031,11 @@ export function ownerEditor() {
     for (const [n, d] of saved) merged.set(n, d);
     return [...merged.values()];
   };
-  const template = (site, day) => {
+  const template = (site, day, beforeNumber) => {
+    const anchor = beforeNumber ? all().find((d) => d.number === beforeNumber) : undefined;
     const before = all()
       .filter((d) => d.date <= day)
+      .filter((d) => !beforeNumber || (anchor ? when(d) < when(anchor) : d.number < beforeNumber))
       .sort((a, b) => when(a).localeCompare(when(b)));
     const atSite = site ? before.filter((d) => d.site_id === site).at(-1) : undefined;
     const recent = [...new Set(before.map((d) => d.site_id).reverse())].filter(Boolean);
@@ -1063,8 +1072,7 @@ export function ownerEditor() {
       frequent_people: [...counts.entries()]
         .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
         .map(([id, dives]) => ({ id, slug: id, name: personOf(id)?.name ?? id, dives })),
-      trip_for_date:
-        day >= TRIP.start_date && day <= TRIP.end_date ? tripOut() : null,
+      trip_for_date: day >= TRIP.start_date && day <= TRIP.end_date ? tripOut() : null,
     };
   };
   const today = () => new Date().toISOString().slice(0, 10);
@@ -1077,11 +1085,19 @@ export function ownerEditor() {
       if (key === 'GET /admin/dives/next-number')
         return ok({ number: Math.max(...all().map((d) => d.number)) + 1 });
       if (key === 'GET /admin/dives/template')
-        return ok(template(query.get('site'), query.get('date') || today()));
+        return ok(
+          template(
+            query.get('site'),
+            query.get('date') || today(),
+            Number(query.get('before')) || null,
+          ),
+        );
       if (key === 'GET /admin/dives/page') {
         const status = query.get('status');
+        const site = query.get('site');
         const rows = all()
           .filter((d) => !status || d.visibility === status)
+          .filter((d) => !site || d.site_id === site)
           .sort((a, b) => when(b).localeCompare(when(a)))
           .map(adminRow);
         const offset = Number(query.get('offset') ?? 0);

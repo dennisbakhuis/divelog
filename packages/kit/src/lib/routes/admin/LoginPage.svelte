@@ -51,7 +51,7 @@
           E-mail
           <input type="email" autocomplete="email" bind:value={email} required />
         </label>
-        {#if error}<p class="error">{error}</p>{/if}
+        {#if error}<p class="error" role="alert">{error}</p>{/if}
         <button type="submit" class="dl-btn dl-btn-solid" disabled={busy}
           >{busy ? 'Sending…' : 'Send me a link'}</button
         >

@@ -5,6 +5,7 @@ const navigation = vi.hoisted(() => ({
   goto: vi.fn(),
   invalidateAll: vi.fn(async () => {}),
   beforeNavigate: vi.fn(),
+  replaceState: vi.fn(),
 }));
 vi.mock('$app/navigation', () => navigation);
 
@@ -196,12 +197,37 @@ describe('AdminSiteMapsPage drafts', () => {
     destroy();
   });
 
-  it('asks before throwing away an unsaved draft', async () => {
-    fakeFetch({});
+  it('replaces an untouched blank map without asking', async () => {
+    fakeFetch({ [POST_SEED]: () => [200, SEED] });
     const confirm = vi.fn(() => false);
     vi.stubGlobal('confirm', confirm);
     const { target, button, destroy } = mountPage();
     button('Blank site map')!.click();
+    await settle();
+    button('Start from OpenStreetMap')!.click();
+    await settle();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(target.querySelector('.line.shoreline')).not.toBeNull();
+    destroy();
+  });
+
+  it('opens a blank map straight away for ?draft=stickmap and tidies the address', async () => {
+    fakeFetch({});
+    window.history.replaceState({}, '', '/admin/sites/nld-example/maps?draft=stickmap');
+    const { target, destroy } = mountPage();
+    await settle();
+    expect(target.querySelector('.map-row.open .badge')?.textContent).toBe('Stick map');
+    expect(navigation.replaceState).toHaveBeenCalledWith('/admin/sites/nld-example/maps', {});
+    window.history.replaceState({}, '', '/');
+    destroy();
+  });
+
+  it('asks before throwing away an unsaved draft', async () => {
+    fakeFetch({ [POST_SEED]: () => [200, SEED] });
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirm);
+    const { target, button, destroy } = mountPage();
+    button('Start from OpenStreetMap')!.click();
     await settle();
     button('Blank stick map')!.click();
     await settle();

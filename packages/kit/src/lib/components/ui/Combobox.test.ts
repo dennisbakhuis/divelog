@@ -248,15 +248,19 @@ describe('Combobox', () => {
     expect(input.value).toBe('Vinkeveen');
     input.focus();
     key(input, 'ArrowDown');
-    await new Promise((r) => setTimeout(r, 20));
-    await settle();
+    await vi.waitFor(() => {
+      flushSync();
+      expect(options()).toHaveLength(5);
+    });
     expect(calls).toEqual(['']);
-    expect(options()).toHaveLength(5);
 
     type(input, 'n');
     type(input, 'noh');
     expect(target.querySelector('.dl-combobox-status')?.textContent).toBe('Searching…');
-    await new Promise((r) => setTimeout(r, 80));
+    await vi.waitFor(() => {
+      flushSync();
+      expect(options()).toHaveLength(1);
+    });
     await settle();
     expect(calls).toEqual(['', 'noh']);
     expect(aborted).toEqual(['']);

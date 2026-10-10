@@ -362,6 +362,9 @@ describe('sections and errors', () => {
     expect(templatePath('fra-ressel', '2026-02-08')).toBe(
       '/admin/dives/template?site=fra-ressel&date=2026-02-08',
     );
+    expect(templatePath(null, '2026-02-08', 651)).toBe(
+      '/admin/dives/template?date=2026-02-08&before=651',
+    );
   });
 });
 

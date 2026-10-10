@@ -1,5 +1,6 @@
 <script lang="ts">
   import SiteMapView from '$lib/components/dive/SiteMapView.svelte';
+  import Toolbar, { type ToolItem } from '$lib/components/ui/Toolbar.svelte';
   import {
     addPin,
     annotationSummary,
@@ -36,12 +37,22 @@
 
   type Tool = 'route' | 'turn' | 'pin';
   let tool = $state<Tool>('route');
+
   let selectedPin = $state<string | null>(null);
 
   const map = $derived(value ? maps.find((m) => m.id === value.map_id) : undefined);
   const route = $derived(value ? routeKeys(value) : new Set<string>());
   // A stick map's route follows the drawn line; a site map takes a free-drawn track.
   const free = $derived(map?.kind === 'sitemap');
+  const toolItems = $derived<ToolItem[]>([
+    {
+      value: 'route',
+      label: 'Route',
+      hint: free ? 'Click along the way you swam' : 'Click the stations you passed, in order',
+    },
+    { value: 'turn', label: 'Turn point', hint: 'Click the station where you turned' },
+    { value: 'pin', label: 'Note pin', hint: 'Click anywhere to drop a numbered note' },
+  ]);
   // How many legs (or track points) each click added, so one click can be taken back.
   let steps = $state<number[]>([]);
   const end = $derived(value && map ? routeEnd(map, value) : null);
@@ -173,39 +184,15 @@
       </select>
     </label>
     {#if value && map}
-      <div class="tools" role="radiogroup" aria-label="Annotation tool">
-        <button
-          type="button"
-          class="dl-btn dl-btn-sm"
-          class:dl-btn-solid={tool === 'route'}
-          class:dl-btn-ghost={tool !== 'route'}
-          role="radio"
-          aria-checked={tool === 'route'}
-          onclick={() => (tool = 'route')}
-          title={free ? 'Click along the way you swam' : 'Click the stations you passed, in order'}
-          >Route</button
-        >
-        <button
-          type="button"
-          class="dl-btn dl-btn-sm"
-          class:dl-btn-solid={tool === 'turn'}
-          class:dl-btn-ghost={tool !== 'turn'}
-          role="radio"
-          aria-checked={tool === 'turn'}
-          onclick={() => (tool = 'turn')}
-          title="Click the station where you turned">Turn point</button
-        >
-        <button
-          type="button"
-          class="dl-btn dl-btn-sm"
-          class:dl-btn-solid={tool === 'pin'}
-          class:dl-btn-ghost={tool !== 'pin'}
-          role="radio"
-          aria-checked={tool === 'pin'}
-          onclick={() => (tool = 'pin')}
-          title="Click anywhere to drop a numbered note">Note pin</button
-        >
-      </div>
+      <Toolbar
+        class="tools"
+        label="Annotation tool"
+        items={toolItems}
+        value={tool}
+        onchange={(next) => (tool = next as Tool)}
+        itemClass={(_t, selected) =>
+          `dl-btn dl-btn-sm ${selected ? 'dl-btn-solid' : 'dl-btn-ghost'}`}
+      />
       {#if tool === 'route'}
         <div class="tools">
           <button
@@ -213,14 +200,14 @@
             class="dl-btn dl-btn-ghost dl-btn-sm"
             disabled={!steps.length}
             onclick={back}
-            title="Take back the last click">↶ Back</button
+            aria-label="Back: take back the last click"
+            ><span aria-hidden="true">↶</span> Back</button
           >
           <button
             type="button"
             class="dl-btn dl-btn-ghost dl-btn-sm"
             disabled={!canTurnHere}
-            onclick={turnHere}
-            title="The dive turned where the route now ends">Turned here</button
+            onclick={turnHere}>Turned here</button
           >
           <button
             type="button"

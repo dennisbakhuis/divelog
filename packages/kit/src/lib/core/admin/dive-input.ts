@@ -820,11 +820,19 @@ export function filledCount(form: DiveInput, section: DiveSection): number {
   ).length;
 }
 
-/** `GET /admin/dives/template` path for a site and a day. */
-export function templatePath(site: string | null, date: string | null): string {
+/**
+ * `GET /admin/dives/template` path for a site and a day; `before` (a dive number) asks for
+ * the dive logged before that one as `previous`, for an existing dive.
+ */
+export function templatePath(
+  site: string | null,
+  date: string | null,
+  before: number | null = null,
+): string {
   const params = new URLSearchParams();
   if (site) params.set('site', site);
   if (date) params.set('date', date);
+  if (before !== null) params.set('before', String(before));
   const query = params.toString();
   return `/admin/dives/template${query ? `?${query}` : ''}`;
 }

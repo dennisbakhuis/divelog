@@ -32,44 +32,65 @@ function stubFetch() {
     'fetch',
     vi.fn(async (url: string) => {
       urls.push(url);
-      if (url.startsWith('/api/v1/admin/dives/page'))
+      if (url.endsWith('/maps/seed'))
         return new Response(
           JSON.stringify({
-            items: [
-              {
-                number: 7,
-                date: '2024-05-12',
-                title: 'Morning',
-                site_id: 'nld-example',
-                max_depth_m: 12,
-                duration_min: 50,
-                visibility: 'public',
-              },
-              {
-                number: 9,
-                date: '2024-06-01',
-                title: 'Elsewhere',
-                site_id: 'nld-other',
-                max_depth_m: 8,
-                duration_min: 40,
-                visibility: 'public',
-              },
-              {
-                number: 8,
-                date: '2024-05-13',
-                title: '',
-                site_id: 'nld-example',
-                max_depth_m: 15,
-                duration_min: 45,
-                visibility: 'draft',
-              },
-            ],
-            total: 3,
-            offset: 0,
-            limit: 1000,
+            source: 'osm',
+            radius_m: 400,
+            elements: 1,
+            map: {
+              version: 3,
+              kind: 'sitemap',
+              title: 'Example Quarry',
+              north: 0,
+              to_scale: true,
+              nodes: [],
+              edges: [],
+              areas: [],
+              lines: [],
+              notes: '',
+              origin: null,
+              underlay: null,
+            },
           }),
           { status: 200 },
         );
+      if (url.startsWith('/api/v1/admin/dives/page')) {
+        const site = new URL(url, 'http://kit.test').searchParams.get('site');
+        const items = [
+          {
+            number: 7,
+            date: '2024-05-12',
+            title: 'Morning',
+            site_id: 'nld-example',
+            max_depth_m: 12,
+            duration_min: 50,
+            visibility: 'public',
+          },
+          {
+            number: 9,
+            date: '2024-06-01',
+            title: 'Elsewhere',
+            site_id: 'nld-other',
+            max_depth_m: 8,
+            duration_min: 40,
+            visibility: 'public',
+          },
+          {
+            number: 8,
+            date: '2024-05-13',
+            title: '',
+            site_id: 'nld-example',
+            max_depth_m: 15,
+            duration_min: 45,
+            visibility: 'draft',
+          },
+        ].filter((d) => !site || d.site_id === site);
+        return new Response(
+          JSON.stringify({ items, total: items.length, offset: 0, limit: 1000 }),
+          { status: 200 },
+        );
+      }
       return new Response('[]', { status: 200 });
     }),
   );
@@ -189,10 +210,17 @@ describe('AdminSiteEditPage workspace', () => {
       },
     );
     const { target, app, tabs, selected } = render(fakeSite(), 'site-maps');
-    const blank = [...target.querySelectorAll('button')].find(
-      (b) => b.textContent?.trim() === 'Blank stick map',
-    )!;
-    blank.click();
+    const button = (name: string) =>
+      [...target.querySelectorAll('button')].find((b) => b.textContent?.trim() === name)!;
+    button('Blank stick map').click();
+    await settle();
+    tabNamed(tabs, 'Location').click();
+    await settle();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(selected()?.textContent?.trim()).toBe('Location');
+    tabNamed(tabs, 'Maps').click();
+    await settle();
+    button('Start from OpenStreetMap').click();
     await settle();
     tabNamed(tabs, 'Details').click();
     await settle();

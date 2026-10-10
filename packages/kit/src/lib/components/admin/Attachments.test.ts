@@ -7,6 +7,7 @@ vi.mock('$app/navigation', () => navigation);
 import Attachments from './Attachments.svelte';
 import { toast } from '$lib/components/stores/toast.svelte';
 import { fakeAttachment, fakeDiveAdmin } from './__fixtures__/dive.js';
+import type { Site } from '$lib/core/dive/types';
 
 type Call = { url: string; method: string; body: unknown };
 
@@ -77,7 +78,9 @@ describe('Attachments', () => {
   it('moves an attachment with one ordered PUT', async () => {
     const calls = fakeFetch();
     const { target, app } = render();
-    buttons(target, 'Move down')[0].click();
+    expect(buttons(target, 'Move a.jpg up')[0].disabled).toBe(true);
+    expect(buttons(target, 'Move c.jpg down')[0].disabled).toBe(true);
+    buttons(target, 'Move a.jpg down')[0].click();
     await settle();
     expect(calls).toEqual([
       {
@@ -86,10 +89,31 @@ describe('Attachments', () => {
         body: ['b', 'a', 'c'],
       },
     ]);
-    buttons(target, 'Move up')[0].click();
-    await settle();
-    expect(calls).toHaveLength(1);
     unmount(app);
+  });
+
+  it('reorders the photos of a log site, but not of a commons site', async () => {
+    const calls = fakeFetch();
+    const site = (origin: 'log' | 'commons') =>
+      ({ id: 'nld-pit', origin, attachments: dive.attachments }) as unknown as Site;
+    const target = document.createElement('div');
+    const app = mount(Attachments, { target, props: { site: site('log') } });
+    flushSync();
+    buttons(target, 'Move b.jpg up')[0].click();
+    await settle();
+    expect(calls.filter((c) => c.method === 'PUT')).toEqual([
+      {
+        url: '/api/v1/admin/sites/nld-pit/attachments/order',
+        method: 'PUT',
+        body: ['b', 'a', 'c'],
+      },
+    ]);
+    unmount(app);
+    const commons = document.createElement('div');
+    const other = mount(Attachments, { target: commons, props: { site: site('commons') } });
+    flushSync();
+    expect(buttons(commons, 'Move b.jpg up')).toHaveLength(0);
+    unmount(other);
   });
 
   it('shows a rejected request as an error toast instead of failing silently', async () => {

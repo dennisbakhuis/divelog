@@ -20,9 +20,9 @@
 
   onMount(async () => {
     try {
-      const params = new URLSearchParams({ q: site.name, limit: '1000', sort: 'date' });
+      const params = new URLSearchParams({ site: site.id, limit: '1000', sort: 'date' });
       const page = await adminJson<DivePage>(`${adminApi('dives', 'page')}?${params}`);
-      rows = page.items.filter((d) => d.site_id === site.id);
+      rows = page.items;
     } catch (err) {
       error = err instanceof AdminApiError ? err.message : 'Could not load the dives';
       rows = [];

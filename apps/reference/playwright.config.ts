@@ -1,7 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const STUB_PORT = 8399;
-const APP_PORT = 4399;
+/* Fixed defaults; set E2E_STUB_PORT / E2E_APP_PORT to run two suites side by side. */
+const STUB_PORT = Number(process.env.E2E_STUB_PORT ?? 8399);
+const APP_PORT = Number(process.env.E2E_APP_PORT ?? 4399);
 
 export default defineConfig({
   testDir: 'e2e',

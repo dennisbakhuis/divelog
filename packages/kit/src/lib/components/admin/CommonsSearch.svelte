@@ -79,7 +79,7 @@
       >
     {/if}
   </div>
-  {#if error}<p class="error">{error}</p>{/if}
+  {#if error}<p class="error" role="alert">{error}</p>{/if}
   {#if split.fresh.length}
     <ul class="hits">
       {#each split.fresh as hit (hit.id)}

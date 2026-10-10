@@ -3,6 +3,7 @@
   import { slugify } from '$lib/core/admin/slug';
   import type { Region, RegionIn } from '$lib/core/dive/types';
   import { toast } from '$lib/components/stores/toast.svelte';
+  import Field from '$lib/components/ui/Field.svelte';
 
   let {
     region = null,
@@ -25,6 +26,7 @@
     body_md: region?.body_md ?? '',
   });
   let error = $state('');
+  let fieldErrors = $state<Record<string, string>>({});
   let saving = $state(false);
 
   function body(): RegionIn {
@@ -43,6 +45,7 @@
   async function save(e: SubmitEvent) {
     e.preventDefault();
     error = '';
+    fieldErrors = {};
     saving = true;
     try {
       const saved = region
@@ -52,6 +55,7 @@
       await onSaved(saved);
     } catch (err) {
       error = err instanceof AdminApiError ? err.message : 'Save failed';
+      fieldErrors = err instanceof AdminApiError ? err.fieldErrors : {};
     } finally {
       saving = false;
     }
@@ -60,27 +64,36 @@
 
 <form class="dl-card form" onsubmit={save}>
   <div class="field-row">
-    <label>Name<input type="text" bind:value={form.name} required /></label>
-    <label
-      >Id<input
-        type="text"
-        bind:value={form.id}
-        readonly={!!region}
-        pattern="[a-z0-9-]+"
-        placeholder="auto from name"
-      /></label
-    >
-    <label>Country (ISO3)<input type="text" maxlength="3" bind:value={form.country} /></label>
+    <Field label="Name" error={fieldErrors.name} required>
+      {#snippet children(c)}<input {...c} type="text" bind:value={form.name} />{/snippet}
+    </Field>
+    <Field label="Id" error={fieldErrors.id} hint={region ? 'Fixed once created.' : ''}>
+      {#snippet children(c)}
+        <input
+          {...c}
+          type="text"
+          bind:value={form.id}
+          readonly={!!region}
+          pattern="[a-z0-9-]+"
+          placeholder="auto from name"
+        />
+      {/snippet}
+    </Field>
+    <Field label="Country (ISO3)" error={fieldErrors.country}>
+      {#snippet children(c)}
+        <input {...c} type="text" maxlength="3" pattern="[A-Za-z]{3}" bind:value={form.country} />
+      {/snippet}
+    </Field>
   </div>
-  <label
-    >Waters (comma separated)<input
-      type="text"
-      bind:value={form.waters}
-      placeholder="North Sea, Oosterschelde"
-    /></label
-  >
-  <label>Description (markdown)<textarea rows="12" bind:value={form.body_md}></textarea></label>
-  {#if error}<p class="error">{error}</p>{/if}
+  <Field label="Waters (comma separated)" error={fieldErrors.waters}>
+    {#snippet children(c)}
+      <input {...c} type="text" bind:value={form.waters} placeholder="North Sea, Oosterschelde" />
+    {/snippet}
+  </Field>
+  <Field label="Description (markdown)" error={fieldErrors.body_md}>
+    {#snippet children(c)}<textarea {...c} rows="12" bind:value={form.body_md}></textarea>{/snippet}
+  </Field>
+  {#if error}<p class="error" role="alert">{error}</p>{/if}
   <div class="actions">
     <button type="submit" class="dl-btn dl-btn-solid dl-btn-sm" disabled={saving}
       >{saving ? 'Saving…' : region ? 'Save' : 'Create'}</button

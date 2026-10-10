@@ -3,6 +3,7 @@
   import { adminJson, AdminApiError } from '$lib/core/admin/client';
   import type { PersonPrivate } from '$lib/core/dive/types';
   import { toast } from '$lib/components/stores/toast.svelte';
+  import Field from '$lib/components/ui/Field.svelte';
   import { getDivelog } from '$lib/core/dive/context';
 
   const { urls } = getDivelog();
@@ -19,6 +20,7 @@
   });
   let form = $state(empty());
   let error = $state('');
+  let fieldErrors = $state<Record<string, string>>({});
 
   function body() {
     return {
@@ -39,12 +41,14 @@
   async function save(e: SubmitEvent) {
     e.preventDefault();
     error = '';
+    fieldErrors = {};
     try {
       const created = await adminJson<PersonPrivate>('/admin/people', 'POST', body());
       toast.show({ kind: 'success', message: `${created.first_name} added` });
       await goto(urls.admin.person(created.id));
     } catch (err) {
       error = err instanceof AdminApiError ? err.message : 'Save failed';
+      fieldErrors = err instanceof AdminApiError ? err.fieldErrors : {};
     }
   }
 </script>
@@ -54,30 +58,39 @@
 
 <form class="dl-card form" onsubmit={save}>
   <div class="field-row">
-    <label>First name<input type="text" bind:value={form.first_name} required /></label>
-    <label>Last name (private)<input type="text" bind:value={form.last_name} /></label>
-    <label>Alias (shown instead of first name)<input type="text" bind:value={form.alias} /></label>
-    <label>
-      Shown as
-      <select bind:value={form.display}>
-        <option value="alias-or-first">alias, else first name</option>
-        <option value="full">full name</option>
-        <option value="hidden">hidden everywhere</option>
-      </select>
-    </label>
+    <Field label="First name" error={fieldErrors.first_name} required>
+      {#snippet children(c)}<input {...c} type="text" bind:value={form.first_name} />{/snippet}
+    </Field>
+    <Field label="Last name (private)" error={fieldErrors.last_name}>
+      {#snippet children(c)}<input {...c} type="text" bind:value={form.last_name} />{/snippet}
+    </Field>
+    <Field label="Alias (shown instead of first name)" error={fieldErrors.alias}>
+      {#snippet children(c)}<input {...c} type="text" bind:value={form.alias} />{/snippet}
+    </Field>
+    <Field label="Shown as" error={fieldErrors.display}>
+      {#snippet children(c)}
+        <select {...c} bind:value={form.display}>
+          <option value="alias-or-first">alias, else first name</option>
+          <option value="full">full name</option>
+          <option value="hidden">hidden everywhere</option>
+        </select>
+      {/snippet}
+    </Field>
   </div>
   <div class="field-row">
-    <label
-      >Other / former names (comma separated)<input
-        type="text"
-        bind:value={form.aliases}
-        placeholder="Kim Jansen, K. Jansen"
-      /></label
-    >
-    <label>E-mail (private)<input type="email" bind:value={form.email} /></label>
+    <Field label="Other / former names (comma separated)" error={fieldErrors.aliases}>
+      {#snippet children(c)}
+        <input {...c} type="text" bind:value={form.aliases} placeholder="Kim Jansen, K. Jansen" />
+      {/snippet}
+    </Field>
+    <Field label="E-mail (private)" error={fieldErrors.email}>
+      {#snippet children(c)}<input {...c} type="email" bind:value={form.email} />{/snippet}
+    </Field>
   </div>
-  <label>Notes (private)<textarea rows="2" bind:value={form.notes}></textarea></label>
-  {#if error}<p class="error">{error}</p>{/if}
+  <Field label="Notes (private)" error={fieldErrors.notes}>
+    {#snippet children(c)}<textarea {...c} rows="2" bind:value={form.notes}></textarea>{/snippet}
+  </Field>
+  {#if error}<p class="error" role="alert">{error}</p>{/if}
   <div class="actions">
     <button type="submit" class="dl-btn dl-btn-solid dl-btn-sm">Add</button>
   </div>

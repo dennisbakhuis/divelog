@@ -155,9 +155,13 @@ def centre(points: Iterable[Point]) -> Point:
 
 
 def draw_north(draw: ImageDraw.ImageDraw, north: float) -> None:
-    """An arrow in the top right corner pointing to north, ``north`` degrees clockwise from up."""
+    """An arrow in the top right corner pointing to north.
+
+    ``north`` is the bearing "up" points to, so north lies ``north`` degrees counter-clockwise
+    from up, as the kit's compass draws it.
+    """
     cx, cy, size = WIDTH - MARGIN / 2 - 10, HEADER + 40, 30.0
-    angle = math.radians(north)
+    angle = math.radians(-north)
     tip = (cx + size * math.sin(angle), cy - size * math.cos(angle))
     tail = (cx - size * math.sin(angle), cy + size * math.cos(angle))
     left = (cx + 10 * math.sin(angle - math.pi / 2), cy - 10 * math.cos(angle - math.pi / 2))

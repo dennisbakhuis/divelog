@@ -65,6 +65,7 @@
 
 <style>
   .table-wrap {
+    position: relative;
     overflow-x: auto;
   }
   .head {

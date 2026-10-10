@@ -168,6 +168,7 @@
     padding-bottom: 10px;
   }
   .table-wrap {
+    position: relative;
     overflow-x: auto;
   }
   .new {

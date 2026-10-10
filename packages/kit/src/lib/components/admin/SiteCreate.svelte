@@ -45,6 +45,7 @@
     near = null,
     compact = false,
     autofocus = true,
+    headingLevel = 3,
     onCreated,
     onUse,
     onCancel,
@@ -57,6 +58,8 @@
     /** The dive editor's dialog: one "Create & use" action and a Cancel. */
     compact?: boolean;
     autofocus?: boolean;
+    /** Level of the "Where is it?" and "Already known?" headings: 2 under a page's h1, 3 in a dialog. */
+    headingLevel?: 2 | 3;
     /** The site was created; `action` is the button pressed. */
     onCreated: (site: Site, action: SiteCreateAction) => void | Promise<void>;
     /** An existing or commons site was chosen from the nearby list instead. */
@@ -66,6 +69,7 @@
   } = $props();
 
   const uid = $props.id();
+  const headingTag = $derived(`h${headingLevel}`);
   const fid = (name: string) => `site-create-${uid}-${name}`;
 
   // svelte-ignore state_referenced_locally
@@ -328,7 +332,7 @@
 
   <div class="where">
     <section class="picker" aria-labelledby={fid('where')}>
-      <h3 id={fid('where')} class="sub">Where is it?</h3>
+      <svelte:element this={headingTag} id={fid('where')} class="sub">Where is it?</svelte:element>
       <LocationPicker
         id={fid('picker')}
         value={point}
@@ -351,9 +355,9 @@
     </section>
 
     <section class="nearby" aria-labelledby={fid('nearby')}>
-      <h3 id={fid('nearby')} class="sub">
+      <svelte:element this={headingTag} id={fid('nearby')} class="sub">
         Already known?{#if nearbyCount}<span class="count">{nearbyCount}</span>{/if}
-      </h3>
+      </svelte:element>
       {#if nearbyCount}
         <ul>
           {#each nearby.log as hit (hit.site_id)}

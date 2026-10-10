@@ -293,6 +293,7 @@
     margin-top: 12px;
   }
   .table-wrap {
+    position: relative;
     overflow-x: auto;
   }
   h2 {

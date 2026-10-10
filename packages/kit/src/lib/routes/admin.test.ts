@@ -100,7 +100,7 @@ describe('admin loaders', () => {
     const divelog = fakeDivelog({
       ...FORM,
       '/api/v1/admin/dives/650': { number: 650, date: '2026-02-08', site_id: 'x' },
-      '/api/v1/admin/dives/template?site=x&date=2026-02-08': {
+      '/api/v1/admin/dives/template?site=x&date=2026-02-08&before=650': {
         previous: { number: 649 },
         at_site: { number: 640 },
       },
@@ -118,7 +118,7 @@ describe('admin loaders', () => {
     });
   });
 
-  it('never offers a draft itself as its previous dive, and lists the drafts', async () => {
+  it('asks for the dive logged before a draft, also on the same day, and lists the drafts', async () => {
     const divelog = fakeDivelog({
       ...FORM,
       '/api/v1/admin/dives/651': {
@@ -127,18 +127,17 @@ describe('admin loaders', () => {
         site_id: null,
         visibility: 'draft',
       },
-      '/api/v1/admin/dives/template?date=2026-02-08': {
-        previous: { number: 651 },
+      '/api/v1/admin/dives/template?date=2026-02-08&before=651': {
+        previous: { number: 650 },
         at_site: null,
       },
-      '/api/v1/admin/dives/template?date=2026-02-07': { previous: { number: 648 } },
       '/api/v1/admin/dives/page?offset=0&limit=1000&status=draft&sort=date&asc=true': {
         items: [{ number: 649 }, { number: 651 }, { number: 652 }],
         total: 3,
       },
     });
     const data = await diveEditRoute.load(divelog, ['651'], fakeEvent());
-    expect(data.template.previous).toEqual({ number: 648 });
+    expect(data.template.previous).toEqual({ number: 650 });
     expect(data.drafts).toEqual([649, 651, 652]);
   });
 

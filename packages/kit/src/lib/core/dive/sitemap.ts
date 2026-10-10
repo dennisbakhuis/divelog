@@ -916,8 +916,8 @@ export function emptyAnnotation(map: SiteMapOut): DiveMapAnnotation {
 export function toLatLon(map: SiteMap, point: MapPoint): MapOrigin | null {
   if (!map.origin) return null;
   const rad = (map.north * Math.PI) / 180;
-  const east = point.x * Math.cos(rad) - -point.y * Math.sin(rad);
-  const northM = point.x * Math.sin(rad) + -point.y * Math.cos(rad);
+  const east = point.x * Math.cos(rad) + -point.y * Math.sin(rad);
+  const northM = -point.x * Math.sin(rad) + -point.y * Math.cos(rad);
   const lat = map.origin.lat + northM / 111320;
   const lon = map.origin.lon + east / (111320 * Math.cos((map.origin.lat * Math.PI) / 180));
   return { lat: Math.round(lat * 1e6) / 1e6, lon: Math.round(lon * 1e6) / 1e6 };

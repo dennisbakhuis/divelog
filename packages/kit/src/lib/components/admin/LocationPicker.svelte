@@ -287,15 +287,17 @@
     }
     let cancelled = false;
     (async () => {
-      const [maplibre, { Protocol }, basemaps, index, countries] = await Promise.all([
+      const [maplibre, { Protocol }, basemaps, index] = await Promise.all([
         import('maplibre-gl'),
         import('pmtiles'),
         import('@protomaps/basemaps').catch(() => null),
         fetch(urls.tiles('index.json'), { cache: 'no-cache' })
           .then((r) => (r.ok ? (r.json() as Promise<TileIndex>) : null))
           .catch(() => null),
-        loadCountries(),
       ]);
+      // The 1:50m outlines (~750 kB) draw the land only when there is no world basemap;
+      // otherwise they wait for the first pin, which needs them to name the country.
+      const countries = index?.world && basemaps ? [] : await loadCountries();
       if (cancelled || !container) return;
       maplibreModule = maplibre;
       const workerUrl = mapWorkerUrl();

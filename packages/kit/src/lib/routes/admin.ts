@@ -16,7 +16,7 @@ import type {
   Trip,
   TripAdmin,
 } from '$lib/core/dive/types.js';
-import { shiftDate, templatePath } from '$lib/core/admin/dive-input.js';
+import { templatePath } from '$lib/core/admin/dive-input.js';
 import { DEFAULT_LIST_QUERY, pagePath, parseListQuery } from '$lib/core/admin/dive-list.js';
 import type { NewDiveParams } from '$lib/core/dive/config.js';
 import type { Divelog } from '../server/divelog.js';
@@ -46,8 +46,12 @@ function diveTemplateFor(
   event: RequestEvent,
   site: string | null,
   date: string | null,
+  before: number | null = null,
 ): Promise<DiveTemplateOut> {
-  return divelog.apiOrError<DiveTemplateOut>(event, divelog.urls.api(templatePath(site, date)));
+  return divelog.apiOrError<DiveTemplateOut>(
+    event,
+    divelog.urls.api(templatePath(site, date, before)),
+  );
 }
 
 /** The new-dive prefill from `?site=&trip=&person=&date=`; a malformed date is dropped. */
@@ -63,19 +67,18 @@ export function newDivePrefill(params: URLSearchParams): Required<NewDiveParams>
 }
 
 /**
- * The template of an existing dive: the dives before it, never the dive itself. When the
- * dive is the latest on its day, the previous one is looked up from the day before.
+ * The template of an existing dive: `previous` is the dive logged before it (the server's
+ * `before`), also an earlier dive of the same day; `at_site` is never the dive itself.
  */
 async function templateOfDive(
   divelog: Divelog,
   event: RequestEvent,
   dive: DiveAdmin,
 ): Promise<DiveTemplateOut> {
-  const template = await diveTemplateFor(divelog, event, dive.site_id, dive.date);
+  const template = await diveTemplateFor(divelog, event, dive.site_id, dive.date, dive.number);
   const atSite = template.at_site?.number === dive.number ? null : (template.at_site ?? null);
-  if (template.previous?.number !== dive.number) return { ...template, at_site: atSite };
-  const before = await diveTemplateFor(divelog, event, null, shiftDate(dive.date, -1));
-  return { ...template, previous: before.previous ?? null, at_site: atSite };
+  const previous = template.previous?.number === dive.number ? null : template.previous;
+  return { ...template, previous: previous ?? null, at_site: atSite };
 }
 
 /** Every draft's number in date order, for the editor's previous/next draft links. */

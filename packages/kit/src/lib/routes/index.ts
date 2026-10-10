@@ -37,7 +37,12 @@ export { default as AdminTripNewPage } from './admin/AdminTripNewPage.svelte';
 export { default as AdminTripEditPage } from './admin/AdminTripEditPage.svelte';
 export { default as AdminGearPage } from './admin/AdminGearPage.svelte';
 export { default as AdminImportPage } from './admin/AdminImportPage.svelte';
-export { withComponent, type PageComponent, type PageImports, type WithComponent } from './pages.js';
+export {
+  withComponent,
+  type PageComponent,
+  type PageImports,
+  type WithComponent,
+} from './pages.js';
 export { publicPageImports, withPublicPage, type PublicPageProps } from './public-pages.js';
 export { adminPageImports, withAdminPage, type AdminPageProps } from './admin-pages.js';
 export { pageSnapshot, type PageSnapshot } from './snapshot.js';

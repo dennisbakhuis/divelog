@@ -96,9 +96,7 @@ test.describe('logging a dive', () => {
     await expect(page).toHaveURL(/\/admin\/dives\/\d+$/);
   });
 
-  test('a dive without depth or duration is not sent, and the fields say why', async ({
-    page,
-  }) => {
+  test('a dive without depth or duration is not sent, and the fields say why', async ({ page }) => {
     let posted = false;
     page.on('request', (r) => {
       if (isCreate(r)) posted = true;

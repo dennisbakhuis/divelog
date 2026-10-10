@@ -213,6 +213,8 @@
                 checked={allDraftsSelected}
                 onchange={(e) => toggleAll(e.currentTarget.checked)}
               />
+            {:else}
+              <span class="dl-visually-hidden">Select</span>
             {/if}
           </th>
           {#each SORTS.before as col (col.sort)}

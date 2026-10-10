@@ -26,6 +26,8 @@
       ? adminApi('dives', dive.number, 'attachments')
       : adminApi('sites', site?.id ?? '', 'attachments'),
   );
+  /** A commons site's photo order is the commons' own: reordering needs a fork. */
+  const canMove = $derived(!!dive || (!!site && site.origin !== 'commons'));
   /** Site photos are often someone else's: credit them with a licence, author and source. */
   const credits = $derived(!!site);
 
@@ -108,7 +110,7 @@
   }
 
   async function move(a: Attachment, delta: number) {
-    if (!dive) return;
+    if (!canMove) return;
     const order = [...sorted];
     const i = order.findIndex((x) => x.id === a.id);
     const j = i + delta;
@@ -276,18 +278,20 @@
                 onclick={() => setCover(a)}>{a.id === coverId ? 'Cover' : 'Set cover'}</button
               >
             {/if}
-            {#if dive}
+            {#if canMove && sorted.length > 1}
               <button
                 type="button"
                 class="dl-btn dl-btn-ghost dl-btn-sm"
+                disabled={sorted[0]?.id === a.id}
                 onclick={() => move(a, -1)}
-                aria-label="Move up">↑</button
+                aria-label="Move {nameOf(a)} up">↑</button
               >
               <button
                 type="button"
                 class="dl-btn dl-btn-ghost dl-btn-sm"
+                disabled={sorted.at(-1)?.id === a.id}
                 onclick={() => move(a, 1)}
-                aria-label="Move down">↓</button
+                aria-label="Move {nameOf(a)} down">↓</button
               >
             {/if}
             <button

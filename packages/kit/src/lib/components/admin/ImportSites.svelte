@@ -36,6 +36,7 @@
 
 <style>
   .table-wrap {
+    position: relative;
     overflow-x: auto;
   }
   .import-sites {

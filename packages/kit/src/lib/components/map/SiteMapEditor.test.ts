@@ -311,6 +311,17 @@ describe('SiteMapEditor touch', () => {
       expect(menu).toBeTruthy();
       const items = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
       expect(items.map((b) => b.textContent?.trim())).toEqual(['Edit details', 'Delete', 'Cancel']);
+      items[0].focus();
+      key(items[0], 'ArrowDown');
+      expect(document.activeElement).toBe(items[1]);
+      key(items[1], 'End');
+      expect(document.activeElement).toBe(items[2]);
+      key(items[2], 'ArrowDown');
+      expect(document.activeElement).toBe(items[0]);
+      key(items[0], 'ArrowUp');
+      expect(document.activeElement).toBe(items[2]);
+      key(items[2], 'Home');
+      expect(document.activeElement).toBe(items[0]);
       key(items[0], 'Escape');
       expect(target.querySelector('[role="menu"]')).toBeNull();
       station.dispatchEvent(
