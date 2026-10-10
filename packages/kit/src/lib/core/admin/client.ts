@@ -12,33 +12,65 @@ export function configureAdminClient(base: string): void {
   apiBase = base.replace(/\/+$/, '');
 }
 
+/** One entry of a FastAPI/Pydantic 422 `detail` list. */
+interface ValidationDetail {
+  loc?: (string | number)[];
+  msg?: string;
+}
+
+const LOC_ROOTS = new Set(['body', 'query', 'path', 'header', 'cookie']);
+
+/**
+ * The field a validation error belongs to, as a dotted path without the
+ * request part: `['body', 'tanks', 0, 'o2_pct']` → `tanks.0.o2_pct`.
+ */
+export function fieldPath(loc: readonly (string | number)[]): string {
+  const parts = loc.length > 1 && LOC_ROOTS.has(String(loc[0])) ? loc.slice(1) : loc;
+  return parts.map(String).join('.');
+}
+
+/** Field errors keyed by `fieldPath`; the first message per field wins. */
+export function parseFieldErrors(detail: unknown): Record<string, string> {
+  const errors: Record<string, string> = {};
+  if (!Array.isArray(detail)) return errors;
+  for (const d of detail as ValidationDetail[]) {
+    const path = fieldPath(d?.loc ?? []);
+    if (path && d?.msg && !(path in errors)) errors[path] = d.msg;
+  }
+  return errors;
+}
+
 export class AdminApiError extends Error {
+  /** Per-field messages of a 422, keyed by dotted field path (`max_depth_m`, `tanks.0.o2_pct`). */
+  public fieldErrors: Record<string, string>;
+
   constructor(
     public status: number,
     message: string,
+    fieldErrors: Record<string, string> = {},
   ) {
     super(message);
+    this.fieldErrors = fieldErrors;
   }
 }
 
 async function handle<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let detail = response.statusText;
+    let fieldErrors: Record<string, string> = {};
     try {
       const body = (await response.json()) as { detail?: unknown };
       if (typeof body.detail === 'string') detail = body.detail;
       else if (Array.isArray(body.detail)) {
-        detail = body.detail
-          .map(
-            (d: { loc?: unknown[]; msg?: string }) =>
-              `${(d.loc ?? []).slice(1).join('.')}: ${d.msg}`,
-          )
+        detail = (body.detail as ValidationDetail[])
+          .map((d) => `${(d.loc ?? []).slice(1).join('.')}: ${d.msg}`)
           .join('; ');
+        fieldErrors = parseFieldErrors(body.detail);
       }
     } catch {
       // keep status text
     }
-    throw new AdminApiError(response.status, detail);
+    throw new AdminApiError(response.status, detail, fieldErrors);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;

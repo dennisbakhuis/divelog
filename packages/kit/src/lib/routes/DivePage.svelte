@@ -15,4 +15,6 @@
   );
 </script>
 
-<Page bind:this={current} {data} />
+<div id="dl-main" class="dl-main" tabindex="-1">
+  <Page bind:this={current} {data} />
+</div>

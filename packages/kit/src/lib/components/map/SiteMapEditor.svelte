@@ -1,6 +1,7 @@
 <script lang="ts">
   import SiteMapView from '$lib/components/dive/SiteMapView.svelte';
   import ObjectPicker from './ObjectPicker.svelte';
+  import { confirmDialog } from '$lib/core/ui/confirm.js';
   import {
     addArea,
     addLine,
@@ -371,8 +372,16 @@
     }
   }
 
-  function clear() {
-    if (!confirm('Remove everything on this map?')) return;
+  async function clear() {
+    if (
+      !(await confirmDialog({
+        title: 'Remove everything on this map?',
+        body: 'Stations, lines and areas go; Undo brings them back.',
+        confirmLabel: 'Remove everything',
+        danger: true,
+      }))
+    )
+      return;
     commit({ ...map, nodes: [], edges: [], areas: [], lines: [] });
     draft = [];
     clearSelection();

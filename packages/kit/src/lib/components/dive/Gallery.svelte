@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Attachment } from '$lib/core/dive/types';
+  import Dialog from '$lib/components/ui/Dialog.svelte';
 
   let { items, kind }: { items: Attachment[]; kind: 'photo' | 'scan' | 'map' } = $props();
   let open = $state<Attachment | null>(null);
@@ -7,13 +8,7 @@
   function src(a: Attachment, variant: string): string {
     return a.variants[variant] ?? a.url;
   }
-
-  function onKey(e: KeyboardEvent) {
-    if (e.key === 'Escape') open = null;
-  }
 </script>
-
-<svelte:window onkeydown={onKey} />
 
 <div class="gallery" class:single={items.length === 1} class:scans={kind === 'scan'}>
   {#each items as item (item.id)}
@@ -42,17 +37,20 @@
   {/each}
 </div>
 
-{#if open}
-  <div class="lightbox" role="dialog" aria-modal="true" aria-label={open.caption || 'Image'}>
-    <button type="button" class="backdrop" onclick={() => (open = null)} aria-label="Close"
-    ></button>
+<Dialog
+  bind:open={() => open !== null, (v) => !v && (open = null)}
+  label={open?.caption || 'Image'}
+  size="full"
+  bare
+  class="lightbox"
+>
+  {#if open}
     <figure>
       <img src={src(open, 'w1600')} alt={open.caption} />
       {#if open.caption}<figcaption>{open.caption}</figcaption>{/if}
     </figure>
-    <button type="button" class="close" onclick={() => (open = null)} aria-label="Close">×</button>
-  </div>
-{/if}
+  {/if}
+</Dialog>
 
 <style>
   .gallery {
@@ -92,32 +90,22 @@
     justify-content: center;
     text-decoration: none;
     color: var(--dl-color-text-muted);
-    font-size: 14px;
+    font-size: var(--dl-text-base);
     padding: 16px;
   }
   .caption {
     position: absolute;
     inset: auto 0 0;
     padding: 6px 10px;
-    font-size: 12px;
+    font-size: var(--dl-text-sm);
     color: #fff;
     background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
     text-align: left;
   }
-  .lightbox {
-    position: fixed;
-    inset: 0;
-    z-index: 100;
+  :global(.dl-dialog.lightbox .dl-dialog-content) {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 24px;
-  }
-  .backdrop {
-    position: absolute;
-    inset: 0;
-    background: rgba(3, 9, 18, 0.92);
-    border: none;
   }
   figure {
     position: relative;
@@ -137,16 +125,6 @@
   figcaption {
     color: var(--dl-color-text-muted);
     text-align: center;
-    font-size: 14px;
-  }
-  .close {
-    position: absolute;
-    top: 16px;
-    right: 20px;
-    background: none;
-    border: none;
-    color: #fff;
-    font-size: 36px;
-    line-height: 1;
+    font-size: var(--dl-text-base);
   }
 </style>

@@ -2,6 +2,7 @@
   import type { AdminDataFor } from '../admin';
   import { goto, invalidateAll } from '$app/navigation';
   import { adminJson, adminUpload, AdminApiError } from '$lib/core/admin/client';
+  import { confirmDialog } from '$lib/core/ui/confirm.js';
   import { defaultTitle, mapSummary } from '$lib/core/dive/sitemap';
   import type { Attachment } from '$lib/core/dive/types';
   import { toast } from '$lib/components/stores/toast.svelte';
@@ -48,13 +49,21 @@
   }
 
   async function removeMedia(a: Attachment) {
-    if (!confirm(`Delete ${a.original_name || a.kind}?`)) return;
+    if (!(await confirmDialog({ title: `Delete ${a.original_name || a.kind}?`, danger: true })))
+      return;
     await adminJson(`/admin/attachments/${a.id}`, 'DELETE');
     await invalidateAll();
   }
 
   async function removeSite() {
-    if (!confirm(`Delete ${site.name}? This cannot be undone.`)) return;
+    if (
+      !(await confirmDialog({
+        title: `Delete ${site.name}?`,
+        body: 'This cannot be undone.',
+        danger: true,
+      }))
+    )
+      return;
     try {
       await adminJson(`/admin/sites/${site.id}`, 'DELETE');
       toast.show({ kind: 'success', message: `${site.name} deleted` });

@@ -74,6 +74,7 @@
     <label class="search">
       <span class="dl-visually-hidden">Search dives</span>
       <input
+        class="dl-input"
         type="search"
         placeholder="Search anything: site, buddy, notes, cave line, gas…"
         value={q}
@@ -91,6 +92,7 @@
     <label class="field" class:set={!!filter.country}>
       <span>Country</span>
       <select
+        class="dl-select"
         value={filter.country}
         onchange={(e) => onChange({ ...filter, country: e.currentTarget.value })}
       >
@@ -106,7 +108,7 @@
       <span>Region</span>
       <select
         value={filter.region}
-        class="names"
+        class="dl-select names"
         onchange={(e) => onChange({ ...filter, region: e.currentTarget.value })}
       >
         <option value="">Any</option>
@@ -119,7 +121,7 @@
       <span>Site type</span>
       <select
         value={filter.siteType}
-        class="names"
+        class="dl-select names"
         onchange={(e) => onChange({ ...filter, siteType: e.currentTarget.value })}
       >
         <option value="">Any</option>
@@ -131,6 +133,7 @@
     <label class="field" class:set={!!filter.water}>
       <span>Water</span>
       <select
+        class="dl-select"
         value={filter.water}
         onchange={(e) => onChange({ ...filter, water: e.currentTarget.value })}
       >
@@ -143,6 +146,7 @@
     <label class="field" class:set={filter.year !== null}>
       <span>Year</span>
       <select
+        class="dl-select"
         value={filter.year === null ? '' : String(filter.year)}
         onchange={(e) =>
           onChange({
@@ -159,6 +163,7 @@
     <label class="field" class:set={!!filter.person}>
       <span>Buddy</span>
       <select
+        class="dl-select"
         value={filter.person}
         onchange={(e) => onChange({ ...filter, person: e.currentTarget.value })}
       >
@@ -174,6 +179,7 @@
     <label class="field" class:set={!!filter.gas}>
       <span>Gas</span>
       <select
+        class="dl-select"
         value={filter.gas}
         onchange={(e) => onChange({ ...filter, gas: e.currentTarget.value })}
       >
@@ -190,6 +196,7 @@
       <label class="field" class:set={!!filter.setup}>
         <span>Setup</span>
         <select
+          class="dl-select"
           value={filter.setup}
           onchange={(e) => onChange({ ...filter, setup: e.currentTarget.value })}
         >
@@ -203,6 +210,7 @@
     <label class="field" class:set={filter.minDepth !== null || filter.maxDepth !== null}>
       <span>Depth</span>
       <select
+        class="dl-select"
         value={rangeValue(depthRange)}
         onchange={(e) => {
           const range = parseRange(e.currentTarget.value);
@@ -218,6 +226,7 @@
     <label class="field" class:set={filter.minDuration !== null || filter.maxDuration !== null}>
       <span>Bottom time</span>
       <select
+        class="dl-select"
         value={rangeValue(durationRange)}
         onchange={(e) => {
           const range = parseRange(e.currentTarget.value);
@@ -305,7 +314,7 @@
     font-size: 14.5px;
     color: var(--dl-color-text);
     background: var(--dl-color-surface);
-    border: 1px solid var(--dl-color-border-strong);
+    border: 1px solid var(--dl-color-border-control);
     border-radius: var(--dl-radius-sm);
     padding: 9px 12px;
     width: 100%;
@@ -360,14 +369,14 @@
     width: 100%;
     color: var(--dl-color-text-muted);
     background: var(--dl-color-surface);
-    border: 1px solid var(--dl-color-border);
+    border: 1px solid var(--dl-color-border-control);
     border-radius: var(--dl-radius-sm);
     padding: 7px 10px;
     cursor: pointer;
     transition: border-color 0.15s ease;
   }
   select:hover {
-    border-color: var(--dl-color-border-strong);
+    border-color: var(--dl-color-text-muted);
   }
   .field.set select {
     color: var(--dl-color-text);

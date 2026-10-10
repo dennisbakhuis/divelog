@@ -25,7 +25,7 @@
   gap: 10px;
   margin: 0 0 14px;
   font-family: var(--dl-font-mono);
-  font-size: 12px;
+  font-size: var(--dl-text-sm);
   font-weight: 500;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -83,6 +83,21 @@
   border-color: var(--dl-color-accent);
   color: var(--dl-color-accent);
 }
+:where(.divelog) .dl-btn-danger {
+  background: var(--dl-color-danger);
+  color: var(--dl-color-danger-fg);
+}
+:where(.divelog) .dl-btn-danger:hover {
+  background: var(--dl-color-danger);
+  color: var(--dl-color-danger-fg);
+  filter: brightness(1.1);
+}
+:where(.divelog) .dl-btn:disabled,
+:where(.divelog) .dl-btn[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
 :where(.divelog) .dl-btn-sm {
   padding: 0.45rem 0.9rem;
   font-size: 0.85rem;
@@ -96,7 +111,7 @@
 
 :where(.divelog) .dl-attribution {
   margin: 8px 0 0;
-  font-size: 12px;
+  font-size: var(--dl-text-sm);
   line-height: 1.5;
   color: var(--dl-color-text-faint);
 }
@@ -105,7 +120,7 @@
 }
 :where(.divelog) .dl-attribution-ref {
   font-family: var(--dl-font-mono);
-  font-size: 11px;
+  font-size: var(--dl-text-xs);
 }
 
 :where(.divelog) .dl-tag[data-origin='commons'] {
@@ -253,41 +268,52 @@
  */
 
 .divelog .dl-admin-body h1 {
-  font-size: 26px;
+  font-size: var(--dl-text-3xl);
   margin-bottom: 18px;
 }
 .divelog .dl-admin-body input,
 .divelog .dl-admin-body select,
 .divelog .dl-admin-body textarea {
   font: inherit;
-  font-size: 14.5px;
+  font-size: var(--dl-text-base);
   color: var(--dl-color-text);
   background: var(--dl-color-surface);
-  border: 1px solid var(--dl-color-border-strong);
+  border: 1px solid var(--dl-color-border-control);
   border-radius: var(--dl-radius-sm);
-  padding: 8px 10px;
+  padding: var(--dl-space-2) 10px;
   width: 100%;
+}
+.divelog .dl-admin-body input[type='checkbox'],
+.divelog .dl-admin-body input[type='radio'],
+.divelog .dl-admin-body input[type='color'],
+.divelog .dl-admin-body input[type='range'] {
+  width: auto;
+}
+.divelog .dl-admin-body input[aria-invalid='true'],
+.divelog .dl-admin-body select[aria-invalid='true'],
+.divelog .dl-admin-body textarea[aria-invalid='true'] {
+  border-color: var(--dl-color-danger);
 }
 .divelog .dl-admin-body label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 12.5px;
+  gap: var(--dl-space-1);
+  font-size: var(--dl-text-md);
   color: var(--dl-color-text-muted);
 }
 .divelog .dl-admin-body .field-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
+  gap: var(--dl-space-3);
 }
 .divelog .dl-admin-body .error {
   color: var(--dl-color-error);
-  font-size: 14px;
+  font-size: var(--dl-text-base);
 }
 .divelog .dl-admin-body table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: var(--dl-text-base);
 }
 .divelog .dl-admin-body th,
 .divelog .dl-admin-body td {
@@ -298,9 +324,97 @@
 }
 .divelog .dl-admin-body th {
   font-family: var(--dl-font-mono);
-  font-size: 11px;
+  font-size: var(--dl-text-xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--dl-color-text-muted);
   font-weight: 500;
+}
+
+/*
+ * Focus, controls and motion: the accessibility floor of every kit page.
+ * `:where()` keeps all of these at the specificity of one class, so component
+ * styles still refine them.
+ */
+
+:where(.divelog) :focus-visible {
+  outline: var(--dl-focus-ring);
+  outline-offset: var(--dl-focus-offset);
+}
+
+:where(.divelog) .dl-input,
+:where(.divelog) .dl-select,
+:where(.divelog) .dl-textarea {
+  font: inherit;
+  font-size: var(--dl-text-base);
+  color: var(--dl-color-text);
+  background: var(--dl-color-surface);
+  border: 1px solid var(--dl-color-border-control);
+  border-radius: var(--dl-radius-sm);
+  padding: var(--dl-space-2) 10px;
+}
+:where(.divelog) .dl-select {
+  cursor: pointer;
+}
+:where(.divelog) .dl-textarea {
+  min-height: 5em;
+  resize: vertical;
+}
+:where(.divelog) .dl-input::placeholder,
+:where(.divelog) .dl-textarea::placeholder {
+  color: var(--dl-color-text-faint);
+  opacity: 1;
+}
+:where(.divelog) .dl-input:hover,
+:where(.divelog) .dl-select:hover,
+:where(.divelog) .dl-textarea:hover {
+  border-color: var(--dl-color-text-muted);
+}
+:where(.divelog) .dl-input[aria-invalid='true'],
+:where(.divelog) .dl-select[aria-invalid='true'],
+:where(.divelog) .dl-textarea[aria-invalid='true'] {
+  border-color: var(--dl-color-danger);
+}
+:where(.divelog) .dl-input:disabled,
+:where(.divelog) .dl-select:disabled,
+:where(.divelog) .dl-textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+:where(.divelog) .dl-skip-link {
+  position: absolute;
+  left: var(--dl-space-3);
+  top: var(--dl-space-3);
+  z-index: 10000;
+  padding: var(--dl-space-2) var(--dl-space-4);
+  border-radius: var(--dl-radius-sm);
+  background: var(--dl-color-button-bg);
+  color: var(--dl-color-button-text);
+  font-family: var(--dl-font-display);
+  font-size: var(--dl-text-base);
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(-200%);
+}
+:where(.divelog) .dl-skip-link:focus,
+:where(.divelog) .dl-skip-link:focus-visible {
+  transform: none;
+}
+:where(.divelog) .dl-main:focus {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(.divelog) *,
+  :where(.divelog) *::before,
+  :where(.divelog) *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  :where(.divelog) .dl-btn:hover {
+    transform: none;
+  }
 }
