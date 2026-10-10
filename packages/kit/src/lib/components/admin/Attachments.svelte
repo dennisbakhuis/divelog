@@ -1,23 +1,57 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { invalidateAll } from '$app/navigation';
   import { adminApi, adminJson, adminUpload, AdminApiError } from '$lib/core/admin/client';
-  import type { Attachment, DiveAdmin } from '$lib/core/dive/types';
+  import { fetchLicences } from '$lib/core/admin/lookups';
+  import type {
+    Attachment,
+    AttachmentPatch,
+    DiveAdmin,
+    LicenceOut,
+    Site,
+  } from '$lib/core/dive/types';
   import { toast } from '$lib/components/stores/toast.svelte';
+  import { confirmDialog } from '$lib/core/ui/confirm.js';
 
-  let { dive }: { dive: DiveAdmin } = $props();
+  let { dive = null, site = null }: { dive?: DiveAdmin | null; site?: Site | null } = $props();
 
-  const KINDS: Attachment['kind'][] = ['photo', 'scan', 'map', 'video', 'export'];
+  const KINDS: Attachment['kind'][] = $derived(
+    site ? ['photo', 'map'] : ['photo', 'scan', 'map', 'video', 'export'],
+  );
+  const items = $derived(dive?.attachments ?? site?.attachments ?? []);
+  const sorted = $derived([...items].sort((a, b) => a.sort - b.sort));
+  const coverId = $derived(dive?.cover_attachment_id ?? null);
+  const base = $derived(
+    dive
+      ? adminApi('dives', dive.number, 'attachments')
+      : adminApi('sites', site?.id ?? '', 'attachments'),
+  );
+  /** Site photos are often someone else's: credit them with a licence, author and source. */
+  const credits = $derived(!!site);
+
   let kind = $state<Attachment['kind']>('photo');
   let makePublic = $state(true);
   let uploading = $state(0);
   let dragging = $state(false);
+  let licences = $state<LicenceOut[]>([]);
+
+  onMount(() => {
+    if (!site) return;
+    fetchLicences()
+      .then((list) => (licences = list))
+      .catch(() => {
+        // no list: a set licence still shows by its id
+      });
+  });
+
+  const nameOf = (a: Attachment) => a.original_name || a.kind;
 
   async function upload(files: FileList | File[]) {
     const list = Array.from(files);
     uploading = list.length;
     for (const file of list) {
       try {
-        await adminUpload(adminApi('dives', dive.number, 'attachments'), file, {
+        await adminUpload(base, file, {
           kind,
           public: String(kind === 'scan' ? false : makePublic),
         });
@@ -51,46 +85,50 @@
     return true;
   }
 
-  async function patch(
-    a: Attachment,
-    body: Partial<Pick<Attachment, 'caption' | 'kind' | 'sort' | 'public' | 'credit'>>,
-  ) {
-    await attempt(`Could not update ${a.original_name || a.kind}`, () =>
+  async function patch(a: Attachment, body: AttachmentPatch) {
+    await attempt(`Could not update ${nameOf(a)}`, () =>
       adminJson(adminApi('attachments', a.id), 'PATCH', body),
     );
   }
 
   async function remove(a: Attachment) {
-    if (!confirm(`Delete ${a.original_name || a.kind}?`)) return;
+    const name = a.original_name || a.kind;
+    if (!(await confirmDialog({ title: `Delete ${name}?`, danger: true }))) return;
     await attempt(`Could not delete ${a.original_name || a.kind}`, () =>
       adminJson(adminApi('attachments', a.id), 'DELETE'),
     );
   }
 
   async function setCover(a: Attachment) {
+    if (!dive) return;
+    const number = dive.number;
     await attempt('Could not set the cover', () =>
-      adminJson(adminApi('dives', dive.number), 'PATCH', { cover_attachment_id: a.id }),
+      adminJson(adminApi('dives', number), 'PATCH', { cover_attachment_id: a.id }),
     );
   }
 
   async function move(a: Attachment, delta: number) {
-    const sorted = [...dive.attachments].sort((x, y) => x.sort - y.sort);
-    const i = sorted.findIndex((x) => x.id === a.id);
+    if (!dive) return;
+    const order = [...sorted];
+    const i = order.findIndex((x) => x.id === a.id);
     const j = i + delta;
-    if (j < 0 || j >= sorted.length) return;
-    [sorted[i], sorted[j]] = [sorted[j], sorted[i]];
+    if (j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j], order[i]];
     await attempt('Could not reorder', () =>
       adminJson(
-        adminApi('dives', dive.number, 'attachments', 'order'),
+        `${base}/order`,
         'PUT',
-        sorted.map((x) => x.id),
+        order.map((x) => x.id),
       ),
     );
   }
 </script>
 
 <section class="attachments">
-  <h2>Photos, scans & files <span class="dl-num muted">{dive.attachments.length}</span></h2>
+  <h2>
+    {site ? 'Photos & uploaded maps' : 'Photos, scans & files'}
+    <span class="dl-num muted">{items.length}</span>
+  </h2>
 
   <div
     class="dropzone"
@@ -139,10 +177,10 @@
     >
   </div>
 
-  {#if dive.attachments.length}
+  {#if sorted.length}
     <ul class="list">
-      {#each [...dive.attachments].sort((a, b) => a.sort - b.sort) as a (a.id)}
-        <li class="row" class:cover={a.id === dive.cover_attachment_id}>
+      {#each sorted as a (a.id)}
+        <li class="row" class:cover={a.id === coverId} class:private={!a.public}>
           <div class="preview">
             {#if a.mime.startsWith('image/')}
               <img src={a.variants.thumb ?? a.url} alt="" />
@@ -153,12 +191,63 @@
           <div class="fields">
             <input
               type="text"
+              class="dl-input"
               placeholder="Caption"
+              aria-label="Caption of {nameOf(a)}"
               value={a.caption}
               onchange={(e) => patch(a, { caption: e.currentTarget.value })}
             />
+            {#if credits}
+              <div class="credit">
+                <label>
+                  <span>Licence</span>
+                  <select
+                    class="dl-select"
+                    value={a.licence ?? ''}
+                    onchange={(e) => patch(a, { licence: e.currentTarget.value })}
+                  >
+                    <option value="">own photo / no licence</option>
+                    {#each licences as l (l.id)}<option value={l.id}>{l.name}</option>{/each}
+                    {#if a.licence && !licences.some((l) => l.id === a.licence)}
+                      <option value={a.licence}>{a.licence}</option>
+                    {/if}
+                  </select>
+                </label>
+                <label>
+                  <span>Author</span>
+                  <input
+                    type="text"
+                    class="dl-input"
+                    value={a.author ?? ''}
+                    onchange={(e) => patch(a, { author: e.currentTarget.value })}
+                  />
+                </label>
+                <label class="wide">
+                  <span>Source URL</span>
+                  <input
+                    type="url"
+                    class="dl-input"
+                    placeholder="https://…"
+                    value={a.source ?? ''}
+                    onchange={(e) => patch(a, { source: e.currentTarget.value })}
+                  />
+                </label>
+                {#if a.credit}
+                  <label class="wide">
+                    <span>Credit line (free text)</span>
+                    <input
+                      type="text"
+                      class="dl-input"
+                      value={a.credit}
+                      onchange={(e) => patch(a, { credit: e.currentTarget.value })}
+                    />
+                  </label>
+                {/if}
+              </div>
+            {/if}
             <div class="meta">
               <select
+                aria-label="Kind of {nameOf(a)}"
                 value={a.kind}
                 onchange={(e) => patch(a, { kind: e.currentTarget.value as Attachment['kind'] })}
               >
@@ -179,27 +268,28 @@
             </div>
           </div>
           <div class="buttons">
-            {#if a.kind === 'photo'}
+            {#if dive && a.kind === 'photo'}
               <button
                 type="button"
                 class="dl-btn dl-btn-ghost dl-btn-sm"
-                disabled={a.id === dive.cover_attachment_id}
-                onclick={() => setCover(a)}
-                >{a.id === dive.cover_attachment_id ? 'Cover' : 'Set cover'}</button
+                disabled={a.id === coverId}
+                onclick={() => setCover(a)}>{a.id === coverId ? 'Cover' : 'Set cover'}</button
               >
             {/if}
-            <button
-              type="button"
-              class="dl-btn dl-btn-ghost dl-btn-sm"
-              onclick={() => move(a, -1)}
-              aria-label="Move up">↑</button
-            >
-            <button
-              type="button"
-              class="dl-btn dl-btn-ghost dl-btn-sm"
-              onclick={() => move(a, 1)}
-              aria-label="Move down">↓</button
-            >
+            {#if dive}
+              <button
+                type="button"
+                class="dl-btn dl-btn-ghost dl-btn-sm"
+                onclick={() => move(a, -1)}
+                aria-label="Move up">↑</button
+              >
+              <button
+                type="button"
+                class="dl-btn dl-btn-ghost dl-btn-sm"
+                onclick={() => move(a, 1)}
+                aria-label="Move down">↓</button
+              >
+            {/if}
             <button
               type="button"
               class="dl-btn dl-btn-ghost dl-btn-sm danger"
@@ -281,6 +371,24 @@
   .row.cover {
     border-color: var(--dl-color-warm);
   }
+  .row.private {
+    border-style: dashed;
+  }
+  .credit {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 6px 10px;
+  }
+  .credit label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: var(--dl-text-sm);
+    color: var(--dl-color-text-muted);
+  }
+  .credit .wide {
+    grid-column: 1 / -1;
+  }
   .preview {
     width: 96px;
     height: 72px;
@@ -303,6 +411,7 @@
   }
   .meta {
     display: flex;
+    flex-wrap: wrap;
     gap: 10px;
     align-items: center;
   }
