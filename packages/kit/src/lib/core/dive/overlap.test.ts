@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { compareKind, compareMaps, compareShapes, overlapSummary } from './overlap';
-import { normalizeSiteMap, type MapPoint } from './sitemap';
+import { compareKind, compareMaps, compareShapes, overlapSummary } from './overlap.js';
+import { normalizeSiteMap, type MapPoint } from './sitemap.js';
 
 function rect(x0: number, y0: number, x1: number, y1: number): MapPoint[] {
   return [

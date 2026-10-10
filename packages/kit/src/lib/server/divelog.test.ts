@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RequestEvent } from '@sveltejs/kit';
-import { DEFAULT_CONFIG } from '$lib/core/dive/config';
-import { checkServerVersion, createDivelog, majorOf, SUPPORTED_API } from './divelog';
+import { DEFAULT_CONFIG } from '$lib/core/dive/config.js';
+import { checkServerVersion, createDivelog, majorOf, SUPPORTED_API } from './divelog.js';
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

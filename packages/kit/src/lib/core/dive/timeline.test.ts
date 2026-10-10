@@ -12,8 +12,8 @@ import {
   today,
   xOfDate,
   yearTicks,
-} from './timeline';
-import type { DiveListItem } from './types';
+} from './timeline.js';
+import type { DiveListItem } from './types.js';
 
 function dive(number: number, date: string): DiveListItem {
   return {

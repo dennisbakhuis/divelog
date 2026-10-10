@@ -6,8 +6,8 @@ import {
   isPeopleSort,
   sitesTogether,
   sortPeople,
-} from './people';
-import type { DiveListItem, Person } from './types';
+} from './people.js';
+import type { DiveListItem, Person } from './types.js';
 
 function person(name: string, dives: number, last: string | null, countries: string[]): Person {
   return {

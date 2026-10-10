@@ -1,6 +1,6 @@
-import type { DiveAdmin, Tank, TankGas } from '$lib/core/dive/types';
-import type { DiveMapAnnotation } from '$lib/core/dive/sitemap';
-import type { CylinderPreset, DivelogConfig, GasPreset } from '$lib/core/dive/config';
+import type { DiveAdmin, Tank, TankGas } from '$lib/core/dive/types.js';
+import type { DiveMapAnnotation } from '$lib/core/dive/sitemap.js';
+import type { CylinderPreset, DivelogConfig, GasPreset } from '$lib/core/dive/config.js';
 
 /** Canonical tags a dive can carry; the paper log's own words stay in `types_raw`. */
 export const DIVE_TAGS = [

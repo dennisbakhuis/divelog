@@ -1,7 +1,7 @@
 import { geoBounds, geoMercator, geoNaturalEarth1, geoPath, type GeoProjection } from 'd3-geo';
 import { feature } from 'topojson-client';
 import type { GeometryCollection, Topology } from 'topojson-specification';
-import world from 'world-atlas/countries-110m.json';
+import world from 'world-atlas/countries-110m.json' with { type: 'json' };
 
 // Server-side only: the world outline is projected once at module load and
 // sent to the browser as SVG path strings, so the map needs no client JS and
@@ -146,7 +146,7 @@ let detailed: Countries | null = null;
 /** The 1:50m outlines; small islands (Bonaire, Gozo) are missing from the 1:110m set. */
 async function detailedCountries(): Promise<Countries> {
   if (!detailed) {
-    const atlas = (await import('world-atlas/countries-50m.json')).default;
+    const atlas = (await import('world-atlas/countries-50m.json', { with: { type: 'json' } })).default;
     const topo = atlas as unknown as Topology<{ countries: GeometryCollection }>;
     detailed = feature(topo, topo.objects.countries);
   }

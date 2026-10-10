@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Dive, DiveListItem, Site } from '$lib/core/dive/types';
+import type { Dive, DiveListItem, Site } from '$lib/core/dive/types.js';
 import {
   depthBars,
   diveCardSvg,
@@ -8,7 +8,7 @@ import {
   siteCardSvg,
   withoutPrefix,
   wrapTitle,
-} from './card';
+} from './card.js';
 
 const site = {
   slug: 'mex-mayan-blue',

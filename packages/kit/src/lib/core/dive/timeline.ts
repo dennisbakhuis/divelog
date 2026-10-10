@@ -2,7 +2,7 @@
  * The day scale behind the range slider under the globe: one line from the
  * first dive to today, with a handle at either end of the selected period.
  */
-import type { DiveListItem } from './types';
+import type { DiveListItem } from './types.js';
 
 const DAY = 86_400_000;
 

@@ -3,7 +3,7 @@
  * components read links from one provider instead of hard-coding paths.
  */
 import { getContext, hasContext, setContext } from 'svelte';
-import { DEFAULT_CONFIG, createUrls, type DivelogConfig, type DivelogUrls } from './config';
+import { DEFAULT_CONFIG, createUrls, type DivelogConfig, type DivelogUrls } from './config.js';
 
 export type Divelog = { config: DivelogConfig; urls: DivelogUrls };
 

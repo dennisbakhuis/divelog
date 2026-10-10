@@ -35,7 +35,7 @@ export type SiteOrigin = Schemas['SiteOut']['origin'];
 export type Attribution = Schemas['Attribution'];
 
 /** One line of a site's or drawn map's changelog, newest first. */
-export type { ChangeEntry } from './sitemap';
+export type { ChangeEntry } from './sitemap.js';
 
 /** How an overlay or fork stands against the current commons revision of its site. */
 export type PinState = Schemas['PinState'];

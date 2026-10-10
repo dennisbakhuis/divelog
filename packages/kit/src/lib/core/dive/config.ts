@@ -3,7 +3,7 @@
  * Every page link, admin link, API base, media and tile path is built here,
  * so a consumer can mount the log under another path by changing the config.
  */
-import type { TankGas } from './types';
+import type { TankGas } from './types.js';
 
 export type CylinderPreset = { name: string; volume_l: number };
 

@@ -1,5 +1,5 @@
-import type { DiveListItem, TripRef } from './types';
-import type { NodeType, ObjectKind } from './sitemap';
+import type { DiveListItem, TripRef } from './types.js';
+import type { NodeType, ObjectKind } from './sitemap.js';
 
 const round = (n: number): number => Math.round(n * 10) / 10;
 

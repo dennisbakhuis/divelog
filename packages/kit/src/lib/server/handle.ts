@@ -4,7 +4,7 @@
  * search engines and the owner's pages out of shared caches.
  */
 import { redirect, type Handle } from '@sveltejs/kit';
-import type { Divelog } from './divelog';
+import type { Divelog } from './divelog.js';
 
 export type HandleDivelogOptions = {
   /** Paths that skip owner resolution entirely, such as a healthcheck. */

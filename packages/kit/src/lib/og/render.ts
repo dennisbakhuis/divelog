@@ -11,8 +11,8 @@ import { Resvg } from '@resvg/resvg-js';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { OG_FONTS } from './font-data';
-import { FONT_DISPLAY, FONT_MONO } from './card';
+import { OG_FONTS } from './font-data.js';
+import { FONT_DISPLAY, FONT_MONO } from './card.js';
 
 let fontFiles: Promise<string[]> | null = null;
 

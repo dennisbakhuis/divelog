@@ -9,7 +9,7 @@
  * overlapping shapes of the same kind count once, not twice.
  */
 
-import type { AreaKind, Box, MapArea, MapPoint, SiteMap } from './sitemap';
+import type { AreaKind, Box, MapArea, MapPoint, SiteMap } from './sitemap.js';
 
 export type OverlapResult = {
   /** Grid resolution the comparison ran at, in metres. */

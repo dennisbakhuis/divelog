@@ -15,7 +15,7 @@ import {
   ordinal,
   pluralize,
   siteLocation,
-} from './format';
+} from './format.js';
 
 describe('formatMinutes', () => {
   it('renders hours and minutes', () => {

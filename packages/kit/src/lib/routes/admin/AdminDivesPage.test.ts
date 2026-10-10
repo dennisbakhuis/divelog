@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import AdminDivesPage from './AdminDivesPage.svelte';
-import type { AdminDiveListItem } from '$lib/core/dive/types';
+import type { AdminDiveListItem } from '$lib/core/dive/types.js';
 
 const dives: AdminDiveListItem[] = [
   {

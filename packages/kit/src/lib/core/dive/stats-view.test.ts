@@ -11,9 +11,9 @@ import {
   recordTiles,
   typeColour,
   waterTempByMonth,
-} from './stats-view';
-import type { DiveStats } from './types';
-import { DEFAULT_CONFIG, createUrls } from './config';
+} from './stats-view.js';
+import type { DiveStats } from './types.js';
+import { DEFAULT_CONFIG, createUrls } from './config.js';
 
 const urls = createUrls(DEFAULT_CONFIG);
 

@@ -3,10 +3,10 @@
  * a route table and run that route's loader, or 404.
  */
 import { error, type RequestEvent } from '@sveltejs/kit';
-import { adminRoutes, type AdminPageData } from '../routes/admin';
-import { publicRoutes, type PublicPageData } from '../routes/public';
-import { matchRoute, type PageOwner } from '../routes/table';
-import type { Divelog } from './divelog';
+import { adminRoutes, type AdminPageData } from '../routes/admin.js';
+import { publicRoutes, type PublicPageData } from '../routes/public.js';
+import { matchRoute, type PageOwner } from '../routes/table.js';
+import type { Divelog } from './divelog.js';
 
 /** Page data for a path under the public mount (`/dive/[...path]`). */
 export async function divePublicLoad(

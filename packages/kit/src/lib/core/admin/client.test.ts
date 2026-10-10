@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { adminApi, adminJson, adminUpload, AdminApiError, configureAdminClient } from './client';
+import { adminApi, adminJson, adminUpload, AdminApiError, configureAdminClient } from './client.js';
 
 function response(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {

@@ -3,8 +3,8 @@
  * for, where a site or map comes from, the admin's origin filter, repo-status notices and the
  * pin of a dive's route against the current revision of its map.
  */
-import { fitAnnotation, type DiveMapAnnotation, type MapEdgeRef, type SiteMap } from './sitemap';
-import type { Attribution, CommonsSiteHit, ImportSite, MapRef, SiteOrigin } from './types';
+import { fitAnnotation, type DiveMapAnnotation, type MapEdgeRef, type SiteMap } from './sitemap.js';
+import type { Attribution, CommonsSiteHit, ImportSite, MapRef, SiteOrigin } from './types.js';
 
 /** The commons' name when the API gives none: the shared repository of dive sites. */
 export const COMMONS_NAME = 'divelog-sites';

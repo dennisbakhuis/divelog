@@ -44,7 +44,7 @@ RUN addgroup --system --gid 1001 app && adduser --system --uid 1001 --ingroup ap
     && git config --system --add safe.directory /data/commons
 WORKDIR /data
 USER app
-ARG APP_VERSION=0.0.0-dev
+ARG APP_VERSION=""
 ENV APP_VERSION=${APP_VERSION} \
     DATA_ROOT=/data/repo \
     STATE_DIR=/data/state \

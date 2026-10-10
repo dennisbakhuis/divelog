@@ -1,6 +1,6 @@
 import MiniSearch from 'minisearch';
-import type { DiveListItem } from './types';
-import type { ColourMode, SizeMode } from './stats-view';
+import type { DiveListItem } from './types.js';
+import type { ColourMode, SizeMode } from './stats-view.js';
 
 export type SortKey = 'date' | 'depth' | 'duration' | 'number';
 

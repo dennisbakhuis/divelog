@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import SiteMapView from './SiteMapView.svelte';
-import { edgeKey, type MapNode, type SiteMap } from '$lib/core/dive/sitemap';
+import { edgeKey, type MapNode, type SiteMap } from '$lib/core/dive/sitemap.js';
 
 function node(id: string, x: number): MapNode {
   return {

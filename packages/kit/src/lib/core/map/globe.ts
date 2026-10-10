@@ -3,7 +3,7 @@
  * GeoJSON layer with their dot size and colour baked into the properties,
  * and the country "jump" targets that fly the globe to a region.
  */
-import type { CountryStat, DiveListItem, MapSite } from '$lib/core/dive/types';
+import type { CountryStat, DiveListItem, MapSite } from '$lib/core/dive/types.js';
 import {
   colourScale,
   dotColour,
@@ -11,8 +11,8 @@ import {
   dotRadiusBy,
   type ColourMode,
   type SizeMode,
-} from '$lib/core/dive/stats-view';
-import { flagEmoji } from '$lib/core/dive/format';
+} from '$lib/core/dive/stats-view.js';
+import { flagEmoji } from '$lib/core/dive/format.js';
 
 /** [minlon, minlat, maxlon, maxlat] */
 export type BBox = [number, number, number, number];

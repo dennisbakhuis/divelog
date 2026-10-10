@@ -7,8 +7,8 @@ import {
   gasSwitches,
   profileFacts,
   sampleAt,
-} from './profile-view';
-import type { ProfileMeta, ProfileSample } from './types';
+} from './profile-view.js';
+import type { ProfileMeta, ProfileSample } from './types.js';
 
 const samples: ProfileSample[] = [
   { t: 0, d: 0 },

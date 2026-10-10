@@ -1,7 +1,7 @@
 /** The editor pages by key; see `pages.ts`. */
-import type { AdminPage, AdminPageData } from './admin';
-import type { PageOwner } from './table';
-import { withComponent, type PageImports, type WithComponent } from './pages';
+import type { AdminPage, AdminPageData } from './admin.js';
+import type { PageOwner } from './table.js';
+import { withComponent, type PageImports, type WithComponent } from './pages.js';
 
 export const adminPageImports = {
   dives: () => import('./admin/AdminDivesPage.svelte'),

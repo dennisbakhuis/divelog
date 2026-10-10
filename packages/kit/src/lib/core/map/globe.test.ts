@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { boundsOf, jumpTargets, sameView, sitesToGeoJSON, tallySites } from './globe';
-import type { DiveListItem, MapSite } from '$lib/core/dive/types';
+import { boundsOf, jumpTargets, sameView, sitesToGeoJSON, tallySites } from './globe.js';
+import type { DiveListItem, MapSite } from '$lib/core/dive/types.js';
 
 function site(overrides: Partial<MapSite>): MapSite {
   return {

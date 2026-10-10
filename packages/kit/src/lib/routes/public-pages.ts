@@ -1,7 +1,7 @@
 /** The public pages by key; see `pages.ts`. */
-import type { PublicPage, PublicPageData } from './public';
-import type { PageOwner } from './table';
-import { withComponent, type PageImports, type WithComponent } from './pages';
+import type { PublicPage, PublicPageData } from './public.js';
+import type { PageOwner } from './table.js';
+import { withComponent, type PageImports, type WithComponent } from './pages.js';
 
 export const publicPageImports = {
   log: () => import('./pages/LogPage.svelte'),

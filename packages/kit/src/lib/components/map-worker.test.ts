@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mapWorkerUrl, setMapWorkerUrl } from './map-worker';
+import { mapWorkerUrl, setMapWorkerUrl } from './map-worker.js';
 
 describe('map worker URL', () => {
   it('is unset until the app sets it', () => {

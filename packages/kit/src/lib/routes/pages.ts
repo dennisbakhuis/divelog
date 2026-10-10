@@ -5,7 +5,7 @@
  */
 import type { Component } from 'svelte';
 import type { Snapshot } from '@sveltejs/kit';
-import type { PageOwner } from './table';
+import type { PageOwner } from './table.js';
 
 /**
  * A page component may export a `snapshot` (SvelteKit's contract) to keep

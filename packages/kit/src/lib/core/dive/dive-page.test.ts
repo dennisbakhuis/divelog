@@ -5,7 +5,7 @@ import {
   routeLine,
   sameDepth,
   typesRawAddsNothing,
-} from './dive-page';
+} from './dive-page.js';
 
 describe('typesRawAddsNothing', () => {
   it('is true for empty input', () => {

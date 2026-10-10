@@ -8,7 +8,7 @@ import {
   startZoom,
   tileBounds,
   type TileIndex,
-} from './locator';
+} from './locator.js';
 
 const index: TileIndex = {
   attribution: '© OpenStreetMap contributors · Protomaps',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { adminLoad, divePublicLoad } from './load';
-import { fakeDivelog, fakeEvent, thrown } from '../testing/fake';
+import { adminLoad, divePublicLoad } from './load.js';
+import { fakeDivelog, fakeEvent, thrown } from '../testing/fake.js';
 
 describe('catch-all loaders', () => {
   it('runs the matching public route and adds the owner', async () => {

@@ -8,7 +8,7 @@ import type {
   MapNode,
   SiteMap,
   SiteMapOut,
-} from './sitemap';
+} from './sitemap.js';
 
 type Schemas = components['schemas'];
 

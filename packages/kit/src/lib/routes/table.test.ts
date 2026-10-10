@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { defineRedirect, defineRoute, matchRoute } from './table';
-import { fakeDivelog, fakeEvent, thrown } from '../testing/fake';
+import { defineRedirect, defineRoute, matchRoute } from './table.js';
+import { fakeDivelog, fakeEvent, thrown } from '../testing/fake.js';
 
 const a = { pattern: /^$/, name: 'a' };
 const b = { pattern: /^items\/new$/, name: 'b' };

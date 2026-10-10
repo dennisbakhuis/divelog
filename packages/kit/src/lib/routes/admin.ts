@@ -14,10 +14,10 @@ import type {
   Site,
   Trip,
   TripAdmin,
-} from '$lib/core/dive/types';
-import { diveTemplate } from '$lib/core/admin/dive-input';
-import type { Divelog } from '../server/divelog';
-import { defineRoute, type PageOwner } from './table';
+} from '$lib/core/dive/types.js';
+import { diveTemplate } from '$lib/core/admin/dive-input.js';
+import type { Divelog } from '../server/divelog.js';
+import { defineRoute, type PageOwner } from './table.js';
 
 /** One past import on the import page. */
 export type ImportRow = ImportRecord;

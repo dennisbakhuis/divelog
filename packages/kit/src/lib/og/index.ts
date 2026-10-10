@@ -1,11 +1,11 @@
 /** Open Graph cards for dive and site pages, rendered on request. */
 import { error, type RequestEvent } from '@sveltejs/kit';
-import type { Dive, DiveListItem, Site } from '$lib/core/dive/types';
-import type { OgKind } from '$lib/core/dive/config';
-import { ApiError } from '../server/api';
-import type { Divelog } from '../server/divelog';
-import { diveCardSvg, siteCardSvg } from './card';
-import { OG_CACHE, renderPng } from './render';
+import type { Dive, DiveListItem, Site } from '$lib/core/dive/types.js';
+import type { OgKind } from '$lib/core/dive/config.js';
+import { ApiError } from '../server/api.js';
+import type { Divelog } from '../server/divelog.js';
+import { diveCardSvg, siteCardSvg } from './card.js';
+import { OG_CACHE, renderPng } from './render.js';
 
 async function fetchOrError<T>(divelog: Divelog, fetchFn: typeof fetch, path: string): Promise<T> {
   try {
@@ -59,5 +59,5 @@ export async function diveOg(
   });
 }
 
-export { diveCardSvg, siteCardSvg, OG_HEIGHT, OG_WIDTH } from './card';
-export { OG_CACHE, renderPng } from './render';
+export { diveCardSvg, siteCardSvg, OG_HEIGHT, OG_WIDTH } from './card.js';
+export { OG_CACHE, renderPng } from './render.js';

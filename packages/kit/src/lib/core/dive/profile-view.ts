@@ -2,7 +2,7 @@
  * What the profile chart draws beyond the depth line: the deco ceiling, the
  * stretches spent in deco, gas switches, surface breaks and the hover readout.
  */
-import type { ProfileMeta, ProfileSample } from './types';
+import type { ProfileMeta, ProfileSample } from './types.js';
 
 export type Span = { from: number; to: number };
 

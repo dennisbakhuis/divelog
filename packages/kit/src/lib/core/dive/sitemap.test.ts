@@ -49,7 +49,7 @@ import {
   updateEdge,
   updateNode,
   updatePin,
-} from './sitemap';
+} from './sitemap.js';
 
 describe('site map editing', () => {
   it('starts a stick map with an entrance and a site map with an entry', () => {

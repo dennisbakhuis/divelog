@@ -13,7 +13,7 @@ import {
   visibleBox,
   zoomAt,
   zoomOf,
-} from './viewport';
+} from './viewport.js';
 
 const close = (p: { x: number; y: number }, x: number, y: number) => {
   expect(p.x).toBeCloseTo(x, 6);

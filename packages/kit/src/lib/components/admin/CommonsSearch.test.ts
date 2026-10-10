@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import CommonsSearch from './CommonsSearch.svelte';
-import { fakeCommonsHits } from '$lib/testing/sharing';
+import { fakeCommonsHits } from '$lib/testing/sharing.js';
 
 function stubFetch(respond: (url: string) => Response) {
   const urls: string[] = [];

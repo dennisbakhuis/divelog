@@ -1,4 +1,4 @@
-import type { DiveListItem, Person } from './types';
+import type { DiveListItem, Person } from './types.js';
 
 export type PeopleSort = 'dives' | 'recent' | 'name';
 

@@ -1,6 +1,6 @@
-import type { DiveStats, MapSite } from './types';
-import { formatHours } from './format';
-import type { DivelogUrls } from './config';
+import type { DiveStats, MapSite } from './types.js';
+import { formatHours } from './format.js';
+import type { DivelogUrls } from './config.js';
 
 /** One stat; `group: false` keeps a counted number like a year free of digit grouping. */
 export type StatTile = {

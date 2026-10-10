@@ -4,7 +4,7 @@
  * features (commons sites, forks, stale pins and routes, repo notices).
  * Imports `vitest`, so use it from tests only.
  */
-export { fakeDivelog, fakeEvent, thrown, type Responses } from './fake';
+export { fakeDivelog, fakeEvent, thrown, type Responses } from './fake.js';
 export {
   COMMONS_ATTRIBUTION,
   commonsSite,
@@ -17,4 +17,4 @@ export {
   forkSite,
   staleAnnotation,
   stalePinSite,
-} from './sharing';
+} from './sharing.js';

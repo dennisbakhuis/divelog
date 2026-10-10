@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RequestEvent } from '@sveltejs/kit';
-import { ApiError, createApi } from './api';
+import { ApiError, createApi } from './api.js';
 
 const { api, apiOrError, backendUrl } = createApi({ backendUrl: 'http://backend:8000/' });
 

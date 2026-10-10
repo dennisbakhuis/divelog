@@ -9,8 +9,8 @@ import {
   isFilterActive,
   searchNumbers,
   toggleTag,
-} from './filter';
-import type { DiveListItem } from './types';
+} from './filter.js';
+import type { DiveListItem } from './types.js';
 
 function dive(overrides: Partial<DiveListItem>): DiveListItem {
   const base: DiveListItem = {

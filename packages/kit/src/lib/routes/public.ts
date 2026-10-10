@@ -17,9 +17,9 @@ import type {
   SiteDetail,
   TripDetail,
   TripSummary,
-} from '$lib/core/dive/types';
-import { formatDateRange } from '$lib/core/dive/format';
-import { titleSuffix } from '$lib/core/dive/config';
+} from '$lib/core/dive/types.js';
+import { formatDateRange } from '$lib/core/dive/format.js';
+import { titleSuffix } from '$lib/core/dive/config.js';
 import {
   landPath,
   MAP_HEIGHT,
@@ -27,8 +27,8 @@ import {
   makeRegionMap,
   project,
   spherePath,
-} from '$lib/core/map/world';
-import { defineRedirect, defineRoute, type PageOwner } from './table';
+} from '$lib/core/map/world.js';
+import { defineRedirect, defineRoute, type PageOwner } from './table.js';
 
 export type Dot = MapSite & { point: { x: number; y: number } };
 

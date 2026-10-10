@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { latestMatches, sparkline } from './sparkline';
+import { latestMatches, sparkline } from './sparkline.js';
 
 describe('sparkline', () => {
   it('is empty without data', () => {

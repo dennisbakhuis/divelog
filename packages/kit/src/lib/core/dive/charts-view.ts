@@ -4,10 +4,10 @@
  * bar narrows the selection, so each helper takes both lists and the toggles
  * return the next filter.
  */
-import type { DiveFilter } from './filter';
-import type { StatTile } from './stats-view';
-import { formatDate, formatDateRange, pluralize } from './format';
-import { parseDay } from './timeline';
+import type { DiveFilter } from './filter.js';
+import type { StatTile } from './stats-view.js';
+import { formatDate, formatDateRange, pluralize } from './format.js';
+import { parseDay } from './timeline.js';
 
 /** The list fields the charts read; `DiveListItem` satisfies it. */
 export type ChartDive = {

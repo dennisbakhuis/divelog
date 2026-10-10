@@ -15,8 +15,8 @@ import {
   sourceName,
   splitHits,
   staleMessage,
-} from './sharing';
-import type { ImportSite } from './types';
+} from './sharing.js';
+import type { ImportSite } from './types.js';
 import {
   COMMONS_ATTRIBUTION,
   commonsSite,
@@ -27,7 +27,7 @@ import {
   forkSite,
   staleAnnotation,
   stalePinSite,
-} from '$lib/testing/sharing';
+} from '$lib/testing/sharing.js';
 
 describe('attribution helpers', () => {
   it('shortens commit hashes and leaves other refs alone', () => {

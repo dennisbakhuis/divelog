@@ -9,8 +9,8 @@ import type {
   MapRef,
   RepoStatus,
   Site,
-} from '$lib/core/dive/types';
-import type { DiveMapAnnotation, SiteMapOut } from '$lib/core/dive/sitemap';
+} from '$lib/core/dive/types.js';
+import type { DiveMapAnnotation, SiteMapOut } from '$lib/core/dive/sitemap.js';
 
 /** A personal site with every field filled; `overrides` replace fields. */
 export function fakeSite(overrides: Partial<Site> = {}): Site {

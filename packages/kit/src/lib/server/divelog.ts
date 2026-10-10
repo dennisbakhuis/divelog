@@ -2,9 +2,9 @@
  * One `Divelog` binds the config, its URL builder and the backend client;
  * every server helper of the kit takes it.
  */
-import { createUrls, type DivelogConfig, type DivelogUrls } from '$lib/core/dive/config';
-import { KIT_VERSION, SUPPORTED_API } from '../version';
-import { createApi, type Api, type BackendUrl, type Fetch } from './api';
+import { createUrls, type DivelogConfig, type DivelogUrls } from '$lib/core/dive/config.js';
+import { KIT_VERSION, SUPPORTED_API } from '../version.js';
+import { createApi, type Api, type BackendUrl, type Fetch } from './api.js';
 
 export { KIT_VERSION, SUPPORTED_API };
 

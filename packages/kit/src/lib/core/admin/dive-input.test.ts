@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Tank } from '$lib/core/dive/types';
-import { DEFAULT_CONFIG } from '$lib/core/dive/config';
+import type { Tank } from '$lib/core/dive/types.js';
+import { DEFAULT_CONFIG } from '$lib/core/dive/config.js';
 import {
   CYLINDER_PRESETS,
   DIVE_TAGS,
@@ -11,7 +11,7 @@ import {
   emptyDiveInput,
   formSnapshot,
   parseComputer,
-} from './dive-input';
+} from './dive-input.js';
 
 describe('cleanInput', () => {
   it('keeps required text empty instead of null, and blanks the rest', () => {
@@ -85,7 +85,7 @@ describe('templates', () => {
 
 describe('tanks', () => {
   it('seeds one back tank from the old single-line fields', async () => {
-    const { legacyTanks } = await import('./dive-input');
+    const { legacyTanks } = await import('./dive-input.js');
     expect(
       legacyTanks({
         cylinder: 'D12',
@@ -123,7 +123,7 @@ describe('tanks', () => {
   });
 
   it('drops blank rows and turns typed numbers into numbers in the payload', async () => {
-    const { emptyDiveInput, emptyTank, formPayload } = await import('./dive-input');
+    const { emptyDiveInput, emptyTank, formPayload } = await import('./dive-input.js');
     const form = emptyDiveInput(1);
     const typed = { ...emptyTank('back'), pressure_in_bar: '200', pressure_out_bar: '' };
     form.tanks = [typed, { ...emptyTank('deco'), cylinder: '  ' }] as unknown as Tank[];

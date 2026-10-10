@@ -3,7 +3,7 @@
  * (dev) or Caddy (prod) proxies /api/* to the backend on the same origin,
  * so the session cookie rides along without any CORS.
  */
-import { DEFAULT_CONFIG } from '$lib/core/dive/config';
+import { DEFAULT_CONFIG } from '$lib/core/dive/config.js';
 
 let apiBase = DEFAULT_CONFIG.apiBase;
 

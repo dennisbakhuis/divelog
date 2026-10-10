@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { diveSitemapEntries } from './sitemap';
-import { fakeDivelog } from '../testing/fake';
+import { diveSitemapEntries } from './sitemap.js';
+import { fakeDivelog } from '../testing/fake.js';
 
 describe('diveSitemapEntries', () => {
   it('lists trips then dives at priority 0.5', async () => {

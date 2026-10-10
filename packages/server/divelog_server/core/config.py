@@ -1,5 +1,8 @@
 from functools import lru_cache
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,7 +26,7 @@ class Settings(BaseSettings):
     COMMONS_ROOT: str = ""
     COMMONS_GIT_ENABLED: bool = False
 
-    APP_VERSION: str = "0.0.0-dev"
+    APP_VERSION: str = Field(default="", validate_default=True)
     DEBUG: bool = False
     SITE_URL: str = "http://localhost:5173"
     TRUSTED_PROXY_IPS: str = ""
@@ -50,6 +53,17 @@ class Settings(BaseSettings):
     BACKEND_SMTP_PASSWORD: str = ""
     BACKEND_SMTP_TLS: bool = False
     BACKEND_SMTP_FROM: str = ""
+
+    @field_validator("APP_VERSION")
+    @classmethod
+    def _default_version(cls, value: str) -> str:
+        """An empty ``APP_VERSION`` falls back to the installed package version."""
+        if value:
+            return value
+        try:
+            return package_version("divelog-server")
+        except PackageNotFoundError:
+            return "0.0.0-dev"
 
     @property
     def home_countries(self) -> frozenset[str]:

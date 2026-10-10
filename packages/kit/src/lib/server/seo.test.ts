@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createUrls, DEFAULT_CONFIG } from '$lib/core/dive/config';
-import { diveOgImageFor } from './seo';
+import { createUrls, DEFAULT_CONFIG } from '$lib/core/dive/config.js';
+import { diveOgImageFor } from './seo.js';
 
 describe('diveOgImageFor', () => {
   const urls = createUrls(DEFAULT_CONFIG);

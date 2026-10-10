@@ -1,4 +1,4 @@
-import type { DiveTimeline, YearCount } from './types';
+import type { DiveTimeline, YearCount } from './types.js';
 
 export type { DiveTimeline, YearCount };
 

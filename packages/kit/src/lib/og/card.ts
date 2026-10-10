@@ -2,8 +2,8 @@
  * SVG layouts for the per-dive and per-site Open Graph images (1200 × 630).
  * Pure string builders so they can be unit-tested; `render.ts` rasterises.
  */
-import type { Dive, DiveListItem, ProfileSample, Site } from '$lib/core/dive/types';
-import { formatDate, formatDepth, formatTemp } from '$lib/core/dive/format';
+import type { Dive, DiveListItem, ProfileSample, Site } from '$lib/core/dive/types.js';
+import { formatDate, formatDepth, formatTemp } from '$lib/core/dive/format.js';
 
 export const OG_WIDTH = 1200;
 export const OG_HEIGHT = 630;

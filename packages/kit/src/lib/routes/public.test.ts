@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchRoute } from './table';
+import { matchRoute } from './table.js';
 import {
   diveOgRedirect,
   diveRoute,
@@ -16,10 +16,10 @@ import {
   sitesRoute,
   tripRoute,
   tripsRoute,
-} from './public';
-import { DEFAULT_CONFIG } from '$lib/core/dive/config';
-import { fakeDivelog, fakeEvent, thrown } from '../testing/fake';
-import type { Region, Site } from '$lib/core/dive/types';
+} from './public.js';
+import { DEFAULT_CONFIG } from '$lib/core/dive/config.js';
+import { fakeDivelog, fakeEvent, thrown } from '../testing/fake.js';
+import type { Region, Site } from '$lib/core/dive/types.js';
 
 const API = '/api/v1/dive';
 

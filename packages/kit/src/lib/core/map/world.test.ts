@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { landPath, MAP_HEIGHT, MAP_WIDTH, project, spherePath } from './world';
+import { landPath, MAP_HEIGHT, MAP_WIDTH, project, spherePath } from './world.js';
 
 describe('world map', () => {
   it('projects the land outline once', () => {
@@ -22,7 +22,7 @@ describe('world map', () => {
 
 describe('region maps', () => {
   it('fits a padded box of the panel shape around the points', async () => {
-    const { fitBBox } = await import('./world');
+    const { fitBBox } = await import('./world.js');
     expect(fitBBox([], 2)).toBeNull();
     const [w, s, e, n] = fitBBox(
       [
@@ -40,13 +40,13 @@ describe('region maps', () => {
   });
 
   it('gives a single site some room', async () => {
-    const { fitBBox } = await import('./world');
+    const { fitBBox } = await import('./world.js');
     const [w, , e] = fitBBox([{ lon: 32.68, lat: -27.49 }], 1)!;
     expect(e - w).toBeGreaterThanOrEqual(0.2);
   });
 
   it('draws small islands with the detailed coastline', async () => {
-    const { makeRegionMap } = await import('./world');
+    const { makeRegionMap } = await import('./world.js');
     const bonaire = await makeRegionMap('bonaire', 'Bonaire', [
       { lon: -68.32, lat: 12.21 },
       { lon: -68.28, lat: 12.1 },

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { publicPageImports, withPublicPage } from './public-pages';
-import { adminPageImports, withAdminPage } from './admin-pages';
-import { adminRoutes } from './admin';
-import { publicRoutes } from './public';
+import { publicPageImports, withPublicPage } from './public-pages.js';
+import { adminPageImports, withAdminPage } from './admin-pages.js';
+import { adminRoutes } from './admin.js';
+import { publicRoutes } from './public.js';
 
 describe('page components', () => {
   it('has one per public and admin page', () => {

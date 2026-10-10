@@ -1,7 +1,7 @@
 /** Server-side data for the home-page dive tile. */
-import type { DiveSummary } from '$lib/core/dive/types';
-import type { DiveTimeline } from '$lib/core/dive/sparkline';
-import type { Divelog } from '../server/divelog';
+import type { DiveSummary } from '$lib/core/dive/types.js';
+import type { DiveTimeline } from '$lib/core/dive/sparkline.js';
+import type { Divelog } from '../server/divelog.js';
 
 export type DiveSummaryData = { summary: DiveSummary | null; timeline: DiveTimeline | null };
 

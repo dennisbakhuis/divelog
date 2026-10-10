@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { handleDivelog } from './handle';
-import { fakeDivelog, fakeEvent, thrown } from '../testing/fake';
+import { handleDivelog } from './handle.js';
+import { fakeDivelog, fakeEvent, thrown } from '../testing/fake.js';
 
 const ME = '/api/v1/auth/me';
 

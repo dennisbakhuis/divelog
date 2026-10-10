@@ -16,8 +16,8 @@ import {
   rangeValue,
   siteGlyph,
   yearsOf,
-} from './list-view';
-import type { DiveListItem } from './types';
+} from './list-view.js';
+import type { DiveListItem } from './types.js';
 
 function dive(number: number, date: string, depth = 20, minutes = 45): DiveListItem {
   return {

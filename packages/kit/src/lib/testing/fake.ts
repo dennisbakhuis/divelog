@@ -1,8 +1,8 @@
 /** Test doubles for the kit's server helpers: a divelog with a scripted backend. */
 import type { RequestEvent } from '@sveltejs/kit';
 import { vi } from 'vitest';
-import { DEFAULT_CONFIG, type DivelogConfig } from '$lib/core/dive/config';
-import { createDivelog, type Divelog } from '../server/divelog';
+import { DEFAULT_CONFIG, type DivelogConfig } from '$lib/core/dive/config.js';
+import { createDivelog, type Divelog } from '../server/divelog.js';
 
 export type Responses = Record<string, unknown>;
 

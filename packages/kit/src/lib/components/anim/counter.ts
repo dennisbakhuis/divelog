@@ -1,5 +1,5 @@
 import type { Action } from 'svelte/action';
-import { reducedMotion } from './motion';
+import { reducedMotion } from './motion.js';
 
 type CounterOptions = {
   value: number;

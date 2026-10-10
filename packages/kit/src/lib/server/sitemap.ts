@@ -1,6 +1,6 @@
 /** The dive log's sitemap entries: every public trip and dive page. */
-import type { DiveEnvelope, TripSummary } from '$lib/core/dive/types';
-import type { Divelog } from './divelog';
+import type { DiveEnvelope, TripSummary } from '$lib/core/dive/types.js';
+import type { Divelog } from './divelog.js';
 
 export type SitemapEntry = { path: string; priority: string };
 

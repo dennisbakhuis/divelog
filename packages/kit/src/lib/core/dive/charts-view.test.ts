@@ -22,8 +22,8 @@ import {
   yearActive,
   yearBars,
   type ChartDive,
-} from './charts-view';
-import { EMPTY_FILTER } from './filter';
+} from './charts-view.js';
+import { EMPTY_FILTER } from './filter.js';
 
 const nl = {
   slug: 'grasbroek',

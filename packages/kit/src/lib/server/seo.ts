@@ -2,7 +2,7 @@
  * Page meta for the dive log: static meta of its index pages and the
  * generated Open Graph card for dive and site pages.
  */
-import { escapeRegExp, type DivelogUrls } from '$lib/core/dive/config';
+import { escapeRegExp, type DivelogUrls } from '$lib/core/dive/config.js';
 
 export type PageMeta = {
   title: string;

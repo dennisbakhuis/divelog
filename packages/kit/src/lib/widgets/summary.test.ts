@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fakeDivelog } from '../testing/fake';
-import { loadDiveSummary } from './summary';
+import { fakeDivelog } from '../testing/fake.js';
+import { loadDiveSummary } from './summary.js';
 
 describe('loadDiveSummary', () => {
   it('loads the summary and the timeline', async () => {

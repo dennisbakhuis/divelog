@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { gradientAt, hexToRgb, mixHex } from './motion';
+import { gradientAt, hexToRgb, mixHex } from './motion.js';
 
 describe('colour helpers', () => {
   it('parses hex', () => {

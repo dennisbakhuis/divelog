@@ -2,8 +2,8 @@
  * Site and map versioning as the pages show it: the revision line, the fork provenance and the
  * pin of an overlay or fork against the current commons revision.
  */
-import { formatDate } from './format';
-import type { ChangeEntry, PinState } from './types';
+import { formatDate } from './format.js';
+import type { ChangeEntry, PinState } from './types.js';
 
 /** "Revision 3 · changed 10 Oct 2026", or null while nothing has been changed. */
 export function revisionLine(record: {

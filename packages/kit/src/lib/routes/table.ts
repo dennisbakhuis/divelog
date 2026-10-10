@@ -5,8 +5,8 @@
  * leading or trailing slash (`''` is the mount point itself).
  */
 import { redirect, type RequestEvent } from '@sveltejs/kit';
-import type { Divelog } from '../server/divelog';
-import type { PageMeta } from '../server/seo';
+import type { Divelog } from '../server/divelog.js';
+import type { PageMeta } from '../server/seo.js';
 
 export type Loader<D> = (divelog: Divelog, params: string[], event: RequestEvent) => Promise<D>;
 

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import AnnotationStale from './AnnotationStale.svelte';
-import { fakeMap, staleAnnotation } from '$lib/testing/sharing';
+import { fakeMap, staleAnnotation } from '$lib/testing/sharing.js';
 
 describe('AnnotationStale', () => {
   it('explains the stale route, lists the legs it drops and re-pins on request', () => {

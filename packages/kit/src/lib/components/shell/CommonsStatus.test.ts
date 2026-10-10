@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import CommonsStatus from './CommonsStatus.svelte';
-import { fakeCommonsPull, fakeRepoStatus } from '$lib/testing/sharing';
+import { fakeCommonsPull, fakeRepoStatus } from '$lib/testing/sharing.js';
 
 describe('CommonsStatus', () => {
   it('shows both heads and a badge that opens the notices', () => {

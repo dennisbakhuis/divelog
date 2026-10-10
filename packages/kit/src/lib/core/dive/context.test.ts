@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mount, unmount } from 'svelte';
 import ContextProbe from './__fixtures__/ContextProbe.svelte';
 import ProviderProbe from './__fixtures__/ProviderProbe.svelte';
-import { DEFAULT_CONFIG, type DivelogConfig } from './config';
-import { divelogContext, divelogFor, getDivelog, type Divelog } from './context';
-import { adminApi, adminJson, configureAdminClient } from '$lib/core/admin/client';
+import { DEFAULT_CONFIG, type DivelogConfig } from './config.js';
+import { divelogContext, divelogFor, getDivelog, type Divelog } from './context.js';
+import { adminApi, adminJson, configureAdminClient } from '$lib/core/admin/client.js';
 
 const custom: DivelogConfig = {
   ...DEFAULT_CONFIG,

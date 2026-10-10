@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { siteIdFor, slugify } from './slug';
+import { siteIdFor, slugify } from './slug.js';
 
 describe('slugify', () => {
   it('drops accents and collapses separators', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { forkedFromRevision, pinMessage, revisionLine } from './revision';
+import { forkedFromRevision, pinMessage, revisionLine } from './revision.js';
 
 describe('revisionLine', () => {
   it('is null while the changelog is empty', () => {

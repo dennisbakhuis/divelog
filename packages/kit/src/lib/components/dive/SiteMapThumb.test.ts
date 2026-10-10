@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import SiteMapThumb from './SiteMapThumb.svelte';
-import type { DiveMapAnnotation, MapNode, SiteMapOut } from '$lib/core/dive/sitemap';
+import type { DiveMapAnnotation, MapNode, SiteMapOut } from '$lib/core/dive/sitemap.js';
 
 function node(id: string, x: number, y: number, type: MapNode['type']): MapNode {
   return {

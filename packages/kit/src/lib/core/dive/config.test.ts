@@ -7,7 +7,7 @@ import {
   escapeRegExp,
   queryString,
   titleSuffix,
-} from './config';
+} from './config.js';
 
 describe('createUrls with the default config', () => {
   const urls = createUrls(DEFAULT_CONFIG);

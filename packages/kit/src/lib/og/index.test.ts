@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { diveOg } from './index';
-import { ApiError } from '../server/api';
-import { fakeDivelog, fakeEvent, thrown } from '../testing/fake';
+import { diveOg } from './index.js';
+import { ApiError } from '../server/api.js';
+import { fakeDivelog, fakeEvent, thrown } from '../testing/fake.js';
 
 describe('diveOg', () => {
   it.each([

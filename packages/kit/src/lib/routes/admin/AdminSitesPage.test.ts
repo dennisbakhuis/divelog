@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import AdminSitesPage from './AdminSitesPage.svelte';
-import { commonsSite, fakeSite, forkSite, stalePinSite } from '$lib/testing/sharing';
+import { commonsSite, fakeSite, forkSite, stalePinSite } from '$lib/testing/sharing.js';
 
 const sites = [fakeSite(), commonsSite(), stalePinSite(), forkSite()];
 

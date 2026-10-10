@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { flushSync, mount, unmount, type ComponentProps } from 'svelte';
 import SiteAttribution from './SiteAttribution.svelte';
-import { COMMONS_ATTRIBUTION } from '$lib/testing/sharing';
+import { COMMONS_ATTRIBUTION } from '$lib/testing/sharing.js';
 
 let cleanup: (() => void)[] = [];
 

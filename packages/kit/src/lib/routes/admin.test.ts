@@ -4,7 +4,7 @@ vi.mock('$lib/core/admin/dive-input', () => ({
   diveTemplate: (dive: { number: number }) => ({ from: dive.number }),
 }));
 
-import { matchRoute } from './table';
+import { matchRoute } from './table.js';
 import {
   adminRoutes,
   diveEditRoute,
@@ -25,8 +25,8 @@ import {
   tripEditRoute,
   tripNewRoute,
   tripsRoute,
-} from './admin';
-import { fakeDivelog, fakeEvent, thrown } from '../testing/fake';
+} from './admin.js';
+import { fakeDivelog, fakeEvent, thrown } from '../testing/fake.js';
 
 const FORM = {
   '/api/v1/admin/sites': [{ id: 's' }],

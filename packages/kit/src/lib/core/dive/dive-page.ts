@@ -1,6 +1,6 @@
-import type { ProfileSample } from './types';
-import type { RouteHighlights } from './sitemap';
-import { formatDepth } from './format';
+import type { ProfileSample } from './types.js';
+import type { RouteHighlights } from './sitemap.js';
+import { formatDepth } from './format.js';
 
 const round = (n: number): number => Math.round(n * 10) / 10;
 

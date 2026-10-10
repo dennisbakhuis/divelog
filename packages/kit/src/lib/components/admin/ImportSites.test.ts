@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import ImportSites from './ImportSites.svelte';
-import type { ImportSite } from '$lib/core/dive/types';
+import type { ImportSite } from '$lib/core/dive/types.js';
 
 const sites: ImportSite[] = [
   {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import ChangeList from './ChangeList.svelte';
-import type { ChangeEntry } from '$lib/core/dive/types';
+import type { ChangeEntry } from '$lib/core/dive/types.js';
 
 const entries: ChangeEntry[] = [
   { revision: 2, date: '2026-10-09', author: 'dennis', note: 'Added the second sump' },

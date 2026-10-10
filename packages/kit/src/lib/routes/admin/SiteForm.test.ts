@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import SiteForm from './SiteForm.svelte';
-import type { Site } from '$lib/core/dive/types';
-import { commonsSite, fakeSite, forkSite, stalePinSite } from '$lib/testing/sharing';
+import type { Site } from '$lib/core/dive/types.js';
+import { commonsSite, fakeSite, forkSite, stalePinSite } from '$lib/testing/sharing.js';
 
 type Call = { url: string; method: string; body: unknown };
 

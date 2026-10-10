@@ -1,9 +1,9 @@
 import { describe, expect, it, beforeAll } from 'vitest';
 import { flushSync, mount, unmount } from 'svelte';
 import MapPanel from './MapPanel.svelte';
-import type { MapRef, SiteDiveRoute } from '$lib/core/dive/types';
-import type { SiteMapOut } from '$lib/core/dive/sitemap';
-import { COMMONS_ATTRIBUTION, commonsSite } from '$lib/testing/sharing';
+import type { MapRef, SiteDiveRoute } from '$lib/core/dive/types.js';
+import type { SiteMapOut } from '$lib/core/dive/sitemap.js';
+import { COMMONS_ATTRIBUTION, commonsSite } from '$lib/testing/sharing.js';
 
 const drawn: SiteMapOut = {
   id: 'm1',
