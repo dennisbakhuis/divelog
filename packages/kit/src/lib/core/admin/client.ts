@@ -106,3 +106,21 @@ export async function adminUpload<T>(
   });
   return handle<T>(response);
 }
+
+/** Several files in one multipart request under one field name (`files` by default). */
+export async function adminUploadMany<T>(
+  path: string,
+  files: readonly File[],
+  fields: Record<string, string> = {},
+  fieldName = 'files',
+): Promise<T> {
+  const form = new FormData();
+  for (const file of files) form.append(fieldName, file, file.name);
+  const query = new URLSearchParams(fields).toString();
+  const response = await fetch(`${apiBase}${path}${query ? `?${query}` : ''}`, {
+    method: 'POST',
+    body: form,
+    credentials: 'same-origin',
+  });
+  return handle<T>(response);
+}

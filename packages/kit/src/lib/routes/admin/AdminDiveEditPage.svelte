@@ -9,7 +9,11 @@
   let { data }: { data: AdminDataFor<'dive-edit'> } = $props();
 </script>
 
-<p class="crumbs"><a href={urls.admin.root()}>Dives</a> › #{data.dive.number}</p>
+<p class="crumbs">
+  <a href={urls.admin.dives()}>Dives</a>
+  {#if data.dive.visibility === 'draft'}› <a href={urls.admin.dives({ status: 'draft' })}>Drafts</a
+    >{/if} › #{data.dive.number}
+</p>
 <h1>
   Dive #{data.dive.number}{#if data.dive.title || data.dive.site}<span class="sub">
       {data.dive.title || data.dive.site?.name}</span
@@ -24,18 +28,21 @@
     people={data.people}
     setups={data.setups}
     regions={data.regions}
-  />
+    template={data.template}
+    drafts={data.drafts}
+  >
+    {#snippet attachments()}<Attachments dive={data.dive} />{/snippet}
+  </DiveForm>
 {/key}
-<Attachments dive={data.dive} />
 
 <style>
   .crumbs {
-    font-size: 13px;
+    font-size: var(--dl-text-md);
     color: var(--dl-color-text-faint);
     margin: 0 0 6px;
   }
   .sub {
-    font-size: 16px;
+    font-size: var(--dl-text-xl);
     font-weight: 400;
     color: var(--dl-color-text-muted);
     margin-left: 10px;

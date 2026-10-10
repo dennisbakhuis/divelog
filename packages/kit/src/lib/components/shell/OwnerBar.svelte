@@ -8,6 +8,7 @@
     actions = [],
     note = null,
     compact = false,
+    newDiveHref = null,
     children,
   }: {
     /** The primary link: the editor page of the thing shown. */
@@ -18,6 +19,8 @@
     note?: string | null;
     /** Inline links without the dashed box, for a nav row; a note gets a small dashed pill. */
     compact?: boolean;
+    /** "+ New dive", prefilled for the page shown: `urls.admin.newDive({ site })`. */
+    newDiveHref?: string | null;
     children?: Snippet;
   } = $props();
 </script>
@@ -37,6 +40,11 @@
       rel={action.external ? 'noopener' : undefined}>{action.label}</a
     >
   {/each}
+  {#if newDiveHref}
+    <a class={compact ? 'owner-link' : 'dl-btn dl-btn-ghost dl-btn-sm'} href={newDiveHref}
+      >+ New dive</a
+    >
+  {/if}
   {#if note}<span class="note">{note}</span>{/if}
   {#if children}{@render children()}{/if}
 </div>

@@ -799,3 +799,269 @@ export function commonsSearch(q) {
   const needle = (q ?? '').trim().toLowerCase();
   return COMMONS_HITS.filter((hit) => !needle || hit.name.toLowerCase().includes(needle));
 }
+
+const tripOut = () => ({
+  slug: TRIP.slug,
+  name: TRIP.name,
+  start_date: TRIP.start_date,
+  end_date: TRIP.end_date,
+  description_md: '',
+  day_index: null,
+  days: null,
+  custom: true,
+  description_html: '',
+});
+
+/** A logged dive in the shape `POST /admin/dives` takes, as the template's `previous`. */
+function diveIn(dive) {
+  const end = dive.time_in ? dive.time_in.split(':').map(Number) : null;
+  const out = end
+    ? (() => {
+        const minutes = end[0] * 60 + end[1] + dive.duration_min;
+        return `${String(Math.floor(minutes / 60) % 24).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+      })()
+    : null;
+  return {
+    number: dive.number,
+    title: '',
+    date: dive.date,
+    time_in: dive.time_in,
+    time_out: out,
+    duration_min: dive.duration_min,
+    max_depth_m: dive.max_depth_m,
+    avg_depth_m: dive.avg_depth_m,
+    water_temp_c: dive.water_temp_c,
+    surface_temp_c: null,
+    air_temp_c: null,
+    thermocline_m: null,
+    visibility_m: null,
+    visibility_raw: null,
+    site_id: dive.site,
+    section: null,
+    trip_id: dive.trip,
+    tags: [...dive.tags],
+    types_raw: null,
+    gas: null,
+    o2_pct: null,
+    o2_measured_pct: null,
+    he_pct: null,
+    gas_raw: null,
+    mode: 'OC',
+    suit: '5 mm',
+    weights_kg: 4,
+    cylinder: null,
+    pressure_in_bar: null,
+    pressure_out_bar: null,
+    tanks: [
+      {
+        cylinder: '12 L',
+        volume_l: 12,
+        gas: 'nitrox',
+        o2_pct: 32,
+        o2_measured_pct: null,
+        he_pct: null,
+        pressure_in_bar: 200,
+        pressure_out_bar: 60,
+        role: 'back',
+      },
+    ],
+    safety_stop_min: 3,
+    surface_interval: null,
+    conditions: null,
+    difficulty: null,
+    course: null,
+    rating: null,
+    gear_setup_id: null,
+    guide: null,
+    operator: null,
+    buddy_raw: null,
+    buddy_role: null,
+    body_md: '',
+    notes_nl: null,
+    visibility: 'public',
+    people_ids: [...dive.buddies],
+    cover_attachment_id: null,
+    computer: [],
+    flags: [],
+    sketch: null,
+    profile: null,
+    map_annotation: null,
+  };
+}
+
+/** The stored dive the editor reads back: the input plus what the server derives. */
+function savedDiveAdmin(input) {
+  const site = SITES.find((s) => s.slug === input.site_id);
+  return {
+    ...input,
+    id: String(input.number),
+    site: site ? siteFull(site) : null,
+    trip: input.trip_id === TRIP.slug ? tripOut() : null,
+    gear_setup: null,
+    sac_l_min: null,
+    sac_basis: null,
+    buddies: PEOPLE.filter((p) => input.people_ids.includes(p.slug)),
+    attachments: [],
+    profile: null,
+    profile_meta: null,
+    annotation_stale: false,
+    annotation_dropped_legs: [],
+    map: null,
+    prev_number: null,
+    next_number: null,
+    prev_site_name: null,
+    next_site_name: null,
+    site_dive_index: null,
+    day_index: null,
+    same_day: [],
+    context_facts: [],
+    country: site?.country_code ?? null,
+    private: {
+      people: [],
+      buddy_raw: input.buddy_raw ?? null,
+      buddy_role: input.buddy_role ?? null,
+      operator: input.operator ?? null,
+      flags: input.flags ?? [],
+      sketch: input.sketch ?? null,
+      site_name_raw: null,
+      area_raw: null,
+    },
+    body_html: '',
+  };
+}
+
+function adminRow(input) {
+  const site = SITES.find((s) => s.slug === input.site_id);
+  return {
+    number: input.number,
+    date: input.date,
+    title: input.title ?? '',
+    site_name: site?.name ?? null,
+    max_depth_m: input.max_depth_m,
+    duration_min: input.duration_min,
+    tags: input.tags ?? [],
+    attachments: 0,
+    visibility: input.visibility ?? 'public',
+    time_in: input.time_in ?? null,
+    site_id: input.site_id ?? null,
+    trip: input.trip_id === TRIP.slug ? { slug: TRIP.slug, name: TRIP.name } : null,
+  };
+}
+
+const when = (d) => `${d.date} ${d.time_in ?? ''} ${String(d.number).padStart(6, '0')}`;
+
+/**
+ * The owner's dive editor endpoints over the fixture log, with dives the e2e saves kept in
+ * memory: `handle(method, path, query, body)` answers `{ status, body }`, or undefined for a
+ * path it leaves to `ownerFixtures` (the form's lists and the fixture dives).
+ */
+export function ownerEditor() {
+  const saved = new Map();
+  const all = () => {
+    const merged = new Map(DIVES.map((d) => [d.number, diveIn(d)]));
+    for (const [n, d] of saved) merged.set(n, d);
+    return [...merged.values()];
+  };
+  const template = (site, day) => {
+    const before = all()
+      .filter((d) => d.date <= day)
+      .sort((a, b) => when(a).localeCompare(when(b)));
+    const atSite = site ? before.filter((d) => d.site_id === site).at(-1) : undefined;
+    const recent = [...new Set(before.map((d) => d.site_id).reverse())].filter(Boolean);
+    const counts = new Map();
+    for (const d of before) for (const p of d.people_ids) counts.set(p, (counts.get(p) ?? 0) + 1);
+    return {
+      date: day,
+      next_number: Math.max(...all().map((d) => d.number)) + 1,
+      previous: before.at(-1) ?? null,
+      at_site: atSite
+        ? {
+            number: atSite.number,
+            date: atSite.date,
+            section: atSite.section,
+            map_id: null,
+            water_temp_c: atSite.water_temp_c,
+            surface_temp_c: null,
+            air_temp_c: null,
+            visibility_m: null,
+          }
+        : null,
+      recent_sites: recent.slice(0, 8).map((id) => {
+        const s = SITES.find((x) => x.slug === id);
+        const dives = before.filter((d) => d.site_id === id);
+        return {
+          site_id: id,
+          name: s?.name ?? id,
+          country: s?.country ?? null,
+          region: s?.region ?? null,
+          last_dive: dives.at(-1).date,
+          dives: dives.length,
+        };
+      }),
+      frequent_people: [...counts.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .map(([id, dives]) => ({ id, slug: id, name: personOf(id)?.name ?? id, dives })),
+      trip_for_date:
+        day >= TRIP.start_date && day <= TRIP.end_date ? tripOut() : null,
+    };
+  };
+  const today = () => new Date().toISOString().slice(0, 10);
+
+  return {
+    handle(method, path, query, body) {
+      const ok = (value, status = 200) => ({ status, body: value });
+      const key = `${method} ${path}`;
+      if (key === 'GET /admin/imports') return ok([]);
+      if (key === 'GET /admin/dives/next-number')
+        return ok({ number: Math.max(...all().map((d) => d.number)) + 1 });
+      if (key === 'GET /admin/dives/template')
+        return ok(template(query.get('site'), query.get('date') || today()));
+      if (key === 'GET /admin/dives/page') {
+        const status = query.get('status');
+        const rows = all()
+          .filter((d) => !status || d.visibility === status)
+          .sort((a, b) => when(b).localeCompare(when(a)))
+          .map(adminRow);
+        const offset = Number(query.get('offset') ?? 0);
+        const limit = Number(query.get('limit') ?? 100);
+        return ok({ items: rows.slice(offset, offset + limit), total: rows.length, offset, limit });
+      }
+      if (key === 'POST /admin/preview/markdown')
+        return ok({ html: `<p>${String(body?.md ?? '').replace(/[<&]/g, '')}</p>` });
+      if (key === 'POST /admin/dives/publish') {
+        const published = [];
+        for (const n of body?.numbers ?? []) {
+          const d = saved.get(n);
+          if (d?.visibility === 'draft') {
+            saved.set(n, { ...d, visibility: 'public' });
+            published.push(n);
+          }
+        }
+        return ok({ published, unchanged: [] });
+      }
+      if (key === 'POST /admin/dives') {
+        const missing = ['duration_min', 'max_depth_m'].filter((f) => body?.[f] == null);
+        if (missing.length)
+          return ok(
+            {
+              detail: missing.map((f) => ({ loc: ['body', f], msg: 'Field required' })),
+            },
+            422,
+          );
+        saved.set(body.number, { ...diveIn(DIVES[0]), ...body, tanks: body.tanks ?? [] });
+        return ok(savedDiveAdmin(saved.get(body.number)), 201);
+      }
+      const one = /^\/admin\/dives\/(\d+)$/.exec(path);
+      if (one) {
+        const n = Number(one[1]);
+        const found = all().find((d) => d.number === n);
+        if (method === 'PUT' && found) {
+          saved.set(n, { ...found, ...body });
+          return ok(savedDiveAdmin(saved.get(n)));
+        }
+        if (method === 'GET' && saved.has(n)) return ok(savedDiveAdmin(saved.get(n)));
+      }
+      return undefined;
+    },
+  };
+}

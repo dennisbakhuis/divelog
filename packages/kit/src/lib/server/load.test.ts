@@ -26,7 +26,7 @@ describe('catch-all loaders', () => {
   });
 
   it('404s an admin path without a route', async () => {
-    expect(await thrown(adminLoad(fakeDivelog(), 'dives', fakeEvent()))).toMatchObject({
+    expect(await thrown(adminLoad(fakeDivelog(), 'dives/650/extra', fakeEvent()))).toMatchObject({
       status: 404,
     });
   });

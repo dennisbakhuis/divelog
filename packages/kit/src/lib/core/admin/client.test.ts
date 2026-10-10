@@ -3,6 +3,7 @@ import {
   adminApi,
   adminJson,
   adminUpload,
+  adminUploadMany,
   AdminApiError,
   configureAdminClient,
   fieldPath,
@@ -113,6 +114,22 @@ describe('admin client', () => {
     expect((init.body as FormData).get('file')).toBeInstanceOf(File);
     await adminUpload('/plain', file);
     expect((fetchMock.mock.calls[1] as [string])[0]).toBe('/api/v1/plain');
+  });
+
+  it('uploads several files under one field', async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(response(200, {})));
+    vi.stubGlobal('fetch', fetchMock);
+    const files = [new File(['a'], 'a.xml'), new File(['b'], 'b.xml')];
+    await adminUploadMany('/admin/import/shearwater', files, { dry_run: 'true' });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/api/v1/admin/import/shearwater?dry_run=true');
+    const names = (init.body as FormData).getAll('files').map((f) => (f as File).name);
+    expect(names).toEqual(['a.xml', 'b.xml']);
+    await adminUploadMany('/x', files, {}, 'file');
+    expect((fetchMock.mock.calls[1] as [string])[0]).toBe('/api/v1/x');
+    expect(
+      ((fetchMock.mock.calls[1] as [string, RequestInit])[1].body as FormData).getAll('file'),
+    ).toHaveLength(2);
   });
 });
 

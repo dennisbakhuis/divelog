@@ -3,6 +3,7 @@
   import { adminApi, adminJson, adminUpload, AdminApiError } from '$lib/core/admin/client';
   import type { Attachment, DiveAdmin } from '$lib/core/dive/types';
   import { toast } from '$lib/components/stores/toast.svelte';
+  import { confirmDialog } from '$lib/core/ui/confirm.js';
 
   let { dive }: { dive: DiveAdmin } = $props();
 
@@ -61,7 +62,8 @@
   }
 
   async function remove(a: Attachment) {
-    if (!confirm(`Delete ${a.original_name || a.kind}?`)) return;
+    const name = a.original_name || a.kind;
+    if (!(await confirmDialog({ title: `Delete ${name}?`, danger: true }))) return;
     await attempt(`Could not delete ${a.original_name || a.kind}`, () =>
       adminJson(adminApi('attachments', a.id), 'DELETE'),
     );
@@ -90,7 +92,7 @@
 </script>
 
 <section class="attachments">
-  <h2>Photos, scans & files <span class="dl-num muted">{dive.attachments.length}</span></h2>
+  <h2>Photos & files <span class="dl-num muted">{dive.attachments.length}</span></h2>
 
   <div
     class="dropzone"
