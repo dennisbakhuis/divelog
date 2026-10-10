@@ -80,7 +80,7 @@
   const unsaved = $derived(dirty || isNew);
 
   $effect(() => {
-    unsavedWork = unsaved;
+    if (unsavedWork !== unsaved) unsavedWork = unsaved;
   });
 
   async function mayDiscard(): Promise<boolean> {
