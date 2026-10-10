@@ -4,17 +4,32 @@
  * log under `/api/v1`, answers `/api/v1/auth/me` with 401 (nobody signed in),
  * an empty tile index and one small PNG for anything else under `/media`.
  * A request carrying the `OWNER_COOKIE` is the signed-in owner: it also gets the owner
- * endpoints the sharing features call (repo status, commons search and pull).
+ * endpoints the sharing features call (repo status, commons search and pull) and the dive
+ * editor's (form data, template, list pages, create and update, kept in memory).
  * Usage: node e2e/stub-backend.mjs [port]   (default 8399, or STUB_PORT)
  */
 import { createServer } from 'node:http';
 import { crc32, deflateSync } from 'node:zlib';
-import { commonsSearch, fixtures, OWNER_COOKIE, ownerFixtures } from './fixtures.mjs';
+import { commonsSearch, fixtures, OWNER_COOKIE, ownerEditor, ownerFixtures } from './fixtures.mjs';
 
 const port = Number(process.argv[2] ?? process.env.STUB_PORT ?? 8399);
 const API = '/api/v1';
 const data = fixtures();
 const owned = ownerFixtures();
+const editor = ownerEditor();
+
+/** The request's JSON body, or undefined for none or anything else. */
+async function readJson(req) {
+  if (req.method === 'GET' || req.method === 'HEAD') return undefined;
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  if (!(req.headers['content-type'] ?? '').includes('application/json')) return undefined;
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    return undefined;
+  }
+}
 
 /** A solid 8×8 PNG in the accent colour, standing in for every photo. */
 function png(size = 8, rgb = [76, 201, 240]) {
@@ -48,7 +63,7 @@ function send(res, status, body, type = 'application/json') {
   res.end(payload);
 }
 
-const server = createServer((req, res) => {
+const server = createServer(async (req, res) => {
   const { pathname, searchParams } = new URL(req.url ?? '/', 'http://stub');
   const owner = (req.headers.cookie ?? '').includes(`${OWNER_COOKIE}=`);
   if (pathname === '/health') return send(res, 200, { status: 'ok' });
@@ -59,6 +74,8 @@ const server = createServer((req, res) => {
     const path = pathname.slice(API.length);
     if (path === '/admin/commons/sites')
       return send(res, 200, commonsSearch(searchParams.get('q')));
+    const answer = editor.handle(req.method ?? 'GET', path, searchParams, await readJson(req));
+    if (answer) return send(res, answer.status, answer.body);
     const body = owned[req.method === 'GET' ? path : `${req.method} ${path}`];
     return body === undefined ? send(res, 404, { detail: 'Not found' }) : send(res, 200, body);
   }
