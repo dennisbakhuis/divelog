@@ -162,6 +162,12 @@ export type GearPage = Schemas['GearPage'];
 
 export type RepoStatus = Schemas['RepoStatus'];
 
+/** What an import did: dives created or updated, and how each imported site resolved. */
+export type ImportResult = Schemas['ImportResult'];
+
+/** One imported site: matched to a site in the log or the commons, or created as personal. */
+export type ImportSite = Schemas['ImportSiteOut'];
+
 /** One past import, newest first in `GET /admin/imports`. */
 export type ImportRecord = Schemas['ImportRecordOut'];
 

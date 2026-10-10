@@ -23,6 +23,9 @@
   } from '$lib/core/dive/types';
   import { toast } from '$lib/components/stores/toast.svelte';
   import DiveRouteEditor from './DiveRouteEditor.svelte';
+  import AnnotationStale from './AnnotationStale.svelte';
+  import { legLabel } from '$lib/core/dive/sharing';
+  import type { DiveMapAnnotation, MapEdgeRef } from '$lib/core/dive/sitemap';
   import { getDivelog } from '$lib/core/dive/context';
 
   const { config, urls } = getDivelog();
@@ -106,6 +109,24 @@
 
   async function save(e: SubmitEvent) {
     e.preventDefault();
+    await persist();
+  }
+
+  async function repin(annotation: DiveMapAnnotation, dropped: MapEdgeRef[]) {
+    const map = siteMaps.find((m) => m.id === annotation.map_id);
+    form.map_annotation = annotation;
+    if (!dive) return;
+    const legs = dropped.map((leg) => legLabel(leg, map)).join(', ');
+    if (await persist())
+      toast.show({
+        kind: 'success',
+        message: `Route re-pinned to map revision ${annotation.revision}${
+          legs ? `; dropped ${legs}` : ''
+        }`,
+      });
+  }
+
+  async function persist(): Promise<boolean> {
     busy = true;
     error = '';
     try {
@@ -126,8 +147,10 @@
         toast.show({ kind: 'success', message: `Dive #${created.number} created` });
         await goto(urls.admin.dive(created.number));
       }
+      return true;
     } catch (err) {
       error = err instanceof AdminApiError ? err.message : 'Save failed';
+      return false;
     } finally {
       busy = false;
     }
@@ -655,6 +678,7 @@
   <fieldset class="on-map" id="map">
     <legend>On the map</legend>
     {#if site}
+      <AnnotationStale annotation={form.map_annotation} maps={siteMaps} {busy} onRepin={repin} />
       {#if siteMaps.length || form.map_annotation}
         <DiveRouteEditor
           maps={siteMaps}

@@ -4,7 +4,7 @@
  * pin of a dive's route against the current revision of its map.
  */
 import { fitAnnotation, type DiveMapAnnotation, type MapEdgeRef, type SiteMap } from './sitemap';
-import type { Attribution, MapRef, SiteOrigin } from './types';
+import type { Attribution, ImportSite, MapRef, SiteOrigin } from './types';
 
 /** The commons' name when the API gives none: the shared repository of dive sites. */
 export const COMMONS_NAME = 'divelog-sites';
@@ -44,7 +44,10 @@ export function isPersonalMapId(id: string): boolean {
  * Whether the map a page shows comes from the commons: a drawn map or sketch (not a reference
  * scan) of a commons site or fork whose id is not a personal `-p<n>` one.
  */
-export function mapFromCommons(map: Pick<MapRef, 'ref' | 'collection'>, origin: SiteOrigin): boolean {
+export function mapFromCommons(
+  map: Pick<MapRef, 'ref' | 'collection'>,
+  origin: SiteOrigin,
+): boolean {
   if (origin === 'log' || map.collection === 'reference') return false;
   const name = map.ref.includes(':') ? map.ref.slice(map.ref.indexOf(':') + 1) : map.ref;
   return !isPersonalMapId(name);
@@ -139,6 +142,20 @@ export function repinAnnotation(
 export function legLabel(leg: MapEdgeRef, map?: SiteMap): string {
   const name = (id: string) => map?.nodes.find((n) => n.id === id)?.label || id;
   return `${name(leg.from)} → ${name(leg.to)}`;
+}
+
+const MATCHED_BY: Record<NonNullable<ImportSite['matched_by']>, string> = {
+  uuid: 'Subsurface id',
+  name: 'name',
+  alias: 'alias',
+  distance: 'distance',
+};
+
+/** How an imported site resolved: "matched by name · 120 m", or "created". */
+export function importMatchLabel(site: ImportSite): string {
+  const metres = site.distance_m !== null ? ` · ${Math.round(site.distance_m)} m` : '';
+  if (site.outcome === 'created') return `created as a personal site${metres}`;
+  return `matched by ${site.matched_by ? MATCHED_BY[site.matched_by] : 'id'}${metres}`;
 }
 
 /** The licence text for a commons site, without the source link. */

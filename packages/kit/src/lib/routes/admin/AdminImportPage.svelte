@@ -3,17 +3,14 @@
   import { invalidateAll } from '$app/navigation';
   import { adminUpload, AdminApiError } from '$lib/core/admin/client';
   import { getDivelog } from '$lib/core/dive/context';
+  import type { ImportResult } from '$lib/core/dive/types';
+  import ImportSites from '$lib/components/admin/ImportSites.svelte';
 
   const { urls } = getDivelog();
 
   let { data }: { data: AdminDataFor<'import'> } = $props();
   let busy = $state(false);
-  let result = $state<{
-    created: number[];
-    updated: number[];
-    skipped: number;
-    sites_created: number;
-  } | null>(null);
+  let result = $state<ImportResult | null>(null);
   let error = $state('');
 
   async function upload(files: FileList | null) {
@@ -22,7 +19,7 @@
     error = '';
     result = null;
     try {
-      result = await adminUpload('/admin/import/subsurface', files[0]);
+      result = await adminUpload<ImportResult>('/admin/import/subsurface', files[0]);
       await invalidateAll();
     } catch (err) {
       error = err instanceof AdminApiError ? err.message : 'Import failed';
@@ -48,7 +45,7 @@
         const body = (await response.json().catch(() => ({}))) as { detail?: string };
         throw new AdminApiError(response.status, body.detail ?? response.statusText);
       }
-      result = await response.json();
+      result = (await response.json()) as ImportResult;
       await invalidateAll();
     } catch (err) {
       error = err instanceof AdminApiError ? err.message : 'Import failed';
@@ -105,8 +102,10 @@
     </p>
     <p>
       <strong>{result.skipped}</strong> skipped (already imported) ·
-      <strong>{result.sites_created}</strong> sites created
+      <strong>{result.sites_created}</strong> sites created ·
+      <strong>{result.sites_matched ?? 0}</strong> matched to existing sites
     </p>
+    <ImportSites sites={result.sites ?? []} />
     <a class="dl-btn dl-btn-solid dl-btn-sm" href={urls.admin.root()}>Review drafts</a>
   </div>
 {/if}

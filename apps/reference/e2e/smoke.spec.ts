@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { DIVE_NUMBERS, SITE_NAME, SITE_SLUG } from './fixtures.mjs';
+import { COMMONS_NAME, COMMONS_SLUG, DIVE_NUMBERS, SITE_NAME, SITE_SLUG } from './fixtures.mjs';
 
 function watchConsole(page: Page): string[] {
   const errors: string[] = [];
@@ -16,6 +16,7 @@ const PAGES: { path: string; heading: RegExp }[] = [
   { path: '/dive/1', heading: new RegExp(SITE_NAME) },
   { path: '/dive/sites', heading: /2 places/ },
   { path: `/dive/sites/${SITE_SLUG}`, heading: new RegExp(SITE_NAME) },
+  { path: `/dive/sites/${COMMONS_SLUG}`, heading: new RegExp(COMMONS_NAME) },
   { path: '/dive/trips', heading: /1 trip/ },
   { path: '/dive/people', heading: /2 people/ },
   { path: '/dive/gear', heading: /The gear behind the log/ },
@@ -36,6 +37,21 @@ test('the home page shows the dive tile', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('Open the log →')).toBeVisible();
   await expect(page.locator('.tile dd').first()).toHaveText(String(DIVE_NUMBERS.length));
+});
+
+test('a commons site credits the commons and a personal site does not', async ({ page }) => {
+  await page.goto(`/dive/sites/${COMMONS_SLUG}`);
+  const line = page.locator('.dl-attribution');
+  await expect(line).toHaveText(
+    'Site data © divelog-sites contributors (ODbL), descriptions and maps CC BY-SA 4.0 · 3f0c1a2',
+  );
+  await expect(line.getByRole('link', { name: 'divelog-sites' })).toHaveAttribute(
+    'href',
+    'https://github.com/divelog/divelog-sites',
+  );
+  await page.goto(`/dive/sites/${SITE_SLUG}`);
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(SITE_NAME);
+  await expect(page.locator('.dl-attribution')).toHaveCount(0);
 });
 
 test('/admin sends visitors to the login page', async ({ page }) => {

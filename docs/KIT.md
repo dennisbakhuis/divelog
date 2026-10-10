@@ -186,6 +186,37 @@ back to the SVG world map.
 dive (empty when the server is down). For a home page, `loadDiveSummary(divelog, fetch)` in a
 `+page.server.ts` and `<DiveTile summary timeline title blurb />` inside a `DivelogProvider`.
 
+## Sharing features
+
+A server that reads a shared site commons (`divelog-sites`) next to the log reports each
+site's `origin` (`log`, `commons` or `fork`); the kit shows what follows from it.
+
+- **Attribution.** The commons is ODbL with descriptions and maps under CC BY-SA 4.0, so every
+  site page of a `commons` or `fork` site carries a `.dl-attribution` line ("Site data ©
+  divelog-sites contributors (ODbL), descriptions and maps CC BY-SA 4.0 · <commit>", the
+  source linked when it is a URL), a fork adds "Forked from the commons at revision N", and
+  every map taken from the commons (a drawn map or sketch whose id has no personal `-p<n>`
+  suffix) gets a short "Map © … CC BY-SA 4.0" line on the site and dive pages. The locator
+  map credits OpenStreetMap through the tile index's own attribution. Restyle the line through
+  `.dl-attribution`, but keep it visible: it is a licence obligation, not decoration.
+- **Origins and forks.** The admin site list has an origin badge and an origin filter (all,
+  personal = own sites and forks, commons, stale against the commons). The site editor shows
+  the pin against the commons revision with "Mark as reviewed", "Fork this site" on a commons
+  site (`PUT …?fork=true`: a full personal copy that shadows the commons record) and "Drop
+  fork, back to the commons record" on a fork (`DELETE`, the commons record returns).
+- **Stale routes.** When a dive's route was drawn on an older revision of its map, or legs no
+  longer resolve, the dive editor says so ("map revision X → Y; N legs no longer resolve"),
+  lists the legs and offers "Re-pin route to the current map", which saves the route on the
+  current revision without them. The public dive page draws only the legs that resolve.
+- **Repo notices.** The admin bar shows the log's and the commons' checked-out commits, the
+  commons state and a badge with the load notices (shadowed records, stale overlays and forks),
+  each site notice linking to its editor.
+- **Imports.** The Subsurface import report lists every imported site with the site it
+  matched (by Subsurface id, name, alias or distance, in metres) or created, and its origin.
+
+`@divelog/kit/testing` has sample records for these: `fakeSite`, `commonsSite`,
+`stalePinSite`, `forkSite`, `fakeMap`, `staleAnnotation` and `fakeRepoStatus`.
+
 ## Ejecting a page
 
 The catch-all only handles paths no more specific route claims. To replace one page, add a

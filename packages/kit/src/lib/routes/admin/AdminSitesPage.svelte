@@ -3,6 +3,8 @@
   import type { Site } from '$lib/core/dive/types';
   import { getDivelog } from '$lib/core/dive/context';
   import { pinMessage } from '$lib/core/dive/revision';
+  import { matchesOrigin, ORIGIN_FILTERS, type OriginFilter } from '$lib/core/dive/sharing';
+  import OriginBadge from '$lib/components/shell/OriginBadge.svelte';
 
   const { urls } = getDivelog();
 
@@ -10,6 +12,7 @@
 
   let query = $state('');
   let country = $state('');
+  let origin = $state<OriginFilter>('all');
 
   const regionNames = $derived(Object.fromEntries(data.regions.map((r) => [r.id, r.name])));
   const countries = $derived(
@@ -21,6 +24,7 @@
   const rows = $derived(
     data.sites.filter((s) => {
       if (country && s.country !== country) return false;
+      if (!matchesOrigin(s, origin)) return false;
       const q = query.trim().toLowerCase();
       return (
         !q ||
@@ -44,6 +48,9 @@
     <option value="">All countries</option>
     {#each countries as c (c)}<option value={c}>{c}</option>{/each}
   </select>
+  <select bind:value={origin} aria-label="Origin">
+    {#each ORIGIN_FILTERS as f (f.value)}<option value={f.value}>{f.label}</option>{/each}
+  </select>
   <span class="muted dl-num">{rows.length} shown</span>
 </div>
 
@@ -54,6 +61,7 @@
       <th>Country</th>
       <th>Type</th>
       <th>Region</th>
+      <th>Origin</th>
       <th class="n">Dives</th>
       <th class="n">Drawn maps</th>
       <th></th>
@@ -71,6 +79,12 @@
         <td>{site.country ?? site.country_code}</td>
         <td>{site.site_type}</td>
         <td>{site.region ? (regionNames[site.region] ?? site.region) : '—'}</td>
+        <td
+          ><OriginBadge
+            origin={site.origin}
+            title={site.forked_from ? `forked from ${site.forked_from}` : undefined}
+          /></td
+        >
         <td class="n dl-num">{site.dives}</td>
         <td class="n dl-num">{drawnCount(site) || '—'}</td>
         <td class="row-actions"
@@ -78,7 +92,7 @@
         >
       </tr>
     {:else}
-      <tr><td colspan="7" class="muted">No sites match.</td></tr>
+      <tr><td colspan="8" class="muted">No sites match.</td></tr>
     {/each}
   </tbody>
 </table>

@@ -3,6 +3,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import MapPanel from './MapPanel.svelte';
 import type { MapRef, SiteDiveRoute } from '$lib/core/dive/types';
 import type { SiteMapOut } from '$lib/core/dive/sitemap';
+import { COMMONS_ATTRIBUTION, commonsSite } from '$lib/testing/sharing';
 
 const drawn: SiteMapOut = {
   id: 'm1',
@@ -182,5 +183,33 @@ describe('MapPanel dive overlays', () => {
     expect(target.querySelector('.dives')).toBeNull();
     expect(target.querySelector('svg.sitemap.routed')).toBeNull();
     unmount(app);
+  });
+
+  it('credits a commons map and not a personal -p map or a personal site', () => {
+    const site = commonsSite();
+    const target = document.createElement('div');
+    const app = mount(MapPanel, {
+      target,
+      props: {
+        maps: site.maps,
+        siteName: site.name,
+        origin: site.origin,
+        attribution: COMMONS_ATTRIBUTION,
+      },
+    });
+    flushSync();
+    expect(target.querySelector('.dl-attribution')?.textContent).toContain(
+      'Map © divelog-sites contributors, CC BY-SA 4.0',
+    );
+    (target.querySelectorAll('.tabs button')[1] as HTMLButtonElement).click();
+    flushSync();
+    expect(target.querySelector('.dl-attribution')).toBeNull();
+    unmount(app);
+
+    const personal = document.createElement('div');
+    const own = mount(MapPanel, { target: personal, props: { maps, siteName: 'Site' } });
+    flushSync();
+    expect(personal.querySelector('.dl-attribution')).toBeNull();
+    unmount(own);
   });
 });

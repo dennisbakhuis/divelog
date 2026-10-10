@@ -190,6 +190,45 @@
     }
   }
 
+  let sharing = $state(false);
+
+  async function fork() {
+    if (!site) return;
+    sharing = true;
+    error = '';
+    try {
+      const forked = await adminJson<Site>(
+        `${adminApi('sites', site.id)}?fork=true`,
+        'PUT',
+        body(),
+      );
+      toast.show({ kind: 'success', message: `${site.name} forked from the commons` });
+      await onSaved(forked);
+    } catch (err) {
+      error = err instanceof AdminApiError ? err.message : 'Could not fork the site';
+    } finally {
+      sharing = false;
+    }
+  }
+
+  async function dropFork() {
+    if (!site) return;
+    if (!confirm(`Drop your fork of ${site.name}? The commons record takes its place again.`))
+      return;
+    sharing = true;
+    error = '';
+    try {
+      await adminJson(adminApi('sites', site.id), 'DELETE');
+      const restored = await adminJson<Site>(adminApi('sites', site.id));
+      toast.show({ kind: 'success', message: `${site.name} is back on the commons record` });
+      await onSaved(restored);
+    } catch (err) {
+      error = err instanceof AdminApiError ? err.message : 'Could not drop the fork';
+    } finally {
+      sharing = false;
+    }
+  }
+
   function pasteCoords(e: ClipboardEvent, target: 'site' | 'access') {
     const text = e.clipboardData?.getData('text') ?? '';
     const m = /(-?\d+\.\d+)[,\s]+(-?\d+\.\d+)/.exec(text);
@@ -376,6 +415,37 @@
           {/if}
         </div>
       {/if}
+      {#if site.origin === 'commons'}
+        <div class="share">
+          <p class="hint">
+            This site comes from the shared commons. Saving keeps your notes, prices, own maps and
+            photos as a personal overlay; the record itself (name, position, type, story) stays the
+            commons'. A <strong>fork</strong> is a full personal copy of the record with the values above:
+            it shadows the commons record on your site, keeps its history, and the admin tells you when
+            the commons moves on.
+          </p>
+          <button
+            type="button"
+            class="dl-btn dl-btn-ghost dl-btn-sm"
+            disabled={sharing}
+            onclick={fork}>{sharing ? 'Forking…' : 'Fork this site'}</button
+          >
+        </div>
+      {:else if site.origin === 'fork'}
+        <div class="share">
+          <p class="hint">
+            Your fork shadows the commons record. Dropping it deletes your copy and the commons
+            record takes its place again.
+          </p>
+          <button
+            type="button"
+            class="dl-btn dl-btn-ghost dl-btn-sm danger"
+            disabled={sharing}
+            onclick={dropFork}
+            >{sharing ? 'Dropping…' : 'Drop fork, back to the commons record'}</button
+          >
+        </div>
+      {/if}
       <ChangeList entries={site.changelog} />
       <p class="hint">Revisions move on the server when an objective field changes.</p>
     </fieldset>
@@ -462,6 +532,15 @@
   }
   .pin.stale {
     color: var(--dl-color-warm);
+  }
+  .share {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .share .hint {
+    max-width: 70ch;
   }
   .actions {
     display: flex;

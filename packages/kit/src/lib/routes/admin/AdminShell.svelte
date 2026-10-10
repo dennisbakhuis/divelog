@@ -7,6 +7,7 @@
   import { escapeRegExp, titleSuffix } from '$lib/core/dive/config';
   import { getDivelog } from '$lib/core/dive/context';
   import type { Snippet } from 'svelte';
+  import CommonsStatus from '$lib/components/shell/CommonsStatus.svelte';
 
   let { owner, children }: { owner: string | null; children: Snippet } = $props();
 
@@ -86,6 +87,7 @@
               ? ` ↓${repo.behind}`
               : ''}{repo.load_errors.length ? ` · ${repo.load_errors.length} file errors` : ''}
           </span>
+          <CommonsStatus {repo} />
           {#if repo.state === 'unpushed' || repo.state === 'conflict' || repo.state === 'error'}
             <button
               type="button"

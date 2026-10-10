@@ -36,6 +36,33 @@ const SITES = [
   },
 ];
 
+/**
+ * A site taken from the shared commons and not dived yet: the server keeps it off the public
+ * lists, but its page is served, with the attribution the commons licence asks for.
+ */
+const COMMONS_SITE = {
+  slug: 'fra-commons-cave',
+  name: 'Commons Cave',
+  country: 'FRA',
+  country_code: 'FR',
+  country_name: 'France',
+  region: null,
+  region_name: null,
+  area: 'Lot',
+  lat: 44.6,
+  lon: 1.7,
+  site_type: 'cave',
+  water: 'fresh',
+  summary: 'A resurgence documented in the shared site commons.',
+  origin: 'commons',
+  attribution: {
+    licence: 'ODbL-1.0 + CC-BY-SA-4.0',
+    source: 'https://github.com/divelog/divelog-sites',
+    ref: '3f0c1a2b9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a',
+  },
+  revision: 3,
+};
+
 const PEOPLE = [
   { slug: 'alex', name: 'Alex', avatar_url: null },
   { slug: 'robin', name: 'Robin', avatar_url: null },
@@ -129,10 +156,10 @@ function siteFull(site) {
     halocline_m: null,
     summary: site.summary,
     description_md: site.summary,
-    max_depth_m: Math.max(...dives.map((d) => d.max_depth_m)),
+    max_depth_m: dives.length ? Math.max(...dives.map((d) => d.max_depth_m)) : null,
     dives: dives.length,
-    first_dive: dives[0].date,
-    last_dive: dives.at(-1).date,
+    first_dive: dives[0]?.date ?? null,
+    last_dive: dives.at(-1)?.date ?? null,
     maps: [],
     default_map: null,
     attachments: [],
@@ -140,9 +167,9 @@ function siteFull(site) {
     sources: [],
     verified: null,
     geo_source: null,
-    origin: 'log',
-    attribution: null,
-    revision: 1,
+    origin: site.origin ?? 'log',
+    attribution: site.attribution ?? null,
+    revision: site.revision ?? 1,
     changelog: [],
     forked_from: null,
     private: null,
@@ -460,6 +487,13 @@ export function fixtures() {
         },
       ]),
     ),
+    [`/dive/sites/${COMMONS_SITE.slug}`]: {
+      site: siteFull(COMMONS_SITE),
+      dives: [],
+      people: [],
+      nearby: [],
+      routes: [],
+    },
     '/dive/regions': SITES.map((s) => ({
       id: s.region,
       name: s.region_name,
@@ -524,3 +558,6 @@ export const SITE_SLUG = SITES[0].slug;
 export const SITE_NAME = SITES[0].name;
 /** Every public dive number. */
 export const DIVE_NUMBERS = DIVES.map((d) => d.number);
+/** A commons site: not on the public lists, its page carries the attribution line. */
+export const COMMONS_SLUG = COMMONS_SITE.slug;
+export const COMMONS_NAME = COMMONS_SITE.name;
