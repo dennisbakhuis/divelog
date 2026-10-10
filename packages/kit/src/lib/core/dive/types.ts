@@ -212,3 +212,27 @@ export type ImportRecord = Schemas['ImportRecordOut'];
 
 /** Body of `POST /admin/regions` and `PUT /admin/regions/{id}`. */
 export type RegionIn = Schemas['RegionIn'];
+
+/** The body of `POST /admin/sites` and `PUT /admin/sites/{id}`; `note` says what changed. */
+export type SiteIn = Schemas['SiteIn'];
+
+/** `GET /admin/sites/nearby`: possible duplicates of a site being created, nearest first. */
+export type NearbySitesOut = Schemas['NearbySitesOut'];
+
+/** A site of this log that may be the one being created. */
+export type NearbyLogSite = Schemas['NearbyLogSite'];
+
+/** A commons site this log does not use yet that may be the one being created. */
+export type NearbyCommonsSite = Schemas['NearbyCommonsSite'];
+
+/** `GET /meta/countries`: a country by ISO codes and English name. */
+export type CountryOut = Schemas['CountryOut'];
+
+/** `GET /meta/licences`: a licence a photo by someone else may carry. */
+export type LicenceOut = Schemas['LicenceOut'];
+
+/** `GET /admin/meta/site-fields`: how a commons site's fields behave under an overlay. */
+export type SiteFieldsOut = Schemas['SiteFieldsOut'];
+
+/** The editable fields of an attachment (`PATCH /admin/attachments/{id}`). */
+export type AttachmentPatch = Schemas['AttachmentPatch'];

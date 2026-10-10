@@ -31,6 +31,11 @@ export { default as SiteMapEditor } from './components/map/SiteMapEditor.svelte'
 export { default as Attachments } from './components/admin/Attachments.svelte';
 export { default as DiveForm } from './components/admin/DiveForm.svelte';
 export { default as DiveRouteEditor } from './components/admin/DiveRouteEditor.svelte';
+export {
+  default as LocationPicker,
+  type PickerMarker,
+} from './components/admin/LocationPicker.svelte';
+export { default as SiteCreate, type SiteCreateAction } from './components/admin/SiteCreate.svelte';
 export { default as ChangeList } from './components/shell/ChangeList.svelte';
 export { default as OwnerBar } from './components/shell/OwnerBar.svelte';
 export { default as Toast } from './components/shell/Toast.svelte';

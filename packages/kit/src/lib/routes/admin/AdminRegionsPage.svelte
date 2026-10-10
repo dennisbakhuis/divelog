@@ -15,38 +15,47 @@
   <a class="dl-btn dl-btn-solid dl-btn-sm" href={urls.admin.newRegion()}>+ New region</a>
 </div>
 
-<table>
-  <thead>
-    <tr>
-      <th>Name</th>
-      <th>Id</th>
-      <th>Country</th>
-      <th>Waters</th>
-      <th class="n">Sites</th>
-      <th class="n">Dives</th>
-      <th></th>
-    </tr>
-  </thead>
-  <tbody>
-    {#each data.regions as region (region.id)}
+<div class="table-wrap">
+  <table>
+    <caption class="dl-visually-hidden">Regions of the log</caption>
+    <thead>
       <tr>
-        <td><a href={urls.admin.region(region.id)}>{region.name}</a></td>
-        <td class="muted">{region.id}</td>
-        <td>{region.country ?? '—'}</td>
-        <td>{region.waters.join(', ') || '—'}</td>
-        <td class="n dl-num">{region.sites.length}</td>
-        <td class="n dl-num">{region.dives}</td>
-        <td class="row-actions"
-          ><a href={urls.region(region.id)} target="_blank" rel="noopener">view ↗</a></td
-        >
+        <th scope="col">Name</th>
+        <th scope="col">Id</th>
+        <th scope="col">Country</th>
+        <th scope="col">Waters</th>
+        <th scope="col" class="n">Sites</th>
+        <th scope="col" class="n">Dives</th>
+        <th scope="col"><span class="dl-visually-hidden">Public page</span></th>
       </tr>
-    {:else}
-      <tr><td colspan="7" class="muted">No regions yet.</td></tr>
-    {/each}
-  </tbody>
-</table>
+    </thead>
+    <tbody>
+      {#each data.regions as region (region.id)}
+        <tr>
+          <td><a href={urls.admin.region(region.id)}>{region.name}</a></td>
+          <td class="muted">{region.id}</td>
+          <td>{region.country ?? '—'}</td>
+          <td>{region.waters.join(', ') || '—'}</td>
+          <td class="n dl-num">{region.sites.length}</td>
+          <td class="n dl-num">{region.dives}</td>
+          <td class="row-actions"
+            ><a href={urls.region(region.id)} target="_blank" rel="noopener"
+              >view<span class="dl-visually-hidden"> {region.name} (opens in a new tab)</span>
+              <span aria-hidden="true">↗</span></a
+            ></td
+          >
+        </tr>
+      {:else}
+        <tr><td colspan="7" class="muted">No regions yet.</td></tr>
+      {/each}
+    </tbody>
+  </table>
+</div>
 
 <style>
+  .table-wrap {
+    overflow-x: auto;
+  }
   .crumbs {
     font-size: 13.5px;
     color: var(--dl-color-text-faint);

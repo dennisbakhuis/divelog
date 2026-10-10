@@ -157,3 +157,94 @@ export function siteFlavor(): Flavor {
     },
   };
 }
+
+/** Tile requests of the location picker's detail source; routed to the archive covering each tile. */
+export const PICKER_DETAIL_PROTOCOL = 'dlpick';
+
+/** The parts of `@protomaps/basemaps` the picker style needs, passed in so it loads lazily. */
+type LayersFn = (source: string, flavor: Flavor, options: { lang: string }) => LayerLike[];
+type LayerLike = { id: string; minzoom?: number } & Record<string, unknown>;
+
+/**
+ * The basemap style for the location picker, in Web Mercator. The planet archive
+ * draws the world and the regional archives take over past `DETAIL_MIN_ZOOM`;
+ * without a planet archive the country outlines (`outline`, GeoJSON) are the map
+ * and the regional archives draw on top where they exist; with neither, the
+ * outlines alone still let a pin be placed anywhere.
+ */
+export function pickerStyle({
+  base,
+  index,
+  layers,
+  outline,
+  colours,
+}: {
+  base: string;
+  index: TileIndex | null;
+  layers: LayersFn | null;
+  outline: unknown;
+  colours: { water: string; land: string; border: string };
+}) {
+  const flavor = siteFlavor();
+  const world = index?.world && layers ? index.world : null;
+  const detailZoom = index ? detailMaxZoom(index) : 0;
+  const hasDetail = !!layers && !!index?.archives.length;
+  const detailMin = world ? DETAIL_MIN_ZOOM : 0;
+  const detailLayers =
+    hasDetail && layers
+      ? layers('detail', flavor, { lang: 'en' }).map((layer) => ({
+          ...layer,
+          id: `detail-${layer.id}`,
+          minzoom: Math.max(layer.minzoom ?? 0, detailMin),
+        }))
+      : [];
+  const outlineLayers = world
+    ? []
+    : [
+        {
+          id: 'outline-land',
+          type: 'fill',
+          source: 'outline',
+          paint: { 'fill-color': colours.land },
+        },
+        {
+          id: 'outline-border',
+          type: 'line',
+          source: 'outline',
+          paint: { 'line-color': colours.border, 'line-width': 0.6 },
+        },
+      ];
+  return {
+    version: 8 as const,
+    glyphs: `${base}/assets/fonts/{fontstack}/{range}.pbf`,
+    ...(layers ? { sprite: `${base}/assets/sprites/v4/dark` } : {}),
+    sources: {
+      ...(world
+        ? {
+            protomaps: {
+              type: 'vector' as const,
+              url: `pmtiles://${base}/${world.file}`,
+              attribution: index?.attribution ?? '',
+            },
+          }
+        : { outline: { type: 'geojson' as const, data: outline } }),
+      ...(hasDetail
+        ? {
+            detail: {
+              type: 'vector' as const,
+              tiles: [`${PICKER_DETAIL_PROTOCOL}://{z}/{x}/{y}`],
+              minzoom: detailMin,
+              maxzoom: detailZoom || 14,
+              attribution: index?.attribution ?? '',
+            },
+          }
+        : {}),
+    },
+    layers: [
+      { id: 'picker-bg', type: 'background', paint: { 'background-color': colours.water } },
+      ...outlineLayers,
+      ...(world && layers ? layers('protomaps', flavor, { lang: 'en' }) : []),
+      ...detailLayers,
+    ],
+  };
+}
