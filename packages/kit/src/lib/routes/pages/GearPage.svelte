@@ -28,7 +28,10 @@
   <p class="lede">{copy.gearLede}</p>
 
   {#if data.owner}
-    <OwnerBar edit={{ label: 'Edit gear', href: urls.admin.gear() }} />
+    <OwnerBar
+      edit={{ label: 'Edit gear', href: urls.admin.gear() }}
+      actions={[{ label: '+ New dive', href: urls.admin.newDive() }]}
+    />
   {/if}
 
   {#if !data.gear.items.length && !data.gear.setups.length}

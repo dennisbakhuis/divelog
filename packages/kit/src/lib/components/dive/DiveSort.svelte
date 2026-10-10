@@ -39,9 +39,9 @@
     type="button"
     class="dl-btn dl-btn-ghost dl-btn-sm"
     onclick={() => onChange({ ...filter, desc: !filter.desc })}
-    aria-label="Toggle sort direction"
+    aria-label={filter.desc ? 'Sort descending' : 'Sort ascending'}
   >
-    {filter.desc ? '↓' : '↑'}
+    <span aria-hidden="true">{filter.desc ? '↓' : '↑'}</span>
   </button>
   {#if onJump && years.length > 1}
     <label class="sort">

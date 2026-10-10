@@ -1,4 +1,5 @@
 /** Pure dive log logic: config and URLs, API types, view models, map geometry, admin client. */
+export * from './dive/back.js';
 export * from './dive/charts-view.js';
 export * from './dive/config.js';
 export * from './dive/context.js';
@@ -11,6 +12,7 @@ export * from './dive/people.js';
 export * from './dive/profile-view.js';
 export * from './dive/revision.js';
 export * from './dive/sharing.js';
+export * from './dive/sites-filter.js';
 export * from './dive/sitemap.js';
 export * from './dive/sparkline.js';
 export * from './dive/stats-view.js';

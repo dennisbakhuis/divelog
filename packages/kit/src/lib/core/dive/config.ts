@@ -90,6 +90,14 @@ export type QueryParams =
 
 export type OgKind = 'dive' | 'site';
 
+/** Prefill for the new-dive editor: a site id, trip slug, person slug and/or `YYYY-MM-DD` date. */
+export type NewDiveParams = {
+  site?: string | null;
+  trip?: string | null;
+  person?: string | null;
+  date?: string | null;
+};
+
 /**
  * Query string without the leading `?`. Records keep their key order, skip
  * null and undefined values and encode values with `encodeURIComponent`; strings pass through.
@@ -149,7 +157,11 @@ export function createUrls(config: DivelogConfig) {
       root: (): string => admin || '/',
       dives: (): string => `${admin}/dives`,
       dive: (n: number | string, hash?: string): string => withHash(`${admin}/dives/${n}`, hash),
-      newDive: (): string => `${admin}/dives/new`,
+      newDive: (params?: NewDiveParams): string =>
+        withQuery(
+          `${admin}/dives/new`,
+          params ? Object.fromEntries(Object.entries(params).filter(([, v]) => v)) : undefined,
+        ),
       sites: (): string => `${admin}/sites`,
       site: (id: string): string => `${admin}/sites/${id}`,
       siteMaps: (id: string): string => `${admin}/sites/${id}/maps`,

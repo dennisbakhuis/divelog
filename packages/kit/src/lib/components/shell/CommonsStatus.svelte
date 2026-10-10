@@ -10,9 +10,12 @@
 
   let {
     repo,
+    showHeads = true,
     onPulled,
   }: {
     repo: RepoStatus;
+    /** Show the checked-out commits inline; off when the host shows them elsewhere. */
+    showHeads?: boolean;
     /** After a commons pull: refresh the repo status and the page data. */
     onPulled?: () => void | Promise<void>;
   } = $props();
@@ -43,14 +46,17 @@
   }
 </script>
 
-<span class="heads dl-num" title="Checked-out commits of the log and the sites commons">
-  {#if logHead}<span class="head">log {logHead}</span>{/if}
-  {#if commonsHead || hasCommons}
-    <span class="head commons"
-      >commons {commonsHead ?? '—'}{repo.commons_state ? ` · ${repo.commons_state}` : ''}</span
-    >
-  {/if}
-</span>
+{#if showHeads}
+  <span class="heads dl-num">
+    <span class="dl-visually-hidden">Checked-out commits:</span>
+    {#if logHead}<span class="head">log {logHead}</span>{/if}
+    {#if commonsHead || hasCommons}
+      <span class="head commons"
+        >commons {commonsHead ?? '—'}{repo.commons_state ? ` · ${repo.commons_state}` : ''}</span
+      >
+    {/if}
+  </span>
+{/if}
 
 {#if repo.notices.length || hasCommons}
   <span class="anchor">

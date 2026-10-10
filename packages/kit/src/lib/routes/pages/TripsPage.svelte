@@ -4,6 +4,7 @@
   import type { TripSummary } from '$lib/core/dive/types';
   import { reveal } from '$lib/components/anim/reveal';
   import { getDivelog } from '$lib/core/dive/context';
+  import OwnerBar from '$lib/components/shell/OwnerBar.svelte';
 
   const { urls } = getDivelog();
 
@@ -35,6 +36,12 @@
     Every run of dives abroad, a few days apart at most: {pluralize(diveCount, 'dive')} in all. Each trip
     has a map of its sites, the numbers, who came along and the dives day by day.
   </p>
+  {#if data.owner}
+    <OwnerBar
+      edit={{ label: 'Edit trips', href: data.editHref }}
+      actions={[{ label: '+ New dive', href: urls.admin.newDive() }]}
+    />
+  {/if}
 
   {#if data.trips.length === 0}
     <p class="empty">No trips yet.</p>
@@ -197,5 +204,8 @@
   }
   .cross a:hover {
     color: var(--dl-color-accent);
+  }
+  .page > :global(.owner-bar) {
+    margin: 0 0 28px;
   }
 </style>

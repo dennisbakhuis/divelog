@@ -31,13 +31,14 @@
           <dd class="dl-num">
             {#if num}
               <span
+                aria-hidden="true"
                 use:counter={{
                   value: num.n,
                   decimals: num.decimals,
                   suffix: num.suffix,
                   group: tile.group,
                 }}>{tile.value}</span
-              >
+              ><span class="dl-visually-hidden">{tile.value}</span>
             {:else}
               {tile.value}
             {/if}

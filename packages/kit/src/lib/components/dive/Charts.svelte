@@ -130,12 +130,15 @@
           class:active={yearActive(filter, year.year)}
           class:empty={narrowed && !year.selected}
           style="--i: {i}"
-          title="{year.year}: {year.total} dives, {formatHours(year.minutes)}{narrowed
-            ? ` · ${year.selected} selected`
-            : ''}"
+          aria-pressed={yearActive(filter, year.year)}
           onclick={() => onChange(toggleYear(filter, year.year))}
         >
-          <span class="bar-stack">
+          <span class="dl-visually-hidden"
+            >{year.year}: {year.total} dives, {formatHours(year.minutes)}{narrowed
+              ? `, ${year.selected} selected`
+              : ''}</span
+          >
+          <span class="bar-stack" aria-hidden="true">
             <span class="bar-value dl-num" style="bottom: {pct(year.selected, yearMax)}%"
               >{narrowed && !year.selected ? '' : year.selected}</span
             >
@@ -143,7 +146,7 @@
               ></span>{/if}
             <span class="bar" style="height: {pct(year.selected, yearMax)}%"></span>
           </span>
-          <span class="bar-label dl-num">{String(year.year).slice(2)}</span>
+          <span class="bar-label dl-num" aria-hidden="true">{String(year.year).slice(2)}</span>
         </button>
       {/each}
     </div>
@@ -215,6 +218,7 @@
               {#if parsed}
                 <span
                   class="dl-num"
+                  aria-hidden="true"
                   use:counter={{
                     value: parsed.n,
                     suffix: parsed.suffix,
@@ -222,7 +226,7 @@
                     group: tile.group,
                     duration: 1200,
                   }}>{tile.value}</span
-                >
+                ><span class="dl-visually-hidden">{tile.value}</span>
               {:else}
                 <span class="dl-num">{tile.value}</span>
               {/if}
@@ -245,12 +249,15 @@
             class:active={bandActive({ min: filter.minDepth, max: filter.maxDepth }, band)}
             class:empty={narrowed && !band.selected}
             style="--i: {i}"
-            title="{band.label} m: {band.total} dives{narrowed
-              ? ` · ${band.selected} selected`
-              : ''}"
+            aria-pressed={bandActive({ min: filter.minDepth, max: filter.maxDepth }, band)}
             onclick={() => onChange(toggleDepthBand(filter, band))}
           >
-            <span class="bar-stack">
+            <span class="dl-visually-hidden"
+              >Max depth {band.label} m: {band.total} dives{narrowed
+                ? `, ${band.selected} selected`
+                : ''}</span
+            >
+            <span class="bar-stack" aria-hidden="true">
               <span class="bar-value dl-num" style="bottom: {pct(band.selected, depthMax)}%"
                 >{narrowed && !band.selected ? '' : band.selected}</span
               >
@@ -260,7 +267,7 @@
                 ></span>{/if}
               <span class="bar depth" style="height: {pct(band.selected, depthMax)}%"></span>
             </span>
-            <span class="bar-label dl-num">{band.label}</span>
+            <span class="bar-label dl-num" aria-hidden="true">{band.label}</span>
           </button>
         {/each}
       </div>
@@ -278,12 +285,15 @@
             class:active={bandActive({ min: filter.minDuration, max: filter.maxDuration }, band)}
             class:empty={narrowed && !band.selected}
             style="--i: {i}"
-            title="{band.label} min: {band.total} dives{narrowed
-              ? ` · ${band.selected} selected`
-              : ''}"
+            aria-pressed={bandActive({ min: filter.minDuration, max: filter.maxDuration }, band)}
             onclick={() => onChange(toggleDurationBand(filter, band))}
           >
-            <span class="bar-stack">
+            <span class="dl-visually-hidden"
+              >Bottom time {band.label} min: {band.total} dives{narrowed
+                ? `, ${band.selected} selected`
+                : ''}</span
+            >
+            <span class="bar-stack" aria-hidden="true">
               <span class="bar-value dl-num" style="bottom: {pct(band.selected, durationMax)}%"
                 >{narrowed && !band.selected ? '' : band.selected}</span
               >
@@ -293,7 +303,7 @@
                 ></span>{/if}
               <span class="bar time" style="height: {pct(band.selected, durationMax)}%"></span>
             </span>
-            <span class="bar-label dl-num">{band.label}</span>
+            <span class="bar-label dl-num" aria-hidden="true">{band.label}</span>
           </button>
         {/each}
       </div>
@@ -312,11 +322,17 @@
               class:active={filter.country === row.code}
               class:empty={narrowed && !row.selected}
               style="--i: {i}"
-              title="{row.name}: {row.min}–{row.max} °C over {row.dives} dives"
+              aria-pressed={filter.country === row.code}
               onclick={() => onChange(toggleOne(filter, 'country', row.code))}
             >
-              <span class="name"><span class="flag">{flagEmoji(row.code)}</span> {row.name}</span>
-              <span class="range-track">
+              <span class="dl-visually-hidden"
+                >{row.name}: {row.min} to {row.max} °C, median {Math.round(row.median)} °C, over {row.dives}
+                dives</span
+              >
+              <span class="name" aria-hidden="true"
+                ><span class="flag">{flagEmoji(row.code)}</span> {row.name}</span
+              >
+              <span class="range-track" aria-hidden="true">
                 <span
                   class="range"
                   style="left: {tempX(row.min)}%; width: {Math.max(
@@ -329,7 +345,7 @@
                   style="left: {tempX(row.median)}%; background: {tempColour(row.median)}"
                 ></span>
               </span>
-              <span class="hbar-value dl-num">{Math.round(row.median)} °C</span>
+              <span class="hbar-value dl-num" aria-hidden="true">{Math.round(row.median)} °C</span>
             </button>
           </li>
         {/each}
@@ -349,11 +365,15 @@
               class:active={filter.tags.includes(tag.tag)}
               class:empty={narrowed && !tag.selected}
               style="--i: {i}"
-              title="{tag.total} dives{narrowed ? ` · ${tag.selected} selected` : ''}"
+              aria-pressed={filter.tags.includes(tag.tag)}
               onclick={() => onChange(toggleTag(filter, tag.tag))}
             >
-              <span class="dl-tag" data-tag={tag.tag}>{tag.tag}</span>
+              <span class="dl-visually-hidden"
+                >{tag.tag}: {tag.total} dives{narrowed ? `, ${tag.selected} selected` : ''}</span
+              >
+              <span class="dl-tag" data-tag={tag.tag} aria-hidden="true">{tag.tag}</span>
               <span
+                aria-hidden="true"
                 class="hbar-track"
                 style="--bar: var(--dl-tag-{tag.tag}, var(--dl-color-accent))"
               >
@@ -361,7 +381,7 @@
                   ></span>{/if}
                 <span class="hbar" style="width: {pct(tag.selected, tagMax)}%"></span>
               </span>
-              <span class="hbar-value dl-num">{tag.selected}</span>
+              <span class="hbar-value dl-num" aria-hidden="true">{tag.selected}</span>
             </button>
           </li>
         {/each}
@@ -381,18 +401,21 @@
               class:active={filter.site === site.slug}
               class:empty={narrowed && !site.selected}
               style="--i: {i}"
-              title="{site.name}: {site.total} dives{narrowed
-                ? ` · ${site.selected} selected`
-                : ''}"
+              aria-pressed={filter.site === site.slug}
               onclick={() => onChange(toggleOne(filter, 'site', site.slug))}
             >
-              <span class="name">{site.name}</span>
-              <span class="hbar-track">
+              <span class="dl-visually-hidden"
+                >{site.name}: {site.total} dives{narrowed
+                  ? `, ${site.selected} selected`
+                  : ''}</span
+              >
+              <span class="name" aria-hidden="true">{site.name}</span>
+              <span class="hbar-track" aria-hidden="true">
                 {#if narrowed}<span class="hbar ghost" style="width: {pct(site.total, siteMax)}%"
                   ></span>{/if}
                 <span class="hbar" style="width: {pct(site.selected, siteMax)}%"></span>
               </span>
-              <span class="hbar-value dl-num">{site.selected}</span>
+              <span class="hbar-value dl-num" aria-hidden="true">{site.selected}</span>
             </button>
           </li>
         {/each}
@@ -412,20 +435,23 @@
               class:active={filter.person === person.slug}
               class:empty={narrowed && !person.selected}
               style="--i: {i}; --bar: var(--dl-color-warm)"
-              title="{person.name}: {person.total} dives{narrowed
-                ? ` · ${person.selected} selected`
-                : ''}"
+              aria-pressed={filter.person === person.slug}
               onclick={() => onChange(toggleOne(filter, 'person', person.slug))}
             >
-              <span class="name">{person.name}</span>
-              <span class="hbar-track">
+              <span class="dl-visually-hidden"
+                >{person.name}: {person.total} dives{narrowed
+                  ? `, ${person.selected} selected`
+                  : ''}</span
+              >
+              <span class="name" aria-hidden="true">{person.name}</span>
+              <span class="hbar-track" aria-hidden="true">
                 {#if narrowed}<span
                     class="hbar ghost"
                     style="width: {pct(person.total, peopleMax)}%"
                   ></span>{/if}
                 <span class="hbar" style="width: {pct(person.selected, peopleMax)}%"></span>
               </span>
-              <span class="hbar-value dl-num">{person.selected}</span>
+              <span class="hbar-value dl-num" aria-hidden="true">{person.selected}</span>
             </button>
           </li>
         {/each}
