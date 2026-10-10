@@ -1,5 +1,4 @@
 <script lang="ts" module>
-
   /** One tool: `value` is what the group selects. */
   export interface ToolItem {
     value: string;

@@ -1,7 +1,6 @@
 <script lang="ts" module>
   import type { Attachment } from 'svelte/attachments';
 
-
   /** Attributes for the element that opens a popover; spread them on a `<button>`. */
   export interface PopoverTriggerProps {
     type: 'button';

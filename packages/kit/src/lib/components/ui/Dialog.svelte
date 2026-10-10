@@ -1,5 +1,4 @@
 <script lang="ts" module>
-
   /** Elements a dialog may move focus to, in DOM order. */
   export const FOCUSABLE =
     'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';

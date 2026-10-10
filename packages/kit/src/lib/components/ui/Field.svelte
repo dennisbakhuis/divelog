@@ -1,5 +1,4 @@
 <script lang="ts" module>
-
   /** Attributes for the wrapped control; spread them on the input, select or `Combobox`. */
   export interface FieldControlProps {
     id: string;

@@ -1,5 +1,4 @@
 <script lang="ts" module>
-
   /** One tab: `id` is what `active` holds and, with `hash`, what the URL hash shows. */
   export interface TabItem {
     id: string;
