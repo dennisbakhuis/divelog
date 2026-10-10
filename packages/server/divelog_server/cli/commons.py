@@ -37,6 +37,8 @@ def run(args: argparse.Namespace, out: TextIO) -> int:
     moved = (
         f"{result.previous} -> {result.head}" if result.previous != result.head else "up to date"
     )
+    if result.output:
+        print(result.output, file=out)
     print(f"commons {moved}", file=out)
     if result.pinned:
         committed = ", committed" if result.committed else ""

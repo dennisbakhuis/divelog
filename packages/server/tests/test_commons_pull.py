@@ -159,6 +159,18 @@ def test_pull_with_ref_pins_that_commit(repos: Repos) -> None:
     assert short(repos.commons) != first
 
 
+def test_pull_without_an_upstream_pins_the_local_head(repos: Repos) -> None:
+    git(repos.commons, "branch", "--unset-upstream")
+    bump_site(repos.commons, COMMONS_SITE)
+    git(repos.commons, "commit", "-qam", "Local change")
+    code, output = pull(repos)
+    assert code == 0, output
+    head = short(repos.commons)
+    assert pinned_ref(repos) == head
+    assert "no upstream branch" in output
+    assert f"divelog.yaml pinned at {head}, committed" in output
+
+
 def test_pull_with_an_unknown_ref_exits_1(repos: Repos) -> None:
     code, output = pull(repos, "--ref", "deadbeef")
     assert code == 1

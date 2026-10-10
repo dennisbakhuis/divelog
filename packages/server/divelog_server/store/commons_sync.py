@@ -111,6 +111,9 @@ def pull(
 ) -> PullResult:
     """``git pull --ff-only`` in the commons, pin the manifest to the result, report staleness.
 
+    A commons checkout without an upstream branch (a local commons) is not pulled; its
+    current head is pinned.
+
     Parameters
     ----------
     log_root
@@ -132,10 +135,13 @@ def pull(
         raise PullError(f"{root} is not a git checkout")
     before = stale_sites(_store(log_root, root))
     previous = short_head(root)
-    done = run_git(root, "pull", "--ff-only", "--quiet")
-    output = (done.stdout + done.stderr).strip()
-    if done.returncode != 0:
-        raise PullError(f"git pull --ff-only failed in {root}: {output}")
+    if run_git(root, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}").returncode:
+        output = "no upstream branch; pinning the local checkout"
+    else:
+        done = run_git(root, "pull", "--ff-only", "--quiet")
+        output = (done.stdout + done.stderr).strip()
+        if done.returncode != 0:
+            raise PullError(f"git pull --ff-only failed in {root}: {output}")
     head = short_head(root)
     if ref:
         found = run_git(root, "rev-parse", "--short", "--verify", "--quiet", f"{ref}^{{commit}}")
