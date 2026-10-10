@@ -146,8 +146,7 @@ let detailed: Countries | null = null;
 /** The 1:50m outlines; small islands (Bonaire, Gozo) are missing from the 1:110m set. */
 async function detailedCountries(): Promise<Countries> {
   if (!detailed) {
-    const atlas = (await import('world-atlas/countries-50m.json', { with: { type: 'json' } }))
-      .default;
+    const atlas = (await import('world-atlas/countries-50m.json', { with: { type: 'json' } })).default;
     const topo = atlas as unknown as Topology<{ countries: GeometryCollection }>;
     detailed = feature(topo, topo.objects.countries);
   }
