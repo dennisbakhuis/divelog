@@ -91,25 +91,25 @@
   }
 
   async function open(map: SiteMapOut) {
-    if (!(await mayDiscard())) return;
+    if (unsaved && !(await mayDiscard())) return;
     show(map.id, map, false);
   }
 
   async function close() {
-    if (!(await mayDiscard())) return;
+    if (unsaved && !(await mayDiscard())) return;
     show(null, null, false);
   }
 
   /** Start a blank map in the editor; nothing is stored until "Save map". */
   async function startBlank(kind: MapKind) {
-    if (!(await mayDiscard())) return;
+    if (unsaved && !(await mayDiscard())) return;
     show(NEW, emptySiteMap(kind, origin), false);
     announce(`New ${defaultTitle(kind).toLowerCase()} open in the editor, not saved yet`);
   }
 
   /** Ask the server for a starter site map from OpenStreetMap and open it as an unsaved draft. */
   async function startFromOsm() {
-    if (!(await mayDiscard())) return;
+    if (unsaved && !(await mayDiscard())) return;
     seeding = true;
     try {
       const body: SiteMapSeedIn = { source: 'osm' };
