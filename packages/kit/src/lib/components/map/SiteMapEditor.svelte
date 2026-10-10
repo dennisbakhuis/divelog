@@ -522,6 +522,12 @@
 
   /** Drawing keys, live only while the canvas has focus; letters only with the switch on. */
   function onCanvasKey(e: KeyboardEvent) {
+    if (menu && e.key === 'Escape') {
+      e.preventDefault();
+      menu = null;
+      canvasEl?.focus({ preventScroll: true });
+      return;
+    }
     if (isField(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();

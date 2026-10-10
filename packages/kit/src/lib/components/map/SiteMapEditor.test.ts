@@ -311,7 +311,15 @@ describe('SiteMapEditor touch', () => {
       expect(menu).toBeTruthy();
       const items = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
       expect(items.map((b) => b.textContent?.trim())).toEqual(['Edit details', 'Delete', 'Cancel']);
-      items[1].click();
+      key(items[0], 'Escape');
+      expect(target.querySelector('[role="menu"]')).toBeNull();
+      station.dispatchEvent(
+        new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', button: 0 }),
+      );
+      vi.advanceTimersByTime(600);
+      flushSync();
+      const again = [...target.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+      again[1].click();
       flushSync();
       expect(onChange.mock.lastCall![0].nodes).toHaveLength(1);
       expect(target.querySelector('[role="menu"]')).toBeNull();
