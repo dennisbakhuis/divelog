@@ -47,9 +47,11 @@ from divelog_server.store.validate import (
     LONG_BODY,
     SAFE_UNDERLAYS,
     Problem,
+    errors,
     first_person,
     first_person_lines,
     validate_commons,
+    warnings,
 )
 
 FORK_NOTES = ("Forked from commons revision", "Reviewed against commons revision")
@@ -348,6 +350,9 @@ def _plan_maps(plan: ProposePlan, store: Store, commons: CommonsSource) -> dict[
         if underlay and not _underlay_resolves(plan, underlay, store, commons):
             payload.pop("underlay", None)
             note = f"underlay {underlay} dropped"
+        if first_person(payload.get("notes")):
+            payload["notes"] = ""
+            note = "; ".join(filter(None, [note, "first-person notes left out"]))
         entry = ChangeEntry(
             revision=1,
             date=options.today,
@@ -546,6 +551,7 @@ class ProposeResult:
 
     plan: ProposePlan
     problems: list[Problem] = field(default_factory=list)
+    warnings: list[Problem] = field(default_factory=list)
     head: str | None = None
     returned_to: str | None = None
     body_file: Path | None = None
@@ -611,7 +617,8 @@ def run_propose(options: ProposeOptions, *, dry_run: bool = False) -> ProposeRes
     write_proposal(plan)
     result = ProposeResult(plan)
     if options.validate:
-        result.problems = validate_commons(commons)
+        found = validate_commons(commons, base="HEAD")
+        result.problems, result.warnings = errors(found), warnings(found)
         if result.problems:
             return result
     commit_all(commons, plan.commit_message, options.author, options.author_email, signoff=True)

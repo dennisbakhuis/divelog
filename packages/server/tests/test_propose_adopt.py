@@ -12,9 +12,9 @@ from divelog_server.main import create_app
 from divelog_server.schemas.sitemap import DiveMapAnnotation
 from divelog_server.services import auth as auth_service
 from divelog_server.services import dives as dive_service
-from divelog_server.store.files import read_json, read_markdown, write_markdown
+from divelog_server.store.files import read_json, read_markdown, write_json, write_markdown
 from divelog_server.store.proposals import load_merged
-from divelog_server.store.validate import validate_commons
+from divelog_server.store.validate import errors, validate_commons
 from tests.commons_repos import (
     COMMONS_SITE,
     DIARY,
@@ -120,7 +120,7 @@ def test_propose_author_option(repos: Repos) -> None:
 
 def test_proposed_branch_validates(repos: Repos, proposed: str) -> None:
     git(repos.commons, "switch", "-q", BRANCH)
-    assert validate_commons(repos.commons) == []
+    assert errors(validate_commons(repos.commons, base="main")) == []
 
 
 def test_proposed_record_is_objective_only(repos: Repos, proposed: str) -> None:
@@ -212,6 +212,28 @@ def test_first_person_body_and_summary_are_held_back(repos: Repos) -> None:
     meta = branch_meta(repos, DIARY, f"propose/{DIARY}")
     assert meta["summary"] == "The gallery is wide and deep."
     assert "I loved" not in on_branch(repos, f"sites/{DIARY}.md", f"propose/{DIARY}")
+
+
+def test_warnings_are_printed_without_failing(repos: Repos) -> None:
+    path = repos.log / "sites" / f"{SITE}.md"
+    meta, body = read_markdown(path)
+    meta["summary"] = "A favourite spring beside the river."
+    write_markdown(path, meta, body)
+    code, output = propose(repos)
+    assert code == 0, output
+    assert f"sites/{SITE}.md: warning: owner voice in summary" in output
+    assert "committed" in output
+
+
+def test_first_person_map_notes_are_left_out(repos: Repos) -> None:
+    path = repos.log / "maps" / "drawn" / f"{SITE}-p1.json"
+    payload = read_json(path)
+    payload["notes"] = "I surveyed this line in 2025."
+    write_json(path, payload)
+    code, output = propose(repos)
+    assert code == 0, output
+    assert "first-person notes left out" in output
+    assert json.loads(on_branch(repos, f"maps/drawn/{SITE}-1.json"))["notes"] == ""
 
 
 def test_dry_run_prints_the_plan_and_writes_nothing(repos: Repos) -> None:
@@ -415,7 +437,7 @@ async def test_fork_proposal_moves_the_commons_revision(forked: Repos) -> None:
         "repo:media/sites/fra-commons-only.jpg"
     ]
     git(forked.commons, "switch", "-q", f"propose/{COMMONS_SITE}")
-    assert validate_commons(forked.commons) == []
+    assert errors(validate_commons(forked.commons, base="main")) == []
 
 
 async def test_adopt_turns_the_fork_back_into_an_overlay(forked: Repos) -> None:

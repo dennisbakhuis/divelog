@@ -84,6 +84,8 @@ def run_propose_command(args: argparse.Namespace, out: TextIO) -> int:
     if args.dry_run:
         print("dry run: nothing written", file=out)
         return 0
+    for warning in result.warnings:
+        print(warning, file=out)
     if result.problems:
         print(
             f"the proposal does not validate; branch {options.branch_name} is checked out "
