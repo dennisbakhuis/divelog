@@ -32,7 +32,7 @@ describe('AdminSitesPage origins', () => {
 
   it('filters by origin', () => {
     const { target, app } = render();
-    const select = target.querySelector<HTMLSelectElement>('select[aria-label="Origin"]')!;
+    const select = target.querySelector<HTMLSelectElement>('#sites-origin')!;
     const pick = (value: string) => {
       select.value = value;
       select.dispatchEvent(new Event('change'));
@@ -48,6 +48,14 @@ describe('AdminSitesPage origins', () => {
     expect(target.textContent).toContain('2 shown');
     pick('all');
     expect(names(target)).toHaveLength(4);
+    unmount(app);
+  });
+
+  it('labels its filters and offers a new site', () => {
+    const { target, app } = render();
+    for (const id of ['sites-q', 'sites-country', 'sites-origin'])
+      expect(target.querySelector(`label[for="${id}"]`)).not.toBeNull();
+    expect(target.querySelector('a.new')?.getAttribute('href')).toBe('/admin/sites/new');
     unmount(app);
   });
 });

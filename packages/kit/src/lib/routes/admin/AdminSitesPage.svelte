@@ -42,60 +42,81 @@
   <a class="dl-btn dl-btn-solid dl-btn-sm new" href={urls.admin.newSite()}>+ New site</a>
 </div>
 
-<div class="toolbar">
-  <input type="search" placeholder="Search sites…" bind:value={query} />
-  <select bind:value={country} aria-label="Country">
-    <option value="">All countries</option>
-    {#each countries as c (c)}<option value={c}>{c}</option>{/each}
-  </select>
-  <select bind:value={origin} aria-label="Origin">
-    {#each ORIGIN_FILTERS as f (f.value)}<option value={f.value}>{f.label}</option>{/each}
-  </select>
-  <span class="muted dl-num">{rows.length} shown</span>
+<div class="toolbar" role="search" aria-label="Filter sites">
+  <div class="filter">
+    <label for="sites-q">Search</label>
+    <input
+      id="sites-q"
+      class="dl-input"
+      type="search"
+      placeholder="Name, area, alias or id"
+      bind:value={query}
+    />
+  </div>
+  <div class="filter">
+    <label for="sites-country">Country</label>
+    <select id="sites-country" class="dl-select" bind:value={country}>
+      <option value="">All countries</option>
+      {#each countries as c (c)}<option value={c}>{c}</option>{/each}
+    </select>
+  </div>
+  <div class="filter">
+    <label for="sites-origin">Origin</label>
+    <select id="sites-origin" class="dl-select" bind:value={origin}>
+      {#each ORIGIN_FILTERS as f (f.value)}<option value={f.value}>{f.label}</option>{/each}
+    </select>
+  </div>
+  <span class="muted dl-num shown" aria-live="polite">{rows.length} shown</span>
 </div>
 
-<table>
-  <thead>
-    <tr>
-      <th>Name</th>
-      <th>Country</th>
-      <th>Type</th>
-      <th>Region</th>
-      <th>Origin</th>
-      <th class="n">Dives</th>
-      <th class="n">Drawn maps</th>
-      <th></th>
-    </tr>
-  </thead>
-  <tbody>
-    {#each rows as site (site.id)}
+<div class="table-wrap">
+  <table>
+    <caption class="dl-visually-hidden">Dive sites in the log</caption>
+    <thead>
       <tr>
-        <td
-          ><a href={urls.admin.site(site.id)}>{site.name}</a>{#if site.area}<span class="muted">
-              · {site.area}</span
-            >{/if}{#if site.private?.pin?.stale}
-            <span class="dl-tag stale" title={pinMessage(site.private.pin)}>stale</span>{/if}</td
-        >
-        <td>{site.country ?? site.country_code}</td>
-        <td>{site.site_type}</td>
-        <td>{site.region ? (regionNames[site.region] ?? site.region) : '—'}</td>
-        <td
-          ><OriginBadge
-            origin={site.origin}
-            title={site.forked_from ? `forked from ${site.forked_from}` : undefined}
-          /></td
-        >
-        <td class="n dl-num">{site.dives}</td>
-        <td class="n dl-num">{drawnCount(site) || '—'}</td>
-        <td class="row-actions"
-          ><a href={urls.site(site.slug)} target="_blank" rel="noopener">view ↗</a></td
-        >
+        <th scope="col">Name</th>
+        <th scope="col">Country</th>
+        <th scope="col">Type</th>
+        <th scope="col">Region</th>
+        <th scope="col">Origin</th>
+        <th scope="col" class="n">Dives</th>
+        <th scope="col" class="n">Drawn maps</th>
+        <th scope="col"><span class="dl-visually-hidden">Public page</span></th>
       </tr>
-    {:else}
-      <tr><td colspan="8" class="muted">No sites match.</td></tr>
-    {/each}
-  </tbody>
-</table>
+    </thead>
+    <tbody>
+      {#each rows as site (site.id)}
+        <tr>
+          <td
+            ><a href={urls.admin.site(site.id)}>{site.name}</a>{#if site.area}<span class="muted">
+                · {site.area}</span
+              >{/if}{#if site.private?.pin?.stale}
+              <span class="dl-tag stale" title={pinMessage(site.private.pin)}>stale</span>{/if}</td
+          >
+          <td>{site.country ?? site.country_code}</td>
+          <td>{site.site_type}</td>
+          <td>{site.region ? (regionNames[site.region] ?? site.region) : '—'}</td>
+          <td
+            ><OriginBadge
+              origin={site.origin}
+              title={site.forked_from ? `forked from ${site.forked_from}` : undefined}
+            /></td
+          >
+          <td class="n dl-num">{site.dives}</td>
+          <td class="n dl-num">{drawnCount(site) || '—'}</td>
+          <td class="row-actions"
+            ><a href={urls.site(site.slug)} target="_blank" rel="noopener"
+              >view<span class="dl-visually-hidden"> {site.name} (opens in a new tab)</span>
+              <span aria-hidden="true">↗</span></a
+            ></td
+          >
+        </tr>
+      {:else}
+        <tr><td colspan="8" class="muted">No sites match.</td></tr>
+      {/each}
+    </tbody>
+  </table>
+</div>
 
 <style>
   .head {
@@ -118,16 +139,41 @@
   }
   .toolbar {
     display: flex;
-    gap: 10px;
-    align-items: center;
-    margin-bottom: 12px;
+    gap: var(--dl-space-3);
+    align-items: flex-end;
+    margin-bottom: var(--dl-space-3);
     flex-wrap: wrap;
   }
-  .toolbar input {
-    max-width: 320px;
+  .filter {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
-  .toolbar select {
+  .filter label {
+    font-size: var(--dl-text-sm);
+    color: var(--dl-color-text-muted);
+  }
+  .filter input {
+    width: min(320px, 100%);
+  }
+  .filter select {
     width: auto;
+  }
+  .shown {
+    padding-bottom: 10px;
+  }
+  .table-wrap {
+    overflow-x: auto;
+  }
+  .new {
+    min-height: 32px;
+  }
+  @media (max-width: 560px) {
+    .filter,
+    .filter input,
+    .filter select {
+      width: 100%;
+    }
   }
   .n {
     text-align: right;
