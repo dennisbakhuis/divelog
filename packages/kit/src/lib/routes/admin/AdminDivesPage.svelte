@@ -28,8 +28,8 @@
 </h1>
 
 <div class="toolbar">
-  <input type="search" placeholder="Filter…" bind:value={query} />
-  <select bind:value={show}>
+  <input type="search" placeholder="Filter…" aria-label="Filter dives" bind:value={query} />
+  <select bind:value={show} aria-label="Show">
     <option value="all">All</option>
     <option value="public">Public</option>
     <option value="draft">Drafts{drafts ? ` (${drafts})` : ''}</option>

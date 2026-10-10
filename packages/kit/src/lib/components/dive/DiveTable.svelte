@@ -89,7 +89,8 @@
 </script>
 
 {#snippet buddyLinks(buddies: DiveListItem['buddies'])}
-  with <a class="above" href={urls.person(buddies[0].slug)}>{buddies[0].name}</a>{#if buddies.length > 1}, {buddies
+  with <a class="above" href={urls.person(buddies[0].slug)}>{buddies[0].name}</a
+  >{#if buddies.length > 1}, {buddies
       .slice(1)
       .map((b) => b.name)
       .join(', ')}{/if}
@@ -159,8 +160,9 @@
               {@const cut = loc.toLowerCase().startsWith(dive.site.name.toLowerCase())
                 ? dive.site.name.length
                 : loc.length}
-              <a class="above" href={urls.site(dive.site.slug)}>{loc.slice(0, cut)}</a
-              >{loc.slice(cut)}
+              <a class="above" href={urls.site(dive.site.slug)}>{loc.slice(0, cut)}</a>{loc.slice(
+                cut,
+              )}
             {:else}
               Unknown site
             {/if}

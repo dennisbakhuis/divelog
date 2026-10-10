@@ -46,9 +46,10 @@
   function sync(delay = 0) {
     clearTimeout(syncTimer);
     syncTimer = setTimeout(() => {
-      const url = new URL(page.url);
-      url.search = sitesFilterToParams(filter, url.searchParams).toString();
-      if (url.search !== page.url.search) replaceState(url, page.state);
+      const query = sitesFilterToParams(filter, page.url.searchParams).toString();
+      const search = query ? `?${query}` : '';
+      if (search !== page.url.search)
+        replaceState(`${page.url.pathname}${search}${page.url.hash}`, page.state);
       if (count !== lastCount) {
         lastCount = count;
         announce(`${count} ${count === 1 ? 'site' : 'sites'}`);

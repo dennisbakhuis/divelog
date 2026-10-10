@@ -84,7 +84,7 @@
           map={data.map}
           compact
           label="Map of {pluralize(data.map.dots.length, 'dive site')} of {trip.name}"
-          />
+        />
       </DiveGlobe>
     </div>
   {/if}
@@ -136,7 +136,9 @@
   }
   .where a {
     color: var(--dl-color-text);
-    text-decoration: none;
+    text-decoration: underline;
+    text-decoration-color: var(--dl-color-border-strong);
+    text-underline-offset: 3px;
   }
   .where a:hover {
     color: var(--dl-color-accent);

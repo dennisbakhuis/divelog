@@ -11,7 +11,7 @@
     back,
     label = 'Page navigation',
     owner = null,
-    backTo = $bindable(),
+    onBackTo,
     children,
   }: {
     /** The link back to the list this page belongs to. */
@@ -21,10 +21,10 @@
     /** Owner links, rendered inline after the back link; null for visitors. */
     owner?: { edit: OwnerAction; actions?: OwnerAction[]; note?: string | null } | null;
     /**
-     * Read-only: where the back link points, i.e. `back.href` or the filtered
-     * list the visitor came from. Bind it to hand the same list on to the next page.
+     * Told where the back link points: `back.href` or the filtered list the
+     * visitor came from, to hand the same list on to the next page.
      */
-    backTo?: string;
+    onBackTo?: (href: string) => void;
     /** Whatever sits on the right, e.g. a prev / next pager. */
     children?: Snippet;
   } = $props();
@@ -54,7 +54,7 @@
   );
 
   $effect(() => {
-    backTo = href;
+    onBackTo?.(href);
   });
 </script>
 

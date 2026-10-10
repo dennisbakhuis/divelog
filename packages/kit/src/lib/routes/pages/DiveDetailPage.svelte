@@ -36,8 +36,7 @@
     typesRawAddsNothing,
   } from '$lib/core/dive/dive-page';
   import { getDivelog } from '$lib/core/dive/context';
-  import { goto } from '$app/navigation';
-  import { followWithState } from '$lib/components/dive/follow';
+  import { followWithState, gotoWithState } from '$lib/components/dive/follow';
 
   const { urls } = getDivelog();
 
@@ -144,9 +143,7 @@
 
   function typing(target: EventTarget | null): boolean {
     if (!(target instanceof HTMLElement)) return false;
-    return (
-      target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
-    );
+    return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
   }
 
   /** `[` and `]` page to the previous and next dive, unless the key belongs to something else. */
@@ -157,7 +154,7 @@
     const href = e.key === '[' ? prevHref : nextHref;
     if (!href) return;
     e.preventDefault();
-    void goto(href, { state: { from: backTo } as App.PageState });
+    gotoWithState(href, { from: backTo });
   }
 
   type TabId = 'story' | 'original' | 'logbook';
@@ -202,7 +199,7 @@
   <DetailTop
     back={{ href: urls.log(), label: 'Dive log' }}
     label="Dive navigation"
-    bind:backTo
+    onBackTo={(href) => (backTo = href)}
     owner={data.owner
       ? {
           edit: { label: 'Edit', href: data.editHref },

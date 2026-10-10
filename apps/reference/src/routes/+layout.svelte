@@ -27,7 +27,7 @@
 
 <header class="site-header">
   <a class="brand" href="/">{data.divelogConfig.siteName}</a>
-  <nav>
+  <nav aria-label="Site">
     <a href="/dive">Log</a>
     <a href="/admin">Editor</a>
   </nav>

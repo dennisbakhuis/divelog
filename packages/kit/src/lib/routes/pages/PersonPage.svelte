@@ -199,10 +199,7 @@
       <h2>Trips together</h2>
       <div class="flags">
         {#each data.trips as trip (trip.slug)}
-          <a
-            class="flag-chip"
-            href={urls.trip(trip.slug)}
-          >
+          <a class="flag-chip" href={urls.trip(trip.slug)}>
             {trip.name}
             <span class="dl-num faint"
               >{trip.dives}<span class="dl-visually-hidden">

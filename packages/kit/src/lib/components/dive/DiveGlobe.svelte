@@ -625,13 +625,7 @@
     {/if}
     {#if selected}
       {@const site = selected.properties}
-      <div
-        class="popup"
-        role="dialog"
-        aria-label={site.name}
-        tabindex="-1"
-        bind:this={popupEl}
-      >
+      <div class="popup" role="dialog" aria-label={site.name} tabindex="-1" bind:this={popupEl}>
         <button type="button" class="close" aria-label="Close" onclick={() => closePopup(true)}
           ><span aria-hidden="true">×</span></button
         >

@@ -21,7 +21,9 @@ describe('DiveNav', () => {
   it('is a labelled landmark with one link per section', () => {
     const nav = navAt('/dive');
     expect(nav.getAttribute('aria-label')).toBe('Dive log sections');
-    expect([...nav.querySelectorAll('a')].map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+    expect(
+      [...nav.querySelectorAll('a')].map((a) => [a.textContent, a.getAttribute('href')]),
+    ).toEqual([
       ['Log', '/dive'],
       ['Sites', '/dive/sites'],
       ['Trips', '/dive/trips'],

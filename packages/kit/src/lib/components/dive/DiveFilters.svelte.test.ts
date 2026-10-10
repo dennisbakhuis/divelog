@@ -72,9 +72,7 @@ describe('DiveFilters', () => {
     const cave = target.querySelector('button[data-tag="cave"]')!;
     expect(cave.getAttribute('aria-pressed')).toBe('true');
     const pinned = target.querySelector('.pinned')!;
-    expect(pinned.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      'site: mex-x ×, remove filter',
-    );
+    expect(pinned.textContent?.replace(/\s+/g, ' ').trim()).toBe('site: mex-x ×, remove filter');
     expect(pinned.querySelector('[aria-hidden="true"]')?.textContent).toBe('×');
   });
 });

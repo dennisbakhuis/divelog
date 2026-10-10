@@ -329,7 +329,9 @@
                 >{row.name}: {row.min} to {row.max} °C, median {Math.round(row.median)} °C, over {row.dives}
                 dives</span
               >
-              <span class="name" aria-hidden="true"><span class="flag">{flagEmoji(row.code)}</span> {row.name}</span>
+              <span class="name" aria-hidden="true"
+                ><span class="flag">{flagEmoji(row.code)}</span> {row.name}</span
+              >
               <span class="range-track" aria-hidden="true">
                 <span
                   class="range"

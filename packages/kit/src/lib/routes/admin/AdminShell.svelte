@@ -17,7 +17,7 @@
   const { config, urls } = getDivelog();
 
   /** Below this width the right-hand cluster folds into the "Menu" popover. */
-  const NARROW_QUERY = '(max-width: 1099.98px)';
+  const NARROW_QUERY = '(max-width: 1199.98px)';
 
   const REPO_STATE: Record<string, string> = {
     clean: 'Everything is committed and pushed.',
@@ -123,7 +123,7 @@
     <Popover bind:open={repoOpen} label="Repository status" class="repo-panel">
       {#snippet trigger(props)}
         <button {...props} class="repo repo-{status.state}"
-          ><span class="dl-visually-hidden">{'Repository: '}</span>{repoText}</button
+          ><span class="dl-visually-hidden">Repository:</span> {repoText}</button
         >
       {/snippet}
       {#snippet children({ close })}
@@ -131,10 +131,20 @@
           <strong>{status.state}</strong>{#if REPO_STATE[status.state]}
             · {REPO_STATE[status.state]}{/if}
         </p>
-        <dl class="repo-facts dl-num">
+        <dl class="repo-facts heads dl-num">
           {#if status.head}<div>
-              <dt>Head</dt>
-              <dd>{shortRef(status.head)}{status.dirty ? ' · uncommitted changes' : ''}</dd>
+              <dt>Log</dt>
+              <dd>
+                log {shortRef(status.head)}{status.dirty ? ' · uncommitted changes' : ''}
+              </dd>
+            </div>{/if}
+          {#if status.commons_head || status.commons_state}<div>
+              <dt>Commons</dt>
+              <dd>
+                commons {shortRef(status.commons_head) ?? '—'}{status.commons_state
+                  ? ` · ${status.commons_state}`
+                  : ''}
+              </dd>
             </div>{/if}
           <div>
             <dt>Ahead · behind</dt>
@@ -168,6 +178,7 @@
     {@render repoDetails(repo)}
     <CommonsStatus
       {repo}
+      showHeads={false}
       onPulled={async () => {
         await refreshRepo();
         await invalidateAll();
@@ -218,9 +229,7 @@
                   ></span><span class="dl-visually-hidden">, repository {repo.state}</span>{/if}
               </button>
             {/snippet}
-            {#snippet children()}
-              <div class="menu-body">{@render cluster()}</div>
-            {/snippet}
+            <div class="menu-body">{@render cluster()}</div>
           </Popover>
         </span>
       </div>
@@ -412,7 +421,7 @@
     width: 100%;
     margin: 0 auto;
   }
-  @media (max-width: 1099.98px) {
+  @media (max-width: 1199.98px) {
     .cluster {
       display: none;
     }

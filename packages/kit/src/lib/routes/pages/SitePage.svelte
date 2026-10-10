@@ -375,7 +375,9 @@
             <table class="dl-visually-hidden">
               <caption>Mean water temperature per month at {site.name}</caption>
               <thead>
-                <tr><th scope="col">Month</th><th scope="col">Mean</th><th scope="col">Dives</th></tr>
+                <tr
+                  ><th scope="col">Month</th><th scope="col">Mean</th><th scope="col">Dives</th></tr
+                >
               </thead>
               <tbody>
                 {#each temps as month (month.month)}

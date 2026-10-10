@@ -41,9 +41,9 @@ describe('backHref', () => {
   });
 
   it('keeps the list under another base path', () => {
-    expect(
-      backHref('/log/sites', { origin, stateFrom: '/log/sites?country=EG&type=reef' }),
-    ).toBe('/log/sites?country=EG&type=reef');
+    expect(backHref('/log/sites', { origin, stateFrom: '/log/sites?country=EG&type=reef' })).toBe(
+      '/log/sites?country=EG&type=reef',
+    );
   });
 
   it('builds the state a list hands to the detail page', () => {

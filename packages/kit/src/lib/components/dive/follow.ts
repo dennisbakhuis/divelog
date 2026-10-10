@@ -14,6 +14,12 @@ export function followWithState(event: MouseEvent, href: string, state: FollowSt
   const link = event.currentTarget;
   if (link instanceof HTMLAnchorElement && link.target && link.target !== '_self') return;
   event.preventDefault();
+  gotoWithState(href, state);
+}
+
+/** Navigate to a log URL with shallow history state. */
+export function gotoWithState(href: string, state: FollowState): void {
+  // eslint-disable-next-line svelte/no-navigation-without-resolve -- hrefs come from getDivelog().urls, already under the base path
   void goto(href, { state: state as App.PageState });
 }
 

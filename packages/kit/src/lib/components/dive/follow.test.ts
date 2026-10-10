@@ -30,14 +30,17 @@ describe('followWithState', () => {
     expect(navigation.goto).toHaveBeenCalledWith('/dive/5', { state: { from: '/dive?tag=cave' } });
   });
 
-  it.each([{ metaKey: true }, { ctrlKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }])(
-    'leaves a modified click to the browser (%o)',
-    (init) => {
-      const event = click(init);
-      expect(event.defaultPrevented).toBe(false);
-      expect(navigation.goto).not.toHaveBeenCalled();
-    },
-  );
+  it.each([
+    { metaKey: true },
+    { ctrlKey: true },
+    { shiftKey: true },
+    { altKey: true },
+    { button: 1 },
+  ])('leaves a modified click to the browser (%o)', (init) => {
+    const event = click(init);
+    expect(event.defaultPrevented).toBe(false);
+    expect(navigation.goto).not.toHaveBeenCalled();
+  });
 
   it('leaves a link with a target alone', () => {
     expect(click({}, '_blank').defaultPrevented).toBe(false);
