@@ -140,7 +140,7 @@
         >{data.drafts} draft{data.drafts === 1 ? '' : 's'}</a
       >{/if}
   </h1>
-  <a class="dl-btn dl-btn-solid dl-btn-sm" href={urls.admin.newDive()}>+ New dive</a>
+  <a class="dl-btn dl-btn-solid dl-btn-sm" href={urls.admin.newDive()}>New dive</a>
 </div>
 
 <div class="toolbar">
@@ -246,7 +246,7 @@
         {#each rows as dive (dive.number)}
           {@const siteLink = !!(dive.title && dive.site_name && dive.site_id)}
           <tr>
-            <td class="pick">
+            <td class="pick" class:blank={dive.visibility !== 'draft'}>
               {#if dive.visibility === 'draft'}
                 <input
                   type="checkbox"
@@ -275,8 +275,8 @@
             </td>
             <td class="dl-num nowrap">{dive.max_depth_m} m</td>
             <td class="dl-num nowrap">{dive.duration_min} min</td>
-            <td>{dive.tags.join(', ')}</td>
-            <td class="dl-num">{dive.attachments || ''}</td>
+            <td class="tags">{dive.tags.join(', ')}</td>
+            <td class="dl-num media">{dive.attachments || ''}</td>
             <td><span class="status status-{dive.visibility}">{dive.visibility}</span></td>
             <td
               ><a class="view" href={urls.dive(dive.number)} target="_blank" rel="noopener"
@@ -379,6 +379,13 @@
   tbody tr:hover {
     background: var(--dl-color-surface);
   }
+  .row-link,
+  .secondary a,
+  .view {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+  }
   .row-link::after {
     content: '';
     position: absolute;
@@ -447,10 +454,39 @@
     margin-top: var(--dl-space-3);
   }
   @media (max-width: 700px) {
-    th:nth-child(7),
-    td:nth-child(7),
-    th:nth-child(8),
-    td:nth-child(8) {
+    table,
+    tbody,
+    tr,
+    td {
+      display: block;
+    }
+    thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }
+    tbody tr {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--dl-space-1) var(--dl-space-3);
+      padding: var(--dl-space-2) 0;
+      border-bottom: 1px solid var(--dl-color-border);
+    }
+    tbody td {
+      padding: 0;
+      border: none;
+    }
+    td.title {
+      order: -1;
+      flex-basis: 100%;
+    }
+    td.blank,
+    td.tags,
+    td.media {
       display: none;
     }
   }

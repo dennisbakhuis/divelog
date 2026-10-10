@@ -40,39 +40,52 @@
 </p>
 
 <div class="toolbar">
-  <input type="search" placeholder="Filter…" bind:value={query} />
+  <input type="search" placeholder="Filter…" aria-label="Filter people" bind:value={query} />
 </div>
 
-<table>
-  <thead><tr><th></th><th>Name</th><th>Public</th><th>Dives</th><th></th></tr></thead>
-  <tbody>
-    {#each rows as p (p.id)}
-      <tr>
-        <td>
-          <span class="avatar small">
-            {#if p.avatar_url}<img src={p.avatar_url} alt="" />{:else}{p.first_name[0]}{/if}
-          </span>
-        </td>
-        <td
-          ><a href={urls.admin.person(p.id)}>{label(p)}</a>
-          <span class="muted dl-num">{p.id}</span></td
-        >
-        <td>{p.display === 'hidden' ? '— hidden —' : p.name}</td>
-        <td class="dl-num">{p.dives}</td>
-        <td class="row-actions">
-          <a
-            class="dl-btn dl-btn-ghost dl-btn-sm"
-            href={urls.person(p.slug)}
-            target="_blank"
-            rel="noopener">view ↗</a
+<div class="table-wrap">
+  <table>
+    <caption class="dl-visually-hidden">People</caption>
+    <thead
+      ><tr
+        ><th scope="col"><span class="dl-visually-hidden">Avatar</span></th><th scope="col">Name</th
+        ><th scope="col">Public</th><th scope="col">Dives</th><th scope="col"
+          ><span class="dl-visually-hidden">Public page</span></th
+        ></tr
+      ></thead
+    >
+    <tbody>
+      {#each rows as p (p.id)}
+        <tr>
+          <td>
+            <span class="avatar small">
+              {#if p.avatar_url}<img src={p.avatar_url} alt="" />{:else}{p.first_name[0]}{/if}
+            </span>
+          </td>
+          <td
+            ><a href={urls.admin.person(p.id)}>{label(p)}</a>
+            <span class="muted dl-num">{p.id}</span></td
           >
-        </td>
-      </tr>
-    {/each}
-  </tbody>
-</table>
+          <td>{p.display === 'hidden' ? '— hidden —' : p.name}</td>
+          <td class="dl-num">{p.dives}</td>
+          <td class="row-actions">
+            <a
+              class="dl-btn dl-btn-ghost dl-btn-sm"
+              href={urls.person(p.slug)}
+              target="_blank"
+              rel="noopener">view<span class="dl-visually-hidden"> {label(p)} (new tab)</span> ↗</a
+            >
+          </td>
+        </tr>
+      {/each}
+    </tbody>
+  </table>
+</div>
 
 <style>
+  .table-wrap {
+    overflow-x: auto;
+  }
   .head {
     display: flex;
     align-items: center;

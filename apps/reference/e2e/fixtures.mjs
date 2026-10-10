@@ -800,20 +800,6 @@ export function commonsSearch(q) {
   return COMMONS_HITS.filter((hit) => !needle || hit.name.toLowerCase().includes(needle));
 }
 
-/** The buddies as the owner API lists them: ids are the slugs. */
-const personPrivate = (p) => ({
-  ...p,
-  id: p.slug,
-  first_name: p.name,
-  last_name: null,
-  alias: null,
-  aliases: [],
-  email: null,
-  display: p.name,
-  notes: null,
-  dives: DIVES.filter((d) => d.buddies.includes(p.slug)).length,
-});
-
 const tripOut = () => ({
   slug: TRIP.slug,
   name: TRIP.name,
@@ -904,7 +890,7 @@ function diveIn(dive) {
 }
 
 /** The stored dive the editor reads back: the input plus what the server derives. */
-function diveAdmin(input) {
+function savedDiveAdmin(input) {
   const site = SITES.find((s) => s.slug === input.site_id);
   return {
     ...input,
@@ -967,7 +953,7 @@ const when = (d) => `${d.date} ${d.time_in ?? ''} ${String(d.number).padStart(6,
 /**
  * The owner's dive editor endpoints over the fixture log, with dives the e2e saves kept in
  * memory: `handle(method, path, query, body)` answers `{ status, body }`, or undefined for a
- * path it does not serve.
+ * path it leaves to `ownerFixtures` (the form's lists and the fixture dives).
  */
 export function ownerEditor() {
   const saved = new Map();
@@ -1025,10 +1011,6 @@ export function ownerEditor() {
     handle(method, path, query, body) {
       const ok = (value, status = 200) => ({ status, body: value });
       const key = `${method} ${path}`;
-      if (key === 'GET /admin/sites') return ok([...SITES, COMMONS_SITE].map(siteFull));
-      if (key === 'GET /admin/trips') return ok([tripOut()]);
-      if (key === 'GET /admin/people') return ok(PEOPLE.map(personPrivate));
-      if (key === 'GET /admin/gear/setups') return ok([]);
       if (key === 'GET /admin/imports') return ok([]);
       if (key === 'GET /admin/dives/next-number')
         return ok({ number: Math.max(...all().map((d) => d.number)) + 1 });
@@ -1067,7 +1049,7 @@ export function ownerEditor() {
             422,
           );
         saved.set(body.number, { ...diveIn(DIVES[0]), ...body, tanks: body.tanks ?? [] });
-        return ok(diveAdmin(saved.get(body.number)), 201);
+        return ok(savedDiveAdmin(saved.get(body.number)), 201);
       }
       const one = /^\/admin\/dives\/(\d+)$/.exec(path);
       if (one) {
@@ -1075,9 +1057,9 @@ export function ownerEditor() {
         const found = all().find((d) => d.number === n);
         if (method === 'PUT' && found) {
           saved.set(n, { ...found, ...body });
-          return ok(diveAdmin(saved.get(n)));
+          return ok(savedDiveAdmin(saved.get(n)));
         }
-        if (method === 'GET') return found ? ok(diveAdmin(found)) : ok({ detail: 'Not found' }, 404);
+        if (method === 'GET' && saved.has(n)) return ok(savedDiveAdmin(saved.get(n)));
       }
       return undefined;
     },

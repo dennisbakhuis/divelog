@@ -1917,6 +1917,7 @@
     align-items: center;
   }
   .file {
+    position: relative;
     cursor: pointer;
   }
   .queued {

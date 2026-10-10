@@ -126,3 +126,28 @@ test.describe('logging a dive', () => {
     await expect(page.getByRole('link', { name: '+ New dive' }).first()).toBeVisible();
   });
 });
+
+test.describe('the dive pages on a phone', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+
+  test.beforeEach(async ({ context, baseURL }) => {
+    await context.addCookies([{ name: OWNER_COOKIE, value: '1', url: baseURL! }]);
+  });
+
+  for (const path of ['/admin', '/admin/dives/new', '/admin/dives/3', '/admin/import']) {
+    test(`${path} does not scroll sideways at 390 px`, async ({ page }) => {
+      await page.goto(path);
+      await page.waitForLoadState('networkidle');
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      );
+      expect(overflow).toBeLessThanOrEqual(0);
+      const save = page.locator('.save-bar');
+      if (await save.count()) {
+        const box = await save.boundingBox();
+        expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+      }
+    });
+  }
+});

@@ -247,6 +247,7 @@
     margin: 20px 0 8px;
   }
   .drop {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 6px;

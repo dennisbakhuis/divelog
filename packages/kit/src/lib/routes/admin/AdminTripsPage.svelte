@@ -28,33 +28,45 @@
 </p>
 
 <div class="toolbar">
-  <input type="search" placeholder="Filter…" bind:value={query} />
+  <input type="search" placeholder="Filter…" aria-label="Filter trips" bind:value={query} />
 </div>
 
-<table>
-  <thead><tr><th>Name</th><th>Dates</th><th></th><th></th></tr></thead>
-  <tbody>
-    {#each rows as t (t.slug)}
-      <tr>
-        <td><a href={urls.admin.trip(t.slug)}>{t.name}</a></td>
-        <td class="dl-num">{formatDate(t.start_date)} – {formatDate(t.end_date)}</td>
-        <td
-          >{#if t.custom}<span class="badge">custom</span>{/if}</td
-        >
-        <td class="row-actions">
-          <a
-            class="dl-btn dl-btn-ghost dl-btn-sm"
-            href={urls.trip(t.slug)}
-            target="_blank"
-            rel="noopener">view ↗</a
+<div class="table-wrap">
+  <table>
+    <caption class="dl-visually-hidden">Trips</caption>
+    <thead
+      ><tr
+        ><th scope="col">Name</th><th scope="col">Dates</th><th scope="col">Kind</th><th scope="col"
+          ><span class="dl-visually-hidden">Public page</span></th
+        ></tr
+      ></thead
+    >
+    <tbody>
+      {#each rows as t (t.slug)}
+        <tr>
+          <td><a href={urls.admin.trip(t.slug)}>{t.name}</a></td>
+          <td class="dl-num">{formatDate(t.start_date)} – {formatDate(t.end_date)}</td>
+          <td
+            >{#if t.custom}<span class="badge">custom</span>{/if}</td
           >
-        </td>
-      </tr>
-    {/each}
-  </tbody>
-</table>
+          <td class="row-actions">
+            <a
+              class="dl-btn dl-btn-ghost dl-btn-sm"
+              href={urls.trip(t.slug)}
+              target="_blank"
+              rel="noopener">view<span class="dl-visually-hidden"> {t.name} (new tab)</span> ↗</a
+            >
+          </td>
+        </tr>
+      {/each}
+    </tbody>
+  </table>
+</div>
 
 <style>
+  .table-wrap {
+    overflow-x: auto;
+  }
   .head {
     display: flex;
     align-items: center;
