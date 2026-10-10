@@ -1,5 +1,11 @@
-# Backend image (FastAPI + uvicorn). `dev` target mounts the source and
-# reloads; `runtime` is the immutable production image.
+# divelog-server image (FastAPI + uvicorn). `dev` mounts the source and is driven by
+# docker compose; `runtime` is the immutable production image.
+#
+# The dependency pins come from the workspace uv.lock, exported next to this file:
+#   uv export --package divelog-server --frozen --no-dev --no-emit-workspace --no-header \
+#     -o packages/server/requirements.lock
+#   uv export --package divelog-server --frozen --no-emit-workspace --no-header \
+#     -o packages/server/requirements-dev.lock
 
 FROM python:3.13-slim AS base
 
@@ -8,35 +14,44 @@ WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git openssh-client \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir uv
+    && pip install --no-cache-dir uv \
+    && uv venv /opt/venv
 
-COPY pyproject.toml uv.lock ./
-
-# ── Dev: full dependency set, source volume-mounted by docker-compose ──
-FROM base AS dev
-ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+ENV VIRTUAL_ENV=/opt/venv \
     PATH="/opt/venv/bin:$PATH" \
-    PYTHONPATH=/app
-RUN uv sync --frozen --no-install-project
+    PYTHONUNBUFFERED=1
+
+# ── Dev: full dependency set, source volume-mounted by docker compose ──
+FROM base AS dev
+COPY requirements-dev.lock ./
+RUN uv pip install --no-cache --require-hashes -r requirements-dev.lock
 COPY . .
+RUN uv pip install --no-cache --no-deps -e .
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["divelog-server"]
 
 # ── Runtime: production dependencies only, non-root ──
 FROM base AS runtime
-ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
-    PATH="/opt/venv/bin:$PATH" \
-    PYTHONPATH=/app \
-    PYTHONUNBUFFERED=1
-RUN uv sync --frozen --no-dev --no-install-project
-COPY . .
+COPY requirements.lock ./
+RUN uv pip install --no-cache --require-hashes -r requirements.lock
+COPY pyproject.toml ./
+COPY divelog_server ./divelog_server
+RUN uv pip install --no-cache --no-deps . \
+    && rm -rf /app/divelog_server /app/pyproject.toml
 RUN addgroup --system --gid 1001 app && adduser --system --uid 1001 --ingroup app app \
-    && mkdir -p /data/media /data/repo /data/state && chown -R app:app /data \
-    && git config --system safe.directory /data/repo
+    && mkdir -p /data/media /data/repo /data/commons /data/state && chown -R app:app /data \
+    && git config --system --add safe.directory /data/repo \
+    && git config --system --add safe.directory /data/commons
+WORKDIR /data
 USER app
 ARG APP_VERSION=0.0.0-dev
-ENV APP_VERSION=${APP_VERSION}
+ENV APP_VERSION=${APP_VERSION} \
+    DATA_ROOT=/data/repo \
+    STATE_DIR=/data/state \
+    MEDIA_ROOT=/data/media \
+    HOST=0.0.0.0 \
+    PORT=8000
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--workers", "1"]
+  CMD python -c "import os, urllib.request; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\", \"8000\")}/health')"
+CMD ["divelog-server"]
