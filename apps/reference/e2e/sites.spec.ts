@@ -1,0 +1,96 @@
+import { expect, test, type Page } from '@playwright/test';
+import { OWNER_COOKIE, SITE_NAME, SITE_SLUG } from './fixtures.mjs';
+
+function watchConsole(page: Page): string[] {
+  const errors: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+  page.on('pageerror', (error) => errors.push(error.message));
+  return errors;
+}
+
+test.describe('site creation and the site workspace', () => {
+  test.beforeEach(async ({ context, baseURL }) => {
+    await context.addCookies([{ name: OWNER_COOKIE, value: '1', url: baseURL! }]);
+  });
+
+  test('a site from a tap on the map, to its maps, in three actions', async ({ page }) => {
+    const errors = watchConsole(page);
+    let actions = 0;
+    await page.goto('/admin/sites/new');
+    const name = page.getByRole('textbox', { name: 'Name', exact: true });
+    await expect(name).toBeFocused();
+
+    await name.fill('Benchmark Quarry');
+    actions += 1;
+
+    const picker = page.locator('.dl-picker');
+    const tip = picker.getByText('Tap the map to place the pin');
+    const off = picker.locator('.dl-picker-off');
+    await expect(tip.or(off)).toBeVisible({ timeout: 15_000 });
+    if (await tip.isVisible()) {
+      const canvas = picker.locator('canvas');
+      const box = (await canvas.boundingBox())!;
+      await canvas.click({ position: { x: box.width / 2, y: box.height / 2 } });
+    } else {
+      await picker.getByRole('textbox', { name: 'Coordinates' }).fill('30, 10');
+      await picker.getByRole('textbox', { name: 'Coordinates' }).press('Enter');
+    }
+    actions += 1;
+
+    const country = page.getByRole('combobox', { name: 'Country', exact: true });
+    await expect(country).not.toHaveValue('');
+    const iso3 = (await country.inputValue()).toLowerCase();
+    await expect(page.locator('.id-line')).toContainText(`${iso3}-benchmark-quarry`);
+    await expect(page.locator('.id-line')).toContainText('available');
+
+    await page.getByRole('button', { name: 'Create & draw a map' }).click();
+    actions += 1;
+
+    await expect(page).toHaveURL(new RegExp(`/admin/sites/${iso3}-benchmark-quarry/maps$`));
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Benchmark Quarry');
+    await expect(page.getByRole('tab', { name: /^Maps/ })).toHaveAttribute('aria-selected', 'true');
+    expect(actions).toBeLessThanOrEqual(3);
+    expect(errors.filter((e) => !/404|Failed to load resource/.test(e))).toEqual([]);
+  });
+
+  test('the nearby check offers an existing site instead of a duplicate', async ({ page }) => {
+    await page.goto('/admin/sites/new');
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill(SITE_NAME);
+    const nearby = page.locator('.nearby');
+    await expect(nearby.locator('.hit')).toHaveCount(1);
+    await expect(nearby).toContainText('same name');
+    await nearby.getByRole('button', { name: `Use ${SITE_NAME} instead` }).click();
+    await expect(page).toHaveURL(new RegExp(`/admin/sites/${SITE_SLUG}$`));
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(SITE_NAME);
+  });
+
+  test('a pasted position fills the country and the id', async ({ page }) => {
+    await page.goto('/admin/sites/new');
+    await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Pasted Pit');
+    const coords = page.getByRole('textbox', { name: 'Coordinates' });
+    await coords.fill(`44°33'40"N 1°44'04"E`);
+    await coords.press('Enter');
+    await expect(coords).toHaveValue('44.561111, 1.734444');
+    await expect(page.getByRole('combobox', { name: 'Country', exact: true })).toHaveValue('FRA');
+    await expect(page.locator('.id-line')).toContainText('fra-pasted-pit');
+    await expect(page.locator('.nearby')).toContainText('Fontaine de Truffe');
+  });
+
+  test('the workspace switches tabs and keeps the maps deep link', async ({ page }) => {
+    await page.goto(`/admin/sites/${SITE_SLUG}/maps`);
+    await expect(page.getByRole('tab', { name: /^Maps/ })).toHaveAttribute('aria-selected', 'true');
+    await page.getByRole('tab', { name: 'Location' }).click();
+    await expect(page).toHaveURL(new RegExp(`/admin/sites/${SITE_SLUG}#location$`));
+    await expect(page.getByRole('textbox', { name: 'Coordinates' })).toHaveValue(
+      '52.090000, 5.120000',
+    );
+    await page.getByRole('tab', { name: 'Details' }).click();
+    await page.getByRole('textbox', { name: 'Area / town' }).fill('Maarssen');
+    await page.getByRole('tab', { name: 'Location' }).click();
+    await page.getByRole('tab', { name: 'Details' }).click();
+    await expect(page.getByRole('textbox', { name: 'Area / town' })).toHaveValue('Maarssen');
+    await expect(page.getByText('Unsaved changes')).toBeVisible();
+  });
+});

@@ -10,11 +10,51 @@
 import { createServer } from 'node:http';
 import { crc32, deflateSync } from 'node:zlib';
 import { commonsSearch, fixtures, OWNER_COOKIE, ownerFixtures } from './fixtures.mjs';
+import { COUNTRIES, createdSite, LICENCES, nearbySites, SITE_FIELDS } from './site-fixtures.mjs';
 
 const port = Number(process.argv[2] ?? process.env.STUB_PORT ?? 8399);
 const API = '/api/v1';
 const data = fixtures();
 const owned = ownerFixtures();
+/** Sites created during the run, by id, so a new site opens in its workspace. */
+const created = new Map();
+const logSites = () => [...data['/dive/sites'], ...created.values()];
+
+/** The JSON body of a request. */
+function readJson(req) {
+  return new Promise((resolve) => {
+    let raw = '';
+    req.on('data', (chunk) => (raw += chunk));
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(raw || '{}'));
+      } catch {
+        resolve({});
+      }
+    });
+  });
+}
+
+/** The site workspace and new-site endpoints; undefined when the path is not one of them. */
+async function siteEndpoint(req, path, searchParams) {
+  if (path === '/admin/sites/nearby' && req.method === 'GET')
+    return [200, nearbySites(logSites(), searchParams)];
+  if (path === '/admin/meta/site-fields') return [200, SITE_FIELDS];
+  if (path === '/admin/sites' && req.method === 'POST') {
+    const body = await readJson(req);
+    if (logSites().some((s) => s.id === body.site_id))
+      return [409, { detail: 'Site id already in use' }];
+    const site = createdSite(body);
+    created.set(site.id, site);
+    return [201, site];
+  }
+  const one = /^\/admin\/sites\/([^/]+)$/.exec(path);
+  if (one && req.method === 'GET') {
+    const site = logSites().find((s) => s.id === decodeURIComponent(one[1]));
+    return site ? [200, site] : [404, { detail: 'Site not found' }];
+  }
+  return undefined;
+}
 
 /** A solid 8×8 PNG in the accent colour, standing in for every photo. */
 function png(size = 8, rgb = [76, 201, 240]) {
@@ -48,7 +88,7 @@ function send(res, status, body, type = 'application/json') {
   res.end(payload);
 }
 
-const server = createServer((req, res) => {
+const server = createServer(async (req, res) => {
   const { pathname, searchParams } = new URL(req.url ?? '/', 'http://stub');
   const owner = (req.headers.cookie ?? '').includes(`${OWNER_COOKIE}=`);
   if (pathname === '/health') return send(res, 200, { status: 'ok' });
@@ -59,9 +99,13 @@ const server = createServer((req, res) => {
     const path = pathname.slice(API.length);
     if (path === '/admin/commons/sites')
       return send(res, 200, commonsSearch(searchParams.get('q')));
+    const site = await siteEndpoint(req, path, searchParams);
+    if (site) return send(res, site[0], site[1]);
     const body = owned[req.method === 'GET' ? path : `${req.method} ${path}`];
     return body === undefined ? send(res, 404, { detail: 'Not found' }) : send(res, 200, body);
   }
+  if (pathname === `${API}/meta/countries`) return send(res, 200, COUNTRIES);
+  if (pathname === `${API}/meta/licences`) return send(res, 200, LICENCES);
   if (pathname.startsWith(`${API}/`)) {
     const body = data[pathname.slice(API.length)];
     return body === undefined ? send(res, 404, { detail: 'Not found' }) : send(res, 200, body);
