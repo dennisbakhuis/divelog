@@ -217,7 +217,7 @@
         <div>
           <dt>{fact.label}</dt>
           <dd class="dl-num">{fact.value}</dd>
-          {#if fact.note}<span class="note">{fact.note}</span>{/if}
+          {#if fact.note}<dd class="note">{fact.note}</dd>{/if}
         </div>
       {/each}
     </dl>
@@ -415,9 +415,11 @@
     font-weight: 500;
     color: var(--dl-color-text);
   }
-  .note {
+  .facts dd.note {
     display: block;
+    margin: 0;
     font-size: 11.5px;
+    font-weight: 400;
     color: var(--dl-color-text-faint);
   }
   @media (max-width: 480px) {

@@ -774,6 +774,10 @@
   .also {
     margin-left: 0.4em;
   }
+  .also a {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
   .context-cards {
     display: grid;
     grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);

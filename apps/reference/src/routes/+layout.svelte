@@ -3,7 +3,7 @@
   import '@divelog/kit/styles/divelog.css';
   import '$lib/theme.css';
   import { page } from '$app/state';
-  import { setMapWorkerUrl } from '@divelog/kit';
+  import { setMapWorkerUrl, Toast } from '@divelog/kit';
   import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 
   let { children, data } = $props();
@@ -36,6 +36,8 @@
 <main>
   {@render children()}
 </main>
+
+<Toast />
 
 <style>
   .site-header {
