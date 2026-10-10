@@ -73,8 +73,10 @@
 <header class="site-head">
   <div class="title-row">
     <h1>{site.name}</h1>
-    <OriginBadge origin={site.origin} />
-    {#if site.forked_from}<span class="chip">forked from {site.forked_from}</span>{/if}
+    <OriginBadge
+      origin={site.origin}
+      detail={site.forked_from ? `from ${site.forked_from}` : undefined}
+    />
     {#if pin}
       <span class="chip pin" class:stale={pin.stale} data-pin={pin.stale ? 'stale' : 'current'}
         >{pin.stale

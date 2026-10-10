@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { OWNER_COOKIE, SITE_NAME, SITE_SLUG } from './fixtures.mjs';
 
@@ -34,8 +35,8 @@ test.describe('site creation and the site workspace', () => {
       const box = (await canvas.boundingBox())!;
       await canvas.click({ position: { x: box.width / 2, y: box.height / 2 } });
     } else {
-      await picker.getByRole('textbox', { name: 'Coordinates' }).fill('30, 10');
-      await picker.getByRole('textbox', { name: 'Coordinates' }).press('Enter');
+      await picker.getByRole('textbox', { name: 'Coordinates', exact: true }).fill('30, 10');
+      await picker.getByRole('textbox', { name: 'Coordinates', exact: true }).press('Enter');
     }
     actions += 1;
 
@@ -57,6 +58,7 @@ test.describe('site creation and the site workspace', () => {
 
   test('the nearby check offers an existing site instead of a duplicate', async ({ page }) => {
     await page.goto('/admin/sites/new');
+    await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeFocused();
     await page.getByRole('textbox', { name: 'Name', exact: true }).fill(SITE_NAME);
     const nearby = page.locator('.nearby');
     await expect(nearby.locator('.hit')).toHaveCount(1);
@@ -68,11 +70,12 @@ test.describe('site creation and the site workspace', () => {
 
   test('a pasted position fills the country and the id', async ({ page }) => {
     await page.goto('/admin/sites/new');
+    await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeFocused();
     await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Pasted Pit');
-    const coords = page.getByRole('textbox', { name: 'Coordinates' });
-    await coords.fill(`44°33'40"N 1°44'04"E`);
+    const coords = page.getByRole('textbox', { name: 'Coordinates', exact: true });
+    await coords.fill(`44°36'00"N 1°42'00"E`);
     await coords.press('Enter');
-    await expect(coords).toHaveValue('44.561111, 1.734444');
+    await expect(coords).toHaveValue('44.600000, 1.700000');
     await expect(page.getByRole('combobox', { name: 'Country', exact: true })).toHaveValue('FRA');
     await expect(page.locator('.id-line')).toContainText('fra-pasted-pit');
     await expect(page.locator('.nearby')).toContainText('Fontaine de Truffe');
@@ -80,10 +83,11 @@ test.describe('site creation and the site workspace', () => {
 
   test('the workspace switches tabs and keeps the maps deep link', async ({ page }) => {
     await page.goto(`/admin/sites/${SITE_SLUG}/maps`);
+    await page.waitForLoadState('networkidle');
     await expect(page.getByRole('tab', { name: /^Maps/ })).toHaveAttribute('aria-selected', 'true');
     await page.getByRole('tab', { name: 'Location' }).click();
     await expect(page).toHaveURL(new RegExp(`/admin/sites/${SITE_SLUG}#location$`));
-    await expect(page.getByRole('textbox', { name: 'Coordinates' })).toHaveValue(
+    await expect(page.getByRole('textbox', { name: 'Coordinates', exact: true })).toHaveValue(
       '52.090000, 5.120000',
     );
     await page.getByRole('tab', { name: 'Details' }).click();
@@ -92,5 +96,47 @@ test.describe('site creation and the site workspace', () => {
     await page.getByRole('tab', { name: 'Details' }).click();
     await expect(page.getByRole('textbox', { name: 'Area / town' })).toHaveValue('Maarssen');
     await expect(page.getByText('Unsaved changes')).toBeVisible();
+  });
+
+  test.describe('accessibility and the phone', () => {
+    test.use({ colorScheme: 'dark', reducedMotion: 'reduce' });
+
+    async function blocking(page: Page) {
+      const results = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+        .analyze();
+      return results.violations
+        .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+        .map((v) => ({ id: v.id, nodes: v.nodes.slice(0, 5).map((n) => n.target.join(' ')) }));
+    }
+
+    test('the new-site form and every workspace tab pass axe', async ({ page }) => {
+      await page.goto('/admin/sites/new');
+      await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeFocused();
+      await page.getByRole('textbox', { name: 'Name', exact: true }).fill(SITE_NAME);
+      await expect(page.locator('.nearby .hit')).toHaveCount(1);
+      expect(await blocking(page)).toEqual([]);
+
+      await page.goto(`/admin/sites/${SITE_SLUG}`);
+      await page.waitForLoadState('networkidle');
+      for (const tab of ['Details', 'Location', 'Photos', 'Dives']) {
+        await page.getByRole('tab', { name: new RegExp(`^${tab}`) }).click();
+        await page.waitForLoadState('networkidle');
+        expect({ tab, violations: await blocking(page) }).toEqual({ tab, violations: [] });
+      }
+    });
+
+    test('the new-site form fits a phone', async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto('/admin/sites/new');
+      await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeFocused();
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(overflow).toBeLessThanOrEqual(0);
+      const create = page.getByRole('button', { name: 'Create', exact: true });
+      const box = (await create.boundingBox())!;
+      expect(box.height).toBeGreaterThanOrEqual(44);
+    });
   });
 });

@@ -83,7 +83,7 @@ describe('SiteHeader', () => {
       vi.fn(() => true),
     );
     const { target, app, button, onChanged } = render(site);
-    expect(target.textContent).toContain('forked from commons@4');
+    expect(target.querySelector('[data-origin]')?.textContent).toBe('fork· from commons@4');
     button('Drop fork, back to the commons record')!.click();
     await settle();
     expect(calls.map((c) => c.method)).toEqual(['DELETE', 'GET']);

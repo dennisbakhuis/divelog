@@ -22,10 +22,9 @@ describe('AdminSitesPage origins', () => {
   it('badges each site with its origin and flags stale pins', () => {
     const { target, app } = render();
     const badges = [...target.querySelectorAll('tbody [data-origin]')].map((b) => b.textContent);
-    expect(badges).toEqual(['personal', 'commons', 'commons', 'fork']);
-    expect(target.querySelector('[data-origin="fork"]')?.getAttribute('title')).toBe(
-      'forked from commons@4',
-    );
+    expect(badges).toEqual(['personal', 'commons', 'commons', 'fork· from commons@4']);
+    expect(target.querySelector('[data-origin="fork"]')?.textContent).toBe('fork· from commons@4');
+    expect(target.querySelector('.stale')?.textContent).toContain('stale · r4 → r6');
     expect(target.querySelectorAll('.stale')).toHaveLength(2);
     unmount(app);
   });

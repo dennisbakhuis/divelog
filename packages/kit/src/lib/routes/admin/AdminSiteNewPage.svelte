@@ -14,7 +14,7 @@
   /** Where each create button leads: the site, a new dive at it, or its Maps tab. */
   function after(site: Site, action: SiteCreateAction): Promise<void> {
     const id = encodeURIComponent(site.id);
-    if (action === 'log') return goto(`${urls.admin.newDive()}?site=${id}`);
+    if (action === 'log') return goto(urls.admin.newDive({ site: site.id }));
     if (action === 'map') return goto(urls.admin.siteMaps(id));
     return goto(urls.admin.site(id));
   }

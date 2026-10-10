@@ -91,7 +91,12 @@
             ><a href={urls.admin.site(site.id)}>{site.name}</a>{#if site.area}<span class="muted">
                 · {site.area}</span
               >{/if}{#if site.private?.pin?.stale}
-              <span class="dl-tag stale" title={pinMessage(site.private.pin)}>stale</span>{/if}</td
+              <span class="dl-tag stale"
+                >stale · r{site.private.pin.pinned_revision ?? '–'} → r{site.private.pin
+                  .current_revision}<span class="dl-visually-hidden"
+                  >: {pinMessage(site.private.pin)}</span
+                ></span
+              >{/if}</td
           >
           <td>{site.country ?? site.country_code}</td>
           <td>{site.site_type}</td>
@@ -99,7 +104,7 @@
           <td
             ><OriginBadge
               origin={site.origin}
-              title={site.forked_from ? `forked from ${site.forked_from}` : undefined}
+              detail={site.forked_from ? `from ${site.forked_from}` : undefined}
             /></td
           >
           <td class="n dl-num">{site.dives}</td>

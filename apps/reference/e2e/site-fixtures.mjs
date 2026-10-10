@@ -15,9 +15,17 @@ export const COUNTRIES = [
 
 /** `GET /meta/licences` */
 export const LICENCES = [
-  { id: 'CC0-1.0', name: 'CC0 1.0 Universal', url: 'https://creativecommons.org/publicdomain/zero/1.0/' },
+  {
+    id: 'CC0-1.0',
+    name: 'CC0 1.0 Universal',
+    url: 'https://creativecommons.org/publicdomain/zero/1.0/',
+  },
   { id: 'CC-BY-4.0', name: 'CC BY 4.0', url: 'https://creativecommons.org/licenses/by/4.0/' },
-  { id: 'CC-BY-SA-4.0', name: 'CC BY-SA 4.0', url: 'https://creativecommons.org/licenses/by-sa/4.0/' },
+  {
+    id: 'CC-BY-SA-4.0',
+    name: 'CC BY-SA 4.0',
+    url: 'https://creativecommons.org/licenses/by-sa/4.0/',
+  },
 ];
 
 /** `GET /admin/meta/site-fields` */
@@ -78,8 +86,7 @@ export function nearbySites(sites, params) {
   const name = (params.get('name') ?? '').trim().toLowerCase();
   const radius = Number(params.get('radius_m') ?? 300);
   const match = (site) => {
-    const d =
-      lat !== null && site.lat !== null ? Math.round(metres({ lat, lon }, site)) : null;
+    const d = lat !== null && site.lat !== null ? Math.round(metres({ lat, lon }, site)) : null;
     if (name && site.name.toLowerCase() === name) return { matched_by: 'name', distance_m: d };
     if (d !== null && d <= radius) return { matched_by: 'distance', distance_m: d };
     return null;

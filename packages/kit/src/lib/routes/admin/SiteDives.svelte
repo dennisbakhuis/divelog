@@ -16,7 +16,7 @@
   let rows = $state<DiveRow[] | null>(null);
   let error = $state('');
 
-  const newDiveHref = $derived(`${urls.admin.newDive()}?site=${encodeURIComponent(site.id)}`);
+  const newDiveHref = $derived(urls.admin.newDive({ site: site.id }));
 
   onMount(async () => {
     try {
