@@ -95,6 +95,11 @@ beforeEach(() => {
     'confirm',
     vi.fn(() => true),
   );
+  const memory = new Map<string, string>();
+  vi.stubGlobal('localStorage', {
+    getItem: (k: string) => memory.get(k) ?? null,
+    setItem: (k: string, v: string) => memory.set(k, v),
+  });
 });
 
 afterEach(() => {

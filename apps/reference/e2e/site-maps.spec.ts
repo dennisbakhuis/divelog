@@ -18,6 +18,7 @@ test.describe('site maps', () => {
   test('Start from OpenStreetMap, then Save map, gives the site a map', async ({ page }) => {
     const errors = watchConsole(page);
     await page.goto(`/admin/sites/${SITE_SLUG}/maps`);
+    await page.waitForLoadState('networkidle');
     await expect(page.getByRole('tab', { name: 'Maps', selected: true })).toBeVisible();
     await page.getByRole('button', { name: 'Start from OpenStreetMap' }).click();
     await expect(page.getByText('new · not saved yet')).toBeVisible();
@@ -33,6 +34,7 @@ test.describe('site maps', () => {
 
   test('single-key shortcuts act only on the focused canvas', async ({ page }) => {
     await page.goto(`/admin/sites/${SITE_SLUG}/maps`);
+    await page.waitForLoadState('networkidle');
     await page.getByRole('button', { name: 'Blank stick map' }).click();
     const tool = page.getByRole('radiogroup', { name: 'Drawing tool' });
     await expect(tool.getByRole('radio', { name: /Station/ })).toBeChecked();
