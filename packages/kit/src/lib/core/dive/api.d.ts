@@ -388,7 +388,14 @@ export interface paths {
     delete: operations['admin_delete_dive_api_v1_admin_dives__number__delete'];
     options?: never;
     head?: never;
-    patch?: never;
+    /**
+     * Admin Patch Dive
+     * @description Change the fields that live outside the dive form, leaving everything else as stored.
+     *
+     *     Only the fields present in the body are written; ``cover_attachment_id`` must name one of
+     *     the dive's attachments, or be ``null`` for no cover.
+     */
+    patch: operations['admin_patch_dive_api_v1_admin_dives__number__patch'];
     trace?: never;
   };
   '/api/v1/admin/dives/{number}/attachments': {
@@ -459,6 +466,29 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/admin/dives/{number}/attachments/order': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Admin Order Attachments
+     * @description Put a dive's attachments in the order of the ids given, in one commit.
+     *
+     *     Unknown ids are ignored; attachments left out keep their relative order after the listed
+     *     ones.
+     */
+    put: operations['admin_order_attachments_api_v1_admin_dives__number__attachments_order_put'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/admin/attachments/{media_id}': {
     parameters: {
       query?: never;
@@ -487,7 +517,13 @@ export interface paths {
     /** Admin Sites */
     get: operations['admin_sites_api_v1_admin_sites_get'];
     put?: never;
-    /** Admin Create Site */
+    /**
+     * Admin Create Site
+     * @description Create a personal site.
+     *
+     *     The id must match ``{iso3}-{slug}`` (422 naming the pattern otherwise) and be free (409).
+     *     Existing sites keep whatever id they have, so the check is on create only.
+     */
     post: operations['admin_create_site_api_v1_admin_sites_post'];
     delete?: never;
     options?: never;
@@ -1319,7 +1355,7 @@ export interface components {
       /** Types Raw */
       types_raw: string | null;
       /** Gas */
-      gas: string;
+      gas: string | null;
       /** O2 Pct */
       o2_pct: number | null;
       /** O2 Measured Pct */
@@ -1493,12 +1529,8 @@ export interface components {
       tags?: string[];
       /** Types Raw */
       types_raw?: string | null;
-      /**
-       * Gas
-       * @default air
-       * @enum {string}
-       */
-      gas?: 'air' | 'nitrox' | 'trimix';
+      /** Gas */
+      gas?: ('air' | 'nitrox' | 'trimix') | null;
       /** O2 Pct */
       o2_pct?: number | null;
       /** O2 Measured Pct */
@@ -1599,7 +1631,7 @@ export interface components {
       /** Tags */
       tags: string[];
       /** Gas */
-      gas: string;
+      gas: string | null;
       /** Gases */
       gases: string[];
       /** Mode */
@@ -1759,7 +1791,7 @@ export interface components {
       /** Types Raw */
       types_raw: string | null;
       /** Gas */
-      gas: string;
+      gas: string | null;
       /** O2 Pct */
       o2_pct: number | null;
       /** O2 Measured Pct */
@@ -1852,6 +1884,14 @@ export interface components {
        * @description The dive story as sanitised HTML.
        */
       readonly body_html: string;
+    };
+    /**
+     * DivePatch
+     * @description The fields that change on their own, outside the dive form: for now the cover.
+     */
+    DivePatch: {
+      /** Cover Attachment Id */
+      cover_attachment_id?: string | null;
     };
     /** DivePrivate */
     DivePrivate: {
@@ -4306,6 +4346,41 @@ export interface operations {
       };
     };
   };
+  admin_patch_dive_api_v1_admin_dives__number__patch: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        number: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DivePatch'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DiveAdminOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
   admin_upload_attachment_api_v1_admin_dives__number__attachments_post: {
     parameters: {
       query?: {
@@ -4439,6 +4514,41 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['AttachmentOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  admin_order_attachments_api_v1_admin_dives__number__attachments_order_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        number: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': string[];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AttachmentOut'][];
         };
       };
       /** @description Validation Error */

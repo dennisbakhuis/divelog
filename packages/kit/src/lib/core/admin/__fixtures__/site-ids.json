@@ -1,0 +1,18 @@
+[
+  { "country": "MEX", "name": "Cenote Tortuga", "id": "mex-cenote-tortuga" },
+  { "country": "fra", "name": "Émergence du Ressel", "id": "fra-emergence-du-ressel" },
+  {
+    "country": " NLD ",
+    "name": "  Zeelandbrug (Oosterschelde) ",
+    "id": "nld-zeelandbrug-oosterschelde"
+  },
+  { "country": "DEU", "name": "Kreidesee Hemmoor — Ü-Boot", "id": "deu-kreidesee-hemmoor-u-boot" },
+  { "country": "NOR", "name": "Gulen ørsta straße", "id": "nor-gulen-rsta-strae" },
+  { "country": "EGY", "name": "SS Thistlegorm #2", "id": "egy-ss-thistlegorm-2" },
+  { "country": "MLT", "name": "--Blue  Hole--", "id": "mlt-blue-hole" },
+  { "country": "THA", "name": "ﬁsh rock", "id": "tha-fish-rock" },
+  { "country": "", "name": "Somewhere", "id": "xxx-somewhere" },
+  { "country": null, "name": "Lac d'Annecy", "id": "xxx-lac-d-annecy" },
+  { "country": "NL", "name": "Vinkeveen", "id": "xxx-vinkeveen" },
+  { "country": "ITA", "name": "洞窟", "id": "ita-site" }
+]

@@ -120,3 +120,82 @@ describe('SiteForm sharing actions', () => {
     unmount(stale.app);
   });
 });
+
+describe('SiteForm site id', () => {
+  const type = (el: HTMLInputElement, value: string) => {
+    el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    flushSync();
+  };
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  function renderNew() {
+    const target = document.createElement('div');
+    const app = mount(SiteForm, { target, props: { site: null, regions: [], onSaved: vi.fn() } });
+    flushSync();
+    const field = (label: string) =>
+      [...target.querySelectorAll('label')]
+        .find((l) => l.textContent?.trim().startsWith(label))
+        ?.querySelector('input') as HTMLInputElement;
+    return {
+      target,
+      app,
+      name: field('Name'),
+      id: target.querySelector<HTMLInputElement>('#site-id')!,
+      hint: () => target.querySelector('#site-id-hint')?.textContent?.replace(/\s+/g, ' ').trim(),
+    };
+  }
+
+  it('previews the id from country and name, and says when it is free', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        calls.push(`GET ${url}`);
+        return new Response(JSON.stringify({ detail: 'Site not found' }), { status: 404 });
+      }),
+    );
+    const { app, name, id, hint } = renderNew();
+    type(name, 'Vinkeveense Plassen');
+    expect(hint()).toContain('Will be nld-vinkeveense-plassen.');
+    expect(id.getAttribute('aria-describedby')).toBe('site-id-hint');
+    await wait(450);
+    await settle();
+    expect(calls).toEqual(['GET /api/v1/admin/sites/nld-vinkeveense-plassen']);
+    expect(hint()).toContain('Available.');
+    unmount(app);
+  });
+
+  it('flags an id already in use', async () => {
+    fakeFetch({ 'GET /api/v1/admin/sites/nld-example': fakeSite() });
+    const { app, id, hint } = renderNew();
+    type(id, 'nld-example');
+    await wait(450);
+    await settle();
+    expect(hint()).toContain('Already in use');
+    expect(id.getAttribute('aria-invalid')).toBe('true');
+    unmount(app);
+  });
+
+  it('slugifies a typed id on blur and asks for a country prefix', async () => {
+    const calls = fakeFetch({});
+    const { app, id, hint } = renderNew();
+    type(id, '  Blue Hole — Gozo ');
+    id.dispatchEvent(new Event('blur'));
+    flushSync();
+    expect(id.value).toBe('blue-hole-gozo');
+    expect(hint()).toContain('Needs a country prefix');
+    await wait(450);
+    expect(calls).toHaveLength(0);
+    unmount(app);
+  });
+
+  it('checks nothing while editing an existing site', async () => {
+    const calls = fakeFetch({});
+    const { target, app } = render(fakeSite());
+    expect(target.querySelector('#site-id-hint')).toBeNull();
+    await wait(450);
+    expect(calls).toHaveLength(0);
+    unmount(app);
+  });
+});

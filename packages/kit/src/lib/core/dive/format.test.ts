@@ -15,6 +15,7 @@ import {
   ordinal,
   pluralize,
   siteLocation,
+  todayLocal,
 } from './format.js';
 
 describe('formatMinutes', () => {
@@ -129,5 +130,17 @@ describe('formatDateRange', () => {
     expect(formatDateRange('2026-02-06', '2026-02-22')).toBe('6–22 Feb 2026');
     expect(formatDateRange('2025-02-25', '2025-03-10')).toBe('25 Feb – 10 Mar 2025');
     expect(formatDateRange('2009-12-30', '2010-01-02')).toBe('30 Dec 2009 – 2 Jan 2010');
+  });
+});
+
+describe('todayLocal', () => {
+  it('uses the local calendar day, also late in the evening', () => {
+    expect(todayLocal(new Date(2026, 9, 10, 23, 45))).toBe('2026-10-10');
+    expect(todayLocal(new Date(2026, 0, 1, 0, 5))).toBe('2026-01-01');
+  });
+
+  it('defaults to now', () => {
+    const now = new Date();
+    expect(todayLocal()).toBe(todayLocal(now));
   });
 });

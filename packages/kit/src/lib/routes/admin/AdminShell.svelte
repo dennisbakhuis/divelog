@@ -43,7 +43,11 @@
   const admin = escapeRegExp(urls.admin.base);
   const under = (rest: string) => new RegExp(`^${admin}${rest}(\\/|$)`);
   const nav = [
-    { href: urls.admin.root(), label: 'Dives', match: under('(\\/dives(?!\\/new))?') },
+    {
+      href: urls.admin.root(),
+      label: 'Dives',
+      match: new RegExp(`^${admin}(\\/?$|\\/dives(\\/|$))`),
+    },
     { href: urls.admin.sites(), label: 'Sites', match: under('\\/(sites|regions)') },
     { href: urls.admin.people(), label: 'People', match: under('\\/people') },
     { href: urls.admin.trips(), label: 'Trips', match: under('\\/trips') },

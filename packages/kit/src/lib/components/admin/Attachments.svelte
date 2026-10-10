@@ -1,7 +1,6 @@
 <script lang="ts">
   import { invalidateAll } from '$app/navigation';
   import { adminApi, adminJson, adminUpload, AdminApiError } from '$lib/core/admin/client';
-  import { diveToInput } from '$lib/core/admin/dive-input';
   import type { Attachment, DiveAdmin } from '$lib/core/dive/types';
   import { toast } from '$lib/components/stores/toast.svelte';
 
@@ -33,26 +32,45 @@
     await invalidateAll();
   }
 
+  function fail(what: string, err: unknown) {
+    toast.show({
+      kind: 'error',
+      message: `${what}: ${err instanceof AdminApiError ? err.message : 'request failed'}`,
+    });
+  }
+
+  /** Run one attachment request, then reload; a failure becomes an error toast. */
+  async function attempt(what: string, request: () => Promise<unknown>): Promise<boolean> {
+    try {
+      await request();
+    } catch (err) {
+      fail(what, err);
+      return false;
+    }
+    await invalidateAll();
+    return true;
+  }
+
   async function patch(
     a: Attachment,
     body: Partial<Pick<Attachment, 'caption' | 'kind' | 'sort' | 'public' | 'credit'>>,
   ) {
-    await adminJson(adminApi('attachments', a.id), 'PATCH', body);
-    await invalidateAll();
+    await attempt(`Could not update ${a.original_name || a.kind}`, () =>
+      adminJson(adminApi('attachments', a.id), 'PATCH', body),
+    );
   }
 
   async function remove(a: Attachment) {
     if (!confirm(`Delete ${a.original_name || a.kind}?`)) return;
-    await adminJson(adminApi('attachments', a.id), 'DELETE');
-    await invalidateAll();
+    await attempt(`Could not delete ${a.original_name || a.kind}`, () =>
+      adminJson(adminApi('attachments', a.id), 'DELETE'),
+    );
   }
 
   async function setCover(a: Attachment) {
-    await adminJson(adminApi('dives', dive.number), 'PUT', {
-      ...diveToInput(dive),
-      cover_attachment_id: a.id,
-    });
-    await invalidateAll();
+    await attempt('Could not set the cover', () =>
+      adminJson(adminApi('dives', dive.number), 'PATCH', { cover_attachment_id: a.id }),
+    );
   }
 
   async function move(a: Attachment, delta: number) {
@@ -60,9 +78,14 @@
     const i = sorted.findIndex((x) => x.id === a.id);
     const j = i + delta;
     if (j < 0 || j >= sorted.length) return;
-    await adminJson(adminApi('attachments', sorted[i].id), 'PATCH', { sort: j });
-    await adminJson(adminApi('attachments', sorted[j].id), 'PATCH', { sort: i });
-    await invalidateAll();
+    [sorted[i], sorted[j]] = [sorted[j], sorted[i]];
+    await attempt('Could not reorder', () =>
+      adminJson(
+        adminApi('dives', dive.number, 'attachments', 'order'),
+        'PUT',
+        sorted.map((x) => x.id),
+      ),
+    );
   }
 </script>
 

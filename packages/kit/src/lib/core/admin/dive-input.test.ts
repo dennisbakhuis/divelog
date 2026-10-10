@@ -1,17 +1,77 @@
 import { describe, expect, it } from 'vitest';
 import type { Tank } from '$lib/core/dive/types.js';
 import { DEFAULT_CONFIG } from '$lib/core/dive/config.js';
+import { todayLocal } from '$lib/core/dive/format.js';
+import { fakeDiveAdmin } from '$lib/components/admin/__fixtures__/dive.js';
 import {
   CYLINDER_PRESETS,
+  DERIVED_GAS_FIELDS,
   DIVE_TAGS,
   presetsFor,
   STANDARD_GASES,
   applyTemplate,
   cleanInput,
+  diveToInput,
   emptyDiveInput,
+  formPayload,
   formSnapshot,
+  liveFields,
   parseComputer,
+  savePayload,
 } from './dive-input.js';
+
+describe('emptyDiveInput', () => {
+  it('assumes nothing about depth, time or gas, and dates the dive today, locally', () => {
+    const form = emptyDiveInput(12);
+    expect(form.number).toBe(12);
+    expect(form.date).toBe(todayLocal());
+    expect(form.duration_min).toBeNull();
+    expect(form.max_depth_m).toBeNull();
+    expect(form.gas).toBeNull();
+    expect(form.o2_pct).toBeNull();
+    expect(form.he_pct).toBeNull();
+    expect(form.tanks).toEqual([]);
+    expect(form.visibility).toBe('public');
+  });
+});
+
+describe('formPayload', () => {
+  it('leaves the gas fields to the server, which derives them from the tanks', () => {
+    const payload = formPayload(emptyDiveInput(3), '');
+    for (const key of DERIVED_GAS_FIELDS) expect(payload).not.toHaveProperty(key);
+    expect(payload).toHaveProperty('gas_raw');
+    expect(payload).toHaveProperty('tanks');
+  });
+
+  it('turns typed depth and duration into numbers and blanks into null', () => {
+    const form = emptyDiveInput(3);
+    form.duration_min = '52' as unknown as number;
+    form.max_depth_m = '' as unknown as number;
+    const payload = formPayload(form, '');
+    expect(payload.duration_min).toBe(52);
+    expect(payload.max_depth_m).toBeNull();
+  });
+});
+
+describe('savePayload', () => {
+  it('takes the cover and flags from the dive as stored now, not as the form opened', () => {
+    const opened = fakeDiveAdmin();
+    const form = diveToInput(opened);
+    const now = fakeDiveAdmin({
+      cover_attachment_id: 'p9',
+      private: { ...opened.private!, flags: ['late'] },
+    });
+    const payload = savePayload(form, '', now);
+    expect(payload.cover_attachment_id).toBe('p9');
+    expect(payload.flags).toEqual(['late']);
+    expect(payload.title).toBe(opened.title);
+  });
+
+  it('starts a new dive with no cover and no flags', () => {
+    expect(liveFields(null)).toEqual({ cover_attachment_id: null, flags: [] });
+    expect(savePayload(emptyDiveInput(1), '', null).cover_attachment_id).toBeNull();
+  });
+});
 
 describe('cleanInput', () => {
   it('keeps required text empty instead of null, and blanks the rest', () => {

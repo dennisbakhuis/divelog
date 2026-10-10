@@ -44,6 +44,12 @@ export function formatLongDate(iso: string): string {
   return longDateFormatter.format(new Date(`${iso}T00:00:00`));
 }
 
+/** Today's date as `YYYY-MM-DD` in the browser's time zone, not UTC. */
+export function todayLocal(now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
 export function formatTime(hms: string | null | undefined): string {
   if (!hms) return '';
   return hms.slice(0, 5);

@@ -1,6 +1,9 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { adminJson, AdminApiError } from '$lib/core/admin/client';
+  import { getDivelog } from '$lib/core/dive/context';
+
+  const { config } = getDivelog();
 
   let email = $state('');
   let sent = $state(false);
@@ -33,13 +36,15 @@
       <p>
         If that address is the owner's, a sign-in link is on its way. It is valid for 15 minutes.
       </p>
-      <p class="hint">
-        Running locally? The mail lands in <a
-          href="http://localhost:8325"
-          target="_blank"
-          rel="noopener">Mailpit</a
-        >.
-      </p>
+      {#if config.devHints === true}
+        <p class="hint">
+          Running locally? The mail lands in <a
+            href="http://localhost:8325"
+            target="_blank"
+            rel="noopener">Mailpit</a
+          >.
+        </p>
+      {/if}
     {:else}
       <form onsubmit={submit}>
         <label>

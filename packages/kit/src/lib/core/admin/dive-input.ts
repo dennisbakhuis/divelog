@@ -1,6 +1,7 @@
 import type { DiveAdmin, Tank, TankGas } from '$lib/core/dive/types.js';
 import type { DiveMapAnnotation } from '$lib/core/dive/sitemap.js';
 import type { CylinderPreset, DivelogConfig, GasPreset } from '$lib/core/dive/config.js';
+import { todayLocal } from '$lib/core/dive/format.js';
 
 /** Canonical tags a dive can carry; the paper log's own words stay in `types_raw`. */
 export const DIVE_TAGS = [
@@ -23,8 +24,9 @@ export type DiveInput = {
   date: string;
   time_in: string | null;
   time_out: string | null;
-  duration_min: number;
-  max_depth_m: number;
+  /** Required by the API; `null` until typed, so a new dive never saves a made-up value. */
+  duration_min: number | null;
+  max_depth_m: number | null;
   avg_depth_m: number | null;
   water_temp_c: number | null;
   surface_temp_c: number | null;
@@ -37,7 +39,7 @@ export type DiveInput = {
   trip_id: string | null;
   tags: string[];
   types_raw: string | null;
-  gas: string;
+  gas: string | null;
   o2_pct: number | null;
   o2_measured_pct: number | null;
   he_pct: number | null;
@@ -128,15 +130,16 @@ export function diveToInput(dive: DiveAdmin): DiveInput {
   };
 }
 
+/** A blank dive: today's local date and nothing assumed about depth, time or gas. */
 export function emptyDiveInput(number: number): DiveInput {
   return {
     number,
     title: '',
-    date: new Date().toISOString().slice(0, 10),
+    date: todayLocal(),
     time_in: null,
     time_out: null,
-    duration_min: 45,
-    max_depth_m: 18,
+    duration_min: null,
+    max_depth_m: null,
     avg_depth_m: null,
     water_temp_c: null,
     surface_temp_c: null,
@@ -149,8 +152,8 @@ export function emptyDiveInput(number: number): DiveInput {
     trip_id: null,
     tags: [],
     types_raw: null,
-    gas: 'nitrox',
-    o2_pct: 32,
+    gas: null,
+    o2_pct: null,
     o2_measured_pct: null,
     he_pct: null,
     gas_raw: null,
@@ -194,6 +197,8 @@ export function cleanInput(form: DiveInput): DiveInput {
     if (value === '' && !REQUIRED_TEXT.has(key)) out[key] = null;
   }
   const numeric = [
+    'duration_min',
+    'max_depth_m',
     'avg_depth_m',
     'water_temp_c',
     'surface_temp_c',
@@ -242,9 +247,55 @@ export function parseComputer(text: string): number[] {
     .filter((n) => Number.isInteger(n) && n > 0);
 }
 
+/**
+ * The single-gas fields the server derives from the first back-gas tank; the form never sends
+ * them, so a dive without tanks is stored with an unknown gas rather than a guessed one.
+ */
+export const DERIVED_GAS_FIELDS = [
+  'gas',
+  'o2_pct',
+  'o2_measured_pct',
+  'he_pct',
+  'cylinder',
+  'pressure_in_bar',
+  'pressure_out_bar',
+] as const satisfies readonly (keyof DiveInput)[];
+
+export type DivePayload = Omit<DiveInput, (typeof DERIVED_GAS_FIELDS)[number]>;
+
 /** What the form would save: the cleaned input with the computer numbers parsed. */
-export function formPayload(form: DiveInput, computerText: string): DiveInput {
-  return { ...cleanInput(form), computer: parseComputer(computerText) };
+export function formPayload(form: DiveInput, computerText: string): DivePayload {
+  const out: Partial<DiveInput> = { ...cleanInput(form), computer: parseComputer(computerText) };
+  for (const key of DERIVED_GAS_FIELDS) delete out[key];
+  return out as DivePayload;
+}
+
+/** Fields the form does not edit; a save takes them from the stored dive as it is now. */
+export const LIVE_FIELDS = [
+  'cover_attachment_id',
+  'flags',
+] as const satisfies readonly (keyof DiveInput)[];
+
+export type LiveFields = Pick<DiveInput, (typeof LIVE_FIELDS)[number]>;
+
+/**
+ * The fields of the current stored dive that a save must not roll back: the cover (set from the
+ * attachments while the form is open) and the private flags. A new dive starts with none.
+ */
+export function liveFields(dive: DiveAdmin | null): LiveFields {
+  return {
+    cover_attachment_id: dive?.cover_attachment_id ?? null,
+    flags: [...(dive?.private?.flags ?? [])],
+  };
+}
+
+/** The body a save sends: the form's payload over the live fields of the stored dive. */
+export function savePayload(
+  form: DiveInput,
+  computerText: string,
+  dive: DiveAdmin | null,
+): DivePayload {
+  return { ...formPayload(form, computerText), ...liveFields(dive) };
 }
 
 /** A comparable fingerprint of the form; unequal fingerprints mean unsaved changes. */
@@ -318,7 +369,7 @@ export function emptyTank(role: Tank['role'] = 'back'): Tank {
 /** The old single-line gas fields as one back tank, so the editor always shows a row. */
 export function legacyTanks(dive: {
   cylinder: string | null;
-  gas: string;
+  gas: string | null;
   o2_pct: number | null;
   o2_measured_pct: number | null;
   he_pct: number | null;
@@ -330,7 +381,7 @@ export function legacyTanks(dive: {
     {
       cylinder: dive.cylinder ?? '',
       volume_l: null,
-      gas: (['air', 'nitrox', 'trimix'].includes(dive.gas) ? dive.gas : 'air') as TankGas,
+      gas: (['air', 'nitrox', 'trimix'].includes(dive.gas ?? '') ? dive.gas : 'air') as TankGas,
       o2_pct: dive.o2_pct,
       o2_measured_pct: dive.o2_measured_pct,
       he_pct: dive.he_pct,

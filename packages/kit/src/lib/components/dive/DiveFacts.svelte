@@ -97,7 +97,7 @@
       ...(dive.tanks.length
         ? tankFacts
         : [
-            {
+            !!dive.gas && {
               label: 'Gas',
               value: gasLabel(dive.gas, dive.o2_pct, dive.he_pct) + measured(dive.o2_measured_pct),
               numeric: false,

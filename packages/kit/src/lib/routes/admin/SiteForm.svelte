@@ -1,6 +1,6 @@
 <script lang="ts">
   import { adminApi, adminJson, AdminApiError } from '$lib/core/admin/client';
-  import { siteIdFor } from '$lib/core/admin/slug';
+  import { SITE_ID, siteIdFor, slugify } from '$lib/core/admin/slug';
   import type { Price, Region, Site } from '$lib/core/dive/types';
   import { toast } from '$lib/components/stores/toast.svelte';
   import { getDivelog } from '$lib/core/dive/context';
@@ -34,6 +34,8 @@
     'indoor dive tower',
     'river',
   ];
+
+  const AVAILABILITY_DELAY_MS = 350;
 
   const empty = () => ({
     site_id: '',
@@ -111,8 +113,35 @@
       .filter(Boolean);
   const num = (value: string | number) => (value === '' ? null : Number(value));
 
+  /** The id a new site will get: what was typed, else derived from country and name. */
+  const newId = $derived(
+    site ? site.id : form.site_id || (form.name.trim() ? siteIdFor(form.country, form.name) : ''),
+  );
+  let availability = $state<'checking' | 'free' | 'taken' | null>(null);
+
+  $effect(() => {
+    const id = newId;
+    availability = null;
+    if (site || !SITE_ID.test(id)) return;
+    let stale = false;
+    const timer = setTimeout(async () => {
+      availability = 'checking';
+      try {
+        await adminJson<Site>(adminApi('sites', id));
+        if (!stale) availability = 'taken';
+      } catch (err) {
+        if (!stale)
+          availability = err instanceof AdminApiError && err.status === 404 ? 'free' : null;
+      }
+    }, AVAILABILITY_DELAY_MS);
+    return () => {
+      stale = true;
+      clearTimeout(timer);
+    };
+  });
+
   function body() {
-    const siteId = form.site_id || siteIdFor(form.country, form.name);
+    const siteId = newId;
     const access =
       form.access_lat !== '' || form.access_lon !== '' || form.access_note
         ? { lat: num(form.access_lat), lon: num(form.access_lon), note: form.access_note || null }
@@ -254,14 +283,35 @@
 <form class="dl-card form" onsubmit={save}>
   <div class="field-row">
     <label>Name<input type="text" bind:value={form.name} required /></label>
-    <label
-      >Site id<input
+    <div class="id-field">
+      <label for="site-id">Site id</label>
+      <input
+        id="site-id"
         type="text"
         bind:value={form.site_id}
         readonly={!!site}
-        placeholder="auto: cc-name"
-      /></label
-    >
+        placeholder="auto: country-name"
+        aria-describedby={site ? undefined : 'site-id-hint'}
+        aria-invalid={!site && availability === 'taken' ? true : undefined}
+        onblur={() => {
+          if (!site) form.site_id = slugify(form.site_id);
+        }}
+      />
+      {#if !site && newId}
+        <p class="hint" id="site-id-hint" aria-live="polite">
+          {#if !form.site_id}Will be <code>{newId}</code>.{/if}
+          {#if !SITE_ID.test(newId)}
+            Needs a country prefix, like <code>nld-{slugify(form.name) || 'name'}</code>.
+          {:else if availability === 'checking'}
+            Checking…
+          {:else if availability === 'free'}
+            <span class="free">Available.</span>
+          {:else if availability === 'taken'}
+            <span class="taken">Already in use; pick another id.</span>
+          {/if}
+        </p>
+      {/if}
+    </div>
     <label>
       Type
       <input type="text" list="site-types" bind:value={form.type} required />
@@ -506,6 +556,20 @@
   .readonly .label {
     font-size: 12.5px;
     color: var(--dl-color-text-muted);
+  }
+  .id-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .id-field .hint {
+    margin: 0;
+  }
+  .free {
+    color: var(--dl-color-success);
+  }
+  .taken {
+    color: var(--dl-color-error);
   }
   .hint {
     font-size: 12.5px;

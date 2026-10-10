@@ -22,7 +22,7 @@
 
   let {
     maps,
-    value,
+    value: given,
     onChange,
   }: {
     /** The site's drawn maps. */
@@ -30,6 +30,9 @@
     value: DiveMapAnnotation | null;
     onChange: (annotation: DiveMapAnnotation | null) => void;
   } = $props();
+
+  /** The annotation being edited; with a single map that map is picked until one is chosen. */
+  const value = $derived(given ?? (maps.length === 1 ? emptyAnnotation(maps[0]) : null));
 
   type Tool = 'route' | 'turn' | 'pin';
   let tool = $state<Tool>('route');

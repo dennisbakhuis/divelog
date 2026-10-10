@@ -7,9 +7,9 @@
     emptyTank,
     diveToInput,
     emptyDiveInput,
-    formPayload,
     formSnapshot,
     presetsFor,
+    savePayload,
     type DiveTemplate,
   } from '$lib/core/admin/dive-input';
   import { siteIdFor, slugify } from '$lib/core/admin/slug';
@@ -133,7 +133,11 @@
     error = '';
     try {
       if (dive) {
-        await adminJson(adminApi('dives', dive.number), 'PUT', formPayload(form, computerText));
+        await adminJson(
+          adminApi('dives', dive.number),
+          'PUT',
+          savePayload(form, computerText, dive),
+        );
         markSaved();
         toast.show({ kind: 'success', message: `Dive #${form.number} saved` });
         if (form.number !== dive.number)
@@ -143,7 +147,7 @@
         const created = await adminJson<DiveAdmin>(
           adminApi('dives'),
           'POST',
-          formPayload(form, computerText),
+          savePayload(form, computerText, null),
         );
         markSaved();
         toast.show({ kind: 'success', message: `Dive #${created.number} created` });
@@ -328,6 +332,39 @@
     }
   }
 
+  let formEl = $state<HTMLFormElement>();
+
+  /** Enter in a one-line field never submits the dive; only the Save button (or Ctrl/⌘-S) does. */
+  function guardEnter(e: KeyboardEvent) {
+    if (e.key !== 'Enter' || e.defaultPrevented) return;
+    const target = e.target;
+    if (target instanceof HTMLInputElement && !NON_TEXT_INPUTS.has(target.type)) e.preventDefault();
+  }
+
+  const NON_TEXT_INPUTS = new Set(['submit', 'button', 'reset', 'image']);
+
+  /** Ctrl/⌘-S saves the dive (through the form, so the browser's own checks run first). */
+  function saveShortcut(e: KeyboardEvent) {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 's') return;
+    e.preventDefault();
+    if (busy || siteDialog?.open || tripDialog?.open) return;
+    formEl?.requestSubmit();
+  }
+
+  function pickFirstSite(e: KeyboardEvent) {
+    if (e.key === 'Escape' && siteQuery) {
+      e.preventDefault();
+      siteQuery = '';
+      return;
+    }
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const first = siteOptions[0];
+    if (!first) return;
+    form.site_id = first.id;
+    siteQuery = '';
+  }
+
   function toggle(list: string[], value: string): string[] {
     return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
   }
@@ -337,7 +374,7 @@
   }
 </script>
 
-<svelte:window onbeforeunload={beforeUnload} />
+<svelte:window onbeforeunload={beforeUnload} onkeydown={saveShortcut} />
 
 {#if !dive && template}
   <div class="copy-last">
@@ -350,7 +387,9 @@
   </div>
 {/if}
 
-<form class="dive-form" onsubmit={save}>
+<!-- Keys bubble up from the fields; the form only cancels Enter, it is not a widget. -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<form class="dive-form" bind:this={formEl} onsubmit={save} onkeydown={guardEnter}>
   <fieldset>
     <legend>Basics</legend>
     <div class="field-row">
@@ -402,6 +441,7 @@
             ? `${site.name} (${site.country_code}) — type to change`
             : 'Type to find a site…'}
           bind:value={siteQuery}
+          onkeydown={pickFirstSite}
         />
         {#if siteQuery.trim()}
           <ul class="options" role="listbox">
@@ -486,7 +526,7 @@
         >
       </div>
       <label>
-        Visibility
+        Published as
         <select bind:value={form.visibility}>
           <option value="public">public</option>
           <option value="private">private (counts in stats, hidden)</option>
@@ -500,8 +540,15 @@
   <fieldset>
     <legend>Water & conditions</legend>
     <div class="field-row">
-      <label>Water (°C)<input type="number" step="0.5" bind:value={form.water_temp_c} /></label>
-      <label>Surface (°C)<input type="number" step="0.5" bind:value={form.surface_temp_c} /></label>
+      <label>Water temp (°C)<input type="number" step="0.5" bind:value={form.water_temp_c} /></label
+      >
+      <label
+        >Surface water (°C)<input
+          type="number"
+          step="0.5"
+          bind:value={form.surface_temp_c}
+        /></label
+      >
       <label>Air (°C)<input type="number" step="0.5" bind:value={form.air_temp_c} /></label>
       <label
         >Thermocline (m)<input type="number" step="0.5" bind:value={form.thermocline_m} /></label
@@ -770,8 +817,11 @@
   </fieldset>
 
   <div class="save-bar">
-    <button type="submit" class="dl-btn dl-btn-solid" disabled={busy}
-      >{busy ? 'Saving…' : 'Save'}</button
+    <button
+      type="submit"
+      class="dl-btn dl-btn-solid"
+      disabled={busy}
+      aria-keyshortcuts="Control+S Meta+S">{busy ? 'Saving…' : 'Save'}</button
     >
     {#if dirty}<span class="unsaved">● unsaved changes</span>{/if}
     {#if error}<span class="error">{error}</span>{/if}

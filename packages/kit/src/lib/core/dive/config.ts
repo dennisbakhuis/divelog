@@ -60,6 +60,8 @@ export type DivelogConfig = {
   presets?: DivelogPresets;
   /** Page copy; anything left out keeps the kit's default text. */
   copy?: DivelogCopy;
+  /** Show local-development hints (e.g. where sign-in mail lands); off unless set. */
+  devHints?: boolean;
 };
 
 export const DEFAULT_CONFIG: DivelogConfig = {
