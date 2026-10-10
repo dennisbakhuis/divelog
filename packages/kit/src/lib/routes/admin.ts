@@ -17,11 +17,7 @@ import type {
   TripAdmin,
 } from '$lib/core/dive/types.js';
 import { shiftDate, templatePath } from '$lib/core/admin/dive-input.js';
-import {
-  DEFAULT_LIST_QUERY,
-  pagePath,
-  parseListQuery,
-} from '$lib/core/admin/dive-list.js';
+import { DEFAULT_LIST_QUERY, pagePath, parseListQuery } from '$lib/core/admin/dive-list.js';
 import type { NewDiveParams } from '$lib/core/dive/config.js';
 import type { Divelog } from '../server/divelog.js';
 import { defineRoute, type PageOwner } from './table.js';

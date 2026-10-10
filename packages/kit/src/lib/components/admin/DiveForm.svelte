@@ -263,12 +263,19 @@
   );
   const siteOptions = $derived.by<ComboOption[]>(() => {
     const byId = new Map(sites.map((s) => [s.id, s]));
-    const hintOf = (s: Site) =>
-      [s.area ?? s.country_name, s.site_type].filter(Boolean).join(' · ');
+    const hintOf = (s: Site) => [s.area ?? s.country_name, s.site_type].filter(Boolean).join(' · ');
     const recent = (tpl?.recent_sites ?? []).flatMap((r) => {
       const s = byId.get(r.site_id);
       return s
-        ? [{ value: s.id, label: s.name, hint: hintOf(s), group: 'Recent', keywords: s.aliases.join(' ') }]
+        ? [
+            {
+              value: s.id,
+              label: s.name,
+              hint: hintOf(s),
+              group: 'Recent',
+              keywords: s.aliases.join(' '),
+            },
+          ]
         : [];
     });
     const all = [...sites]
@@ -282,9 +289,9 @@
       }));
     return [...recent, ...all];
   });
-  const sectionOptions = $derived(
-    [...new Set([atSite?.section, ...(site?.section_vocabulary ?? [])].filter(Boolean))] as string[],
-  );
+  const sectionOptions = $derived([
+    ...new Set([atSite?.section, ...(site?.section_vocabulary ?? [])].filter(Boolean)),
+  ] as string[]);
 
   const personLabel = (p: PersonPrivate) =>
     p.last_name ? `${p.first_name} ${p.last_name}` : p.first_name;
@@ -293,7 +300,15 @@
     const frequent = (tpl?.frequent_people ?? []).flatMap((f) => {
       const p = byId.get(f.id);
       return p
-        ? [{ value: p.id, label: p.name, hint: `${f.dives} together`, group: 'Frequent', keywords: personLabel(p) }]
+        ? [
+            {
+              value: p.id,
+              label: p.name,
+              hint: `${f.dives} together`,
+              group: 'Frequent',
+              keywords: personLabel(p),
+            },
+          ]
         : [];
     });
     const all = [...people]
@@ -363,11 +378,9 @@
     const md = form.body_md;
     const timer = setTimeout(async () => {
       try {
-        const out = await adminJson<MarkdownPreviewOut>(
-          adminApi('preview', 'markdown'),
-          'POST',
-          { md },
-        );
+        const out = await adminJson<MarkdownPreviewOut>(adminApi('preview', 'markdown'), 'POST', {
+          md,
+        });
         previewHtml = out.html;
         previewError = '';
       } catch (err) {
@@ -427,7 +440,11 @@
     try {
       let number: number;
       if (dive) {
-        await adminJson(adminApi('dives', dive.number), 'PUT', savePayload(form, computerText, dive));
+        await adminJson(
+          adminApi('dives', dive.number),
+          'PUT',
+          savePayload(form, computerText, dive),
+        );
         number = Number(form.number);
       } else {
         const created = await adminJson<DiveAdmin>(
@@ -861,12 +878,7 @@
           {/if}
         {/snippet}
       </Field>
-      <Field
-        label="Max depth (m)"
-        id={fieldId('max_depth_m')}
-        error={err('max_depth_m')}
-        required
-      >
+      <Field label="Max depth (m)" id={fieldId('max_depth_m')} error={err('max_depth_m')} required>
         {#snippet children(c)}
           <input
             {...c}
@@ -924,7 +936,8 @@
                 class="dl-btn dl-btn-ghost dl-btn-sm"
                 href={urls.site(site.slug)}
                 target="_blank"
-                rel="noopener">View {site.name}<span class="dl-visually-hidden"> (new tab)</span> ↗</a
+                rel="noopener"
+                >View {site.name}<span class="dl-visually-hidden"> (new tab)</span> ↗</a
               >
             {/if}
           </div>
@@ -1156,7 +1169,9 @@
               class="dl-btn dl-btn-ghost dl-btn-sm remove-tank"
               onclick={() => (form.tanks = form.tanks.filter((_, j) => j !== i))}
               ><span aria-hidden="true">×</span><span class="label">Remove tank</span><span
-                class="dl-visually-hidden"> {i + 1}</span
+                class="dl-visually-hidden"
+              >
+                {i + 1}</span
               ></button
             >
           </fieldset>
@@ -1429,8 +1444,14 @@
       >
         <div class="grid" data-section="transcription">
           <p class="muted wide">What the paper log says, word for word.</p>
-          <Field label="Original notes" id={fieldId('notes_nl')} error={err('notes_nl')} class="wide">
-            {#snippet children(c)}<textarea {...c} rows="4" bind:value={form.notes_nl}></textarea>{/snippet}
+          <Field
+            label="Original notes"
+            id={fieldId('notes_nl')}
+            error={err('notes_nl')}
+            class="wide"
+          >
+            {#snippet children(c)}<textarea {...c} rows="4" bind:value={form.notes_nl}
+              ></textarea>{/snippet}
           </Field>
           <Field
             label="Visibility as written"
@@ -1575,7 +1596,9 @@
             {#each queue as q, i (i)}
               <li>
                 <span>{q.file.name}</span>
-                <span class="muted">{q.kind}{q.kind !== 'scan' && !q.public ? ' · private' : ''}</span>
+                <span class="muted"
+                  >{q.kind}{q.kind !== 'scan' && !q.public ? ' · private' : ''}</span
+                >
                 <button
                   type="button"
                   class="dl-btn dl-btn-ghost dl-btn-sm"
@@ -1630,7 +1653,8 @@
         class="dl-btn dl-btn-ghost dl-btn-sm"
         href={urls.dive(dive.number)}
         target="_blank"
-        rel="noopener">View<span class="dl-visually-hidden"> dive #{dive.number} (new tab)</span> ↗</a
+        rel="noopener"
+        >View<span class="dl-visually-hidden"> dive #{dive.number} (new tab)</span> ↗</a
       >
       <button type="button" class="dl-btn dl-btn-ghost dl-btn-sm danger" onclick={remove}
         >Delete</button

@@ -266,9 +266,8 @@
                 <span class="secondary">
                   {#if siteLink && dive.site_id}<a href={urls.admin.site(dive.site_id)}
                       >{dive.site_name}</a
-                    >{/if}{#if siteLink && dive.trip}
-                    ·
-                  {/if}{#if dive.trip}<a href={urls.admin.trip(dive.trip.slug)}
+                    >{/if}{#if siteLink && dive.trip}<span class="sep" aria-hidden="true">·</span
+                    >{/if}{#if dive.trip}<a href={urls.admin.trip(dive.trip.slug)}
                       >{dive.trip.name}</a
                     >{/if}
                 </span>
@@ -395,6 +394,9 @@
     display: block;
     font-size: var(--dl-text-sm);
     color: var(--dl-color-text-faint);
+  }
+  .sep {
+    margin: 0 0.35em;
   }
   .secondary a {
     color: var(--dl-color-text-muted);

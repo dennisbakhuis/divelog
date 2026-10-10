@@ -1,8 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
-
-vi.mock('$lib/core/admin/dive-input', () => ({
-  diveTemplate: (dive: { number: number }) => ({ from: dive.number }),
-}));
+import { describe, expect, it } from 'vitest';
 
 import { matchRoute } from './table.js';
 import {
@@ -10,6 +6,7 @@ import {
   diveEditRoute,
   diveNewRoute,
   divesRoute,
+  newDivePrefill,
   gearRoute,
   importRoute,
   peopleRoute,
@@ -39,6 +36,7 @@ const FORM = {
 describe('the admin table', () => {
   it.each([
     ['', divesRoute, []],
+    ['dives', divesRoute, []],
     ['dives/new', diveNewRoute, []],
     ['dives/650', diveEditRoute, ['650']],
     ['sites', sitesRoute, []],
@@ -60,48 +58,88 @@ describe('the admin table', () => {
     expect(matchRoute(adminRoutes, path)).toEqual({ route, params });
   });
 
-  it.each(['dives', 'nope', 'sites/a/b', 'login'])('has no route for %j', (path) => {
+  it.each(['nope', 'sites/a/b', 'login'])('has no route for %j', (path) => {
     expect(matchRoute(adminRoutes, path)).toBeNull();
   });
 });
 
 describe('admin loaders', () => {
-  it('offers the latest dive as the template for a new one', async () => {
+  it('loads one template for a new dive, with the prefill from the query', async () => {
+    const template = { date: '2026-02-08', next_number: 12, previous: null };
     const divelog = fakeDivelog({
       ...FORM,
-      '/api/v1/admin/dives/next-number': { number: 12 },
-      '/api/v1/admin/dives': [
-        { number: 10, title: '', site_name: 'Ressel' },
-        { number: 11, title: '', site_name: null },
-      ],
-      '/api/v1/admin/dives/11': { number: 11, title: '', site: null },
+      '/api/v1/admin/dives/template?site=mex-tortuga&date=2026-02-08': template,
     });
-    const data = await diveNewRoute.load(divelog, [], fakeEvent());
+    const event = fakeEvent('/admin/dives/new?site=mex-tortuga&date=2026-02-08&person=anna');
+    const data = await diveNewRoute.load(divelog, [], event);
     expect(data.nextNumber).toBe(12);
+    expect(data.template).toEqual(template);
+    expect(data.prefill).toEqual({
+      site: 'mex-tortuga',
+      trip: null,
+      person: 'anna',
+      date: '2026-02-08',
+    });
     expect(data.sites).toEqual([{ id: 's' }]);
-    expect(data.template).toEqual({ number: 11, label: 'Untitled', input: { from: 11 } });
   });
 
-  it('has no template before the first dive', async () => {
+  it("drops a malformed prefill date and asks for today's template", async () => {
     const divelog = fakeDivelog({
       ...FORM,
-      '/api/v1/admin/dives/next-number': { number: 1 },
-      '/api/v1/admin/dives': [],
+      '/api/v1/admin/dives/template': { date: '2026-02-08', next_number: 1, previous: null },
     });
-    expect((await diveNewRoute.load(divelog, [], fakeEvent())).template).toBeNull();
+    const data = await diveNewRoute.load(divelog, [], fakeEvent('/admin/dives/new?date=08-02'));
+    expect(data.prefill.date).toBeNull();
+    expect(data.nextNumber).toBe(1);
+    expect(newDivePrefill(new URLSearchParams('trip=%20mexico%20'))).toMatchObject({
+      trip: 'mexico',
+    });
   });
 
-  it('loads a dive with the form data and 404s a bad number', async () => {
-    const divelog = fakeDivelog({ ...FORM, '/api/v1/admin/dives/650': { number: 650 } });
+  it('loads a dive with the form data and its template, and 404s a bad number', async () => {
+    const divelog = fakeDivelog({
+      ...FORM,
+      '/api/v1/admin/dives/650': { number: 650, date: '2026-02-08', site_id: 'x' },
+      '/api/v1/admin/dives/template?site=x&date=2026-02-08': {
+        previous: { number: 649 },
+        at_site: { number: 640 },
+      },
+    });
     const data = await diveEditRoute.load(divelog, ['650'], fakeEvent());
     expect(data).toMatchObject({
       page: 'dive-edit',
       dive: { number: 650 },
       regions: [{ id: 'lot' }],
+      template: { previous: { number: 649 }, at_site: { number: 640 } },
+      drafts: [],
     });
     expect(await thrown(diveEditRoute.load(divelog, ['x'], fakeEvent()))).toMatchObject({
       status: 404,
     });
+  });
+
+  it('never offers a draft itself as its previous dive, and lists the drafts', async () => {
+    const divelog = fakeDivelog({
+      ...FORM,
+      '/api/v1/admin/dives/651': {
+        number: 651,
+        date: '2026-02-08',
+        site_id: null,
+        visibility: 'draft',
+      },
+      '/api/v1/admin/dives/template?date=2026-02-08': {
+        previous: { number: 651 },
+        at_site: null,
+      },
+      '/api/v1/admin/dives/template?date=2026-02-07': { previous: { number: 648 } },
+      '/api/v1/admin/dives/page?offset=0&limit=1000&status=draft&sort=date&asc=true': {
+        items: [{ number: 649 }, { number: 651 }, { number: 652 }],
+        total: 3,
+      },
+    });
+    const data = await diveEditRoute.load(divelog, ['651'], fakeEvent());
+    expect(data.template.previous).toEqual({ number: 648 });
+    expect(data.drafts).toEqual([649, 651, 652]);
   });
 
   it('encodes ids into the admin API paths', async () => {
@@ -135,12 +173,27 @@ describe('admin loaders', () => {
   it('loads the list pages', async () => {
     const divelog = fakeDivelog({
       ...FORM,
-      '/api/v1/admin/dives': [],
+      '/api/v1/admin/dives/page?offset=0&limit=100&sort=depth&asc=true': {
+        items: [{ number: 3 }],
+        total: 1,
+      },
+      '/api/v1/admin/dives/page?offset=0&limit=1&status=draft&sort=date&asc=false': {
+        items: [],
+        total: 4,
+      },
       '/api/v1/admin/gear/items': [],
       '/api/v1/admin/imports': [],
     });
     const event = fakeEvent();
-    expect(await divesRoute.load(divelog, [], event)).toEqual({ dives: [], page: 'dives' });
+    expect(
+      await divesRoute.load(divelog, [], fakeEvent('/admin?sort=depth&asc=1&status=nope')),
+    ).toEqual({
+      page: 'dives',
+      query: { q: '', status: null, sort: 'depth', asc: true },
+      rows: [{ number: 3 }],
+      total: 1,
+      drafts: 4,
+    });
     expect(await sitesRoute.load(divelog, [], event)).toMatchObject({ sites: [{ id: 's' }] });
     expect(await siteNewRoute.load(divelog, [], event)).toMatchObject({ regions: [{ id: 'lot' }] });
     expect(await peopleRoute.load(divelog, [], event)).toMatchObject({ people: [] });

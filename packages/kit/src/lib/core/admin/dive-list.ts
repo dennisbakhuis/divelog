@@ -67,9 +67,7 @@ export function pagePath(query: DiveListQuery, offset = 0, limit = PAGE_SIZE): s
  * one starts with the largest (latest, deepest, longest) first.
  */
 export function toggleSort(query: DiveListQuery, sort: DiveSortKey): DiveListQuery {
-  return query.sort === sort
-    ? { ...query, asc: !query.asc }
-    : { ...query, sort, asc: false };
+  return query.sort === sort ? { ...query, asc: !query.asc } : { ...query, sort, asc: false };
 }
 
 /** `aria-sort` of a column header. */
