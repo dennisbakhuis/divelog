@@ -238,8 +238,8 @@ The site workspace's **Maps** tab (`AdminSiteMapsPage`, deep link `/admin/sites/
 lists the drawn maps and opens one in `SiteMapEditor`.
 
 **New maps.** "Start from OpenStreetMap" (site maps; needs the site's coordinates) asks
-`POST /admin/sites/{id}/maps/seed` for a starter map (shoreline, water, paths, piers from
-Overpass; radius per site type) and opens it as an unsaved draft; "Blank site map" and "Blank
+`POST /admin/sites/{id}/maps/seed` for a starter map (water, coastline, piers, wrecks, buoys,
+slipways from Overpass; radius per site type) and opens it as an unsaved draft; "Blank site map" and "Blank
 stick map" open an empty one. Every new map starts at the site's position (`origin` = site
 lat/lon, `north` 0; `emptySiteMap(kind, siteOrigin(site))`, `seedDraft(seed.map, origin)`).
 Nothing is stored until **Save map**, which POSTs the map once (one commit); later saves PUT it
