@@ -52,6 +52,10 @@ describe('createUrls with the default config', () => {
     expect(a.dive(650)).toBe('/admin/dives/650');
     expect(a.dive(650, 'map')).toBe('/admin/dives/650#map');
     expect(a.newDive()).toBe('/admin/dives/new');
+    expect(a.newDive({ site: 'fra-ressel', trip: null, person: 'anna', date: '2026-02-08' })).toBe(
+      '/admin/dives/new?site=fra-ressel&person=anna&date=2026-02-08',
+    );
+    expect(a.dives({ status: 'draft' })).toBe('/admin/dives?status=draft');
     expect(a.newDive({ site: 'nld-vinkeveen', person: null, date: '' })).toBe(
       '/admin/dives/new?site=nld-vinkeveen',
     );

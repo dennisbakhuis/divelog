@@ -25,6 +25,7 @@ export * from './map/viewport.js';
 export * from './map/world.js';
 export * from './admin/client.js';
 export * from './admin/dive-input.js';
+export * from './admin/dive-list.js';
 export * from './admin/slug.js';
 export * from './ui/index.js';
 export type * from './dive/api';

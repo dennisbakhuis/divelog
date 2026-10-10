@@ -155,7 +155,8 @@ export function createUrls(config: DivelogConfig) {
     admin: {
       base: admin,
       root: (): string => admin || '/',
-      dives: (): string => `${admin}/dives`,
+      /** The dive list; `params` filter it (`{ status: 'draft' }`). */
+      dives: (params?: QueryParams): string => withQuery(`${admin}/dives`, params),
       dive: (n: number | string, hash?: string): string => withHash(`${admin}/dives/${n}`, hash),
       newDive: (params?: NewDiveParams): string =>
         withQuery(
