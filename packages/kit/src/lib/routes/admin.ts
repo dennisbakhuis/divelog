@@ -4,7 +4,10 @@
  */
 import { error, type RequestEvent } from '@sveltejs/kit';
 import type {
+  AdminDivePage,
   DiveAdmin,
+  DiveTemplateOut,
+  GearSetup,
   GearItem,
   ImportRecord,
   PersonPrivate,
@@ -13,13 +16,12 @@ import type {
   Trip,
   TripAdmin,
 } from '$lib/core/dive/types.js';
-import { shiftDate } from '$lib/core/admin/dive-input.js';
+import { shiftDate, templatePath } from '$lib/core/admin/dive-input.js';
 import {
   DEFAULT_LIST_QUERY,
   pagePath,
   parseListQuery,
 } from '$lib/core/admin/dive-list.js';
-import type { AdminDivePage, DiveTemplateOut, GearSetupTemplate } from '$lib/core/admin/ux-api.js';
 import type { NewDiveParams } from '$lib/core/dive/config.js';
 import type { Divelog } from '../server/divelog.js';
 import { defineRoute, type PageOwner } from './table.js';
@@ -34,7 +36,7 @@ async function diveFormData(divelog: Divelog, event: RequestEvent) {
     apiOrError<Site[]>(event, urls.api('/admin/sites')),
     apiOrError<Trip[]>(event, urls.api('/admin/trips')),
     apiOrError<PersonPrivate[]>(event, urls.api('/admin/people')),
-    apiOrError<GearSetupTemplate[]>(event, urls.api('/admin/gear/setups')),
+    apiOrError<GearSetup[]>(event, urls.api('/admin/gear/setups')),
     apiOrError<Region[]>(event, urls.api('/dive/regions')),
   ]);
   return { sites, trips, people, setups, regions };
@@ -49,14 +51,7 @@ function diveTemplateFor(
   site: string | null,
   date: string | null,
 ): Promise<DiveTemplateOut> {
-  const params = new URLSearchParams();
-  if (site) params.set('site', site);
-  if (date) params.set('date', date);
-  const query = params.toString();
-  return divelog.apiOrError<DiveTemplateOut>(
-    event,
-    divelog.urls.api(`/admin/dives/template${query ? `?${query}` : ''}`),
-  );
+  return divelog.apiOrError<DiveTemplateOut>(event, divelog.urls.api(templatePath(site, date)));
 }
 
 /** The new-dive prefill from `?site=&trip=&person=&date=`; a malformed date is dropped. */
@@ -269,7 +264,7 @@ export const gearRoute = defineRoute({
   load: async (divelog, _params, event) => {
     const [items, setups] = await Promise.all([
       divelog.apiOrError<GearItem[]>(event, divelog.urls.api('/admin/gear/items')),
-      divelog.apiOrError<GearSetupTemplate[]>(event, divelog.urls.api('/admin/gear/setups')),
+      divelog.apiOrError<GearSetup[]>(event, divelog.urls.api('/admin/gear/setups')),
     ]);
     return { items, setups };
   },

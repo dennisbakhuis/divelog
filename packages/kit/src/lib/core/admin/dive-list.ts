@@ -2,7 +2,7 @@
  * The editor's dive list: its filter and sort as URL parameters, the API page request
  * they become, draft neighbours for the editor, and the import report's summary.
  */
-import type { ImportReport } from './ux-api.js';
+import type { ImportResult } from '$lib/core/dive/types.js';
 
 export const DIVE_STATUSES = ['public', 'draft', 'private'] as const;
 export type DiveStatus = (typeof DIVE_STATUSES)[number];
@@ -109,7 +109,7 @@ function plural(n: number, word: string): string {
 }
 
 /** One line per outcome of an import (or a dry run of one), for the import page. */
-export function importLines(report: ImportReport): string[] {
+export function importLines(report: ImportResult): string[] {
   const dry = !!report.dry_run;
   const lines: string[] = [];
   if (report.dives_in_file) {

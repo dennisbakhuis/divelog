@@ -36,16 +36,14 @@
     type TemplateGroup,
   } from '$lib/core/admin/dive-input';
   import { draftNeighbours } from '$lib/core/admin/dive-list';
-  import type {
-    DiveTemplateOut,
-    GearSetupTemplate,
-    MarkdownPreviewOut,
-  } from '$lib/core/admin/ux-api';
   import { siteIdFor, slugify } from '$lib/core/admin/slug';
   import type {
     Attachment,
     CommonsSiteHit,
     DiveAdmin,
+    DiveTemplateOut,
+    GearSetup,
+    MarkdownPreviewOut,
     PersonPrivate,
     Region,
     Site,
@@ -91,7 +89,7 @@
     sites: Site[];
     trips: Trip[];
     people: PersonPrivate[];
-    setups: GearSetupTemplate[];
+    setups: GearSetup[];
     regions: Region[];
     /** `GET /admin/dives/template` for this dive: previous dive, last dive at the site, recents. */
     template?: DiveTemplateOut | null;
@@ -1537,11 +1535,11 @@
     </div>
   </Disclosure>
 
-  <section class="photos" aria-labelledby="dl-dive-photos">
-    <h2 id="dl-dive-photos" class="section-title">Photos & files</h2>
-    {#if attachments}
-      {@render attachments()}
-    {:else if isNew}
+  {#if attachments}
+    <div class="photos">{@render attachments()}</div>
+  {:else if isNew}
+    <section class="photos" aria-labelledby="dl-dive-photos">
+      <h2 id="dl-dive-photos" class="section-title">Photos & files</h2>
       <div class="queue">
         <div class="row">
           <Field label="Upload as" id="dl-dive-queue-kind">
@@ -1590,8 +1588,8 @@
         {/if}
         <p class="muted">Files chosen now are uploaded right after the first save.</p>
       </div>
-    {/if}
-  </section>
+    </section>
+  {/if}
 
   <div class="save-bar">
     <button
