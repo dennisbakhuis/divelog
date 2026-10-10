@@ -34,9 +34,7 @@
   import MapOptions from './MapOptions.svelte';
   import 'maplibre-gl/dist/maplibre-gl.css';
   import '$lib/styles/maplibre.css';
-  // MapLibre derives its worker URL from import.meta.url, which Vite's dependency
-  // pre-bundling breaks; an explicit asset URL works in dev and in the build.
-  import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+  import { mapWorkerUrl } from '$lib/components/map-worker';
   import { getDivelog } from '$lib/core/dive/context';
 
   const { urls } = getDivelog();
@@ -261,7 +259,8 @@
       ]);
       if (cancelled || !container || !index?.world) return;
 
-      maplibre.setWorkerUrl(workerUrl);
+      const workerUrl = mapWorkerUrl();
+      if (workerUrl) maplibre.setWorkerUrl(workerUrl);
       const protocol = new Protocol();
       maplibre.addProtocol('pmtiles', protocol.tile);
       const base = absoluteTilesBase(urls.tilesBase, location.origin);

@@ -57,6 +57,7 @@
   "scripts": {
     "dev": "vite dev",
     "build": "svelte-kit sync && svelte-package && publint",
+    "prepare": "svelte-kit sync && svelte-package",
     "prepack": "pnpm build",
     "lint": "eslint --max-warnings 0 .",
     "format": "prettier --write .",

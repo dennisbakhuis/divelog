@@ -22,8 +22,10 @@
   import type { GlobeView } from '$lib/core/map/globe';
   import type { Snapshot } from '@sveltejs/kit';
   import { getDivelog } from '$lib/core/dive/context';
+  import { copyFor } from '$lib/core/dive/config';
 
-  const { urls } = getDivelog();
+  const { urls, config } = getDivelog();
+  const copy = copyFor(config);
 
   let { data }: { data: PublicDataFor<'log'> } = $props();
 
@@ -73,10 +75,7 @@
 <section class="intro dl-container">
   <p class="dl-kicker">Dive log</p>
   <h1>Every dive, <span class="accent">on the record</span></h1>
-  <p class="lede">
-    Cold Dutch quarries, French caves on a scooter, Red Sea wrecks. Logged since the first
-    open-water dive — the boring ones too, because the numbers are only honest that way.
-  </p>
+  <p class="lede">{copy.logLede}</p>
 </section>
 
 <StatsBand stats={data.stats} />

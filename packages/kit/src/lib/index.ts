@@ -41,3 +41,4 @@ export { toast, type ToastItem, type ToastKind } from './components/stores/toast
 export { getDivelog, setDivelog, divelogContext, type Divelog } from './core/dive/context';
 export type { DivelogConfig } from './core/dive/config';
 export { KIT_VERSION } from './version';
+export { mapWorkerUrl, setMapWorkerUrl } from './components/map-worker';

@@ -70,31 +70,33 @@
     <dl class="stats">
       <div>
         <dt>Dives</dt>
-        <dd class="num" use:counter={{ value: summary.total_dives }}>{summary.total_dives}</dd>
+        <dd class="dl-num" use:counter={{ value: summary.total_dives }}>{summary.total_dives}</dd>
       </div>
       <div>
         <dt>Hours down</dt>
-        <dd class="num" use:counter={{ value: summary.total_hours, decimals: 0 }}>
+        <dd class="dl-num" use:counter={{ value: summary.total_hours, decimals: 0 }}>
           {summary.total_hours}
         </dd>
       </div>
       <div>
         <dt>Deepest</dt>
-        <dd class="num" use:counter={{ value: summary.max_depth_m, decimals: 0, suffix: ' m' }}>
+        <dd class="dl-num" use:counter={{ value: summary.max_depth_m, decimals: 0, suffix: ' m' }}>
           {summary.max_depth_m} m
         </dd>
       </div>
       <div>
         <dt>Countries</dt>
-        <dd class="num" use:counter={{ value: summary.countries }}>{summary.countries}</dd>
+        <dd class="dl-num" use:counter={{ value: summary.countries }}>{summary.countries}</dd>
       </div>
       <div>
         <dt>Cave dives</dt>
-        <dd class="num" use:counter={{ value: summary.cave_dives }}>{summary.cave_dives}</dd>
+        <dd class="dl-num" use:counter={{ value: summary.cave_dives }}>{summary.cave_dives}</dd>
       </div>
       <div>
         <dt>Scooter dives</dt>
-        <dd class="num" use:counter={{ value: summary.scooter_dives }}>{summary.scooter_dives}</dd>
+        <dd class="dl-num" use:counter={{ value: summary.scooter_dives }}>
+          {summary.scooter_dives}
+        </dd>
       </div>
     </dl>
     {#if spark.line}
@@ -113,7 +115,7 @@
             <circle class="spark-dot" cx={spark.last.x} cy={spark.last.y} r="3" />
           {/if}
         </svg>
-        <figcaption class="num">
+        <figcaption class="dl-num">
           <span>{years[0].year}</span>
           <span class="spark-caption">dives per year</span>
           <span>{years[years.length - 1].year}</span>
@@ -121,7 +123,7 @@
       </figure>
     {/if}
     {#if summary.last_dive}
-      <p class="last-dive num">
+      <p class="last-dive dl-num">
         Last dive:
         {#if lastDiveHref}
           <a href={lastDiveHref}

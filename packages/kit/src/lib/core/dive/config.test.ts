@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CONFIG, createUrls, escapeRegExp, queryString, titleSuffix } from './config';
+import {
+  copyFor,
+  DEFAULT_CONFIG,
+  DEFAULT_COPY,
+  createUrls,
+  escapeRegExp,
+  queryString,
+  titleSuffix,
+} from './config';
 
 describe('createUrls with the default config', () => {
   const urls = createUrls(DEFAULT_CONFIG);
@@ -126,5 +134,13 @@ describe('titleSuffix', () => {
   it('defaults to the owner name and takes an explicit suffix', () => {
     expect(titleSuffix(DEFAULT_CONFIG)).toBe(DEFAULT_CONFIG.ownerName);
     expect(titleSuffix({ ...DEFAULT_CONFIG, titleSuffix: 'Log' })).toBe('Log');
+  });
+});
+
+describe('copyFor', () => {
+  it('fills what a config leaves out with the defaults', () => {
+    const copy = copyFor({ ...DEFAULT_CONFIG, copy: { gearTitle: 'My kit' } });
+    expect(copy.gearTitle).toBe('My kit');
+    expect(copy.logLede).toBe(DEFAULT_COPY.logLede);
   });
 });

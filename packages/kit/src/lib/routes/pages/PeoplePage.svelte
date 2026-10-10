@@ -14,8 +14,10 @@
   } from '$lib/core/dive/people';
   import { reveal } from '$lib/components/anim/reveal';
   import { getDivelog } from '$lib/core/dive/context';
+  import { copyFor } from '$lib/core/dive/config';
 
-  const { urls } = getDivelog();
+  const { urls, config } = getDivelog();
+  const copy = copyFor(config);
 
   let { data }: { data: PublicDataFor<'people'> } = $props();
 
@@ -48,10 +50,7 @@
 <section class="page dl-container">
   <p class="dl-kicker">Dive buddies</p>
   <h1>{data.people.length} people, <span class="accent">one log</span></h1>
-  <p class="lede">
-    Nobody dives alone. Everyone here has been on the other end of a buddy check at least once;
-    first names only, unless someone prefers a nickname.
-  </p>
+  <p class="lede">{copy.peopleLede}</p>
 
   <div class="toolbar">
     <div class="sorts" role="group" aria-label="Sort people">
@@ -70,7 +69,7 @@
     <select
       bind:value={country}
       onchange={sync}
-      aria-label="Dived with me in"
+      aria-label="Dived together in"
       class:active={country !== ''}
     >
       <option value="">All countries</option>

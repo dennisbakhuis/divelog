@@ -3,8 +3,10 @@
   import { flagEmoji, formatDepth, pluralize } from '$lib/core/dive/format';
   import { reveal } from '$lib/components/anim/reveal';
   import { getDivelog } from '$lib/core/dive/context';
+  import { copyFor } from '$lib/core/dive/config';
 
-  const { urls } = getDivelog();
+  const { urls, config } = getDivelog();
+  const copy = copyFor(config);
 
   let { data }: { data: PublicDataFor<'sites'> } = $props();
   let type = $state('');
@@ -41,9 +43,7 @@
   <p class="dl-kicker">Dive sites</p>
   <h1>{data.total} places, <span class="accent">{data.countries.length} countries</span></h1>
   <p class="lede">
-    Every site in the log, grouped by country and region. Each has its own page with the story of
-    the place, a locator map, the dives I did there and, where I have drawn one, a map of the site.
-    Or go by <a href={urls.trips()}>trip</a>.
+    {copy.sitesLede} Or go by <a href={urls.trips()}>trip</a>.
   </p>
 
   <div class="toolbar">
