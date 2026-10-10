@@ -448,7 +448,7 @@ class DiveListItem(ApiModel):
     max_depth_m: float
     water_temp_c: float | None
     tags: list[str]
-    gas: str
+    gas: str | None
     """Every mix breathed, back gas first: "Nitrox 32", "Trimix 21/35", "Oxygen"."""
     gases: list[str]
     mode: str
@@ -504,7 +504,7 @@ class DiveOut(ApiModel):
     trip: TripOut | None
     tags: list[str]
     types_raw: str | None
-    gas: str
+    gas: str | None
     o2_pct: int | None
     o2_measured_pct: float | None
     he_pct: int | None
@@ -601,7 +601,8 @@ class DiveIn(ApiModel):
     trip_id: str | None = None
     tags: list[str] = Field(default_factory=list)
     types_raw: str | None = Field(default=None, max_length=300)
-    gas: Gas = "air"
+    gas: Gas | None = None
+    """Only read without tanks; with tanks the first back-gas tank sets every gas field."""
     o2_pct: int | None = Field(default=None, ge=0, le=100)
     o2_measured_pct: float | None = Field(default=None, ge=0, le=100)
     he_pct: int | None = Field(default=None, ge=0, le=100)
@@ -634,6 +635,12 @@ class DiveIn(ApiModel):
     sketch: str | None = None
     profile: list[ProfileSample] | None = None
     map_annotation: DiveMapAnnotation | None = None
+
+
+class DivePatch(ApiModel):
+    """The fields that change on their own, outside the dive form: for now the cover."""
+
+    cover_attachment_id: str | None = None
 
 
 class SiteDiveRoute(ApiModel):

@@ -21,6 +21,7 @@ from divelog_server.schemas.dive import (
     AttachmentPatch,
     DiveAdminOut,
     DiveIn,
+    DivePatch,
     ImportRecordOut,
     ImportResult,
     ImportSiteOut,
@@ -62,6 +63,7 @@ from divelog_server.store.models import (
     TripRecord,
     prepend_change,
 )
+from divelog_server.store.slug import SITE_ID, site_id_for
 from divelog_server.store.sources import PERSONAL_MAP_ID
 from divelog_server.store.store import NothingToPinError, Store
 from divelog_server.store.trips import Trip
@@ -124,6 +126,24 @@ async def admin_delete_dive(number: int, store: StoreDep) -> None:
         if len(store.media_referrers(media.key)) == 1:
             await _delete_files(storage, media)
     await store.delete_dive(number, f"Delete dive #{number}")
+
+
+@router.patch("/dives/{number}", response_model=DiveAdminOut)
+async def admin_patch_dive(number: int, body: DivePatch, store: StoreDep) -> DiveAdminOut:
+    """Change the fields that live outside the dive form, leaving everything else as stored.
+
+    Only the fields present in the body are written; ``cover_attachment_id`` must name one of
+    the dive's attachments, or be ``null`` for no cover.
+    """
+    dive = _dive_or_404(store, number).model_copy(deep=True)
+    if "cover_attachment_id" not in body.model_fields_set:
+        return dive_service.dive_admin_out(store, dive)
+    cover = body.cover_attachment_id
+    if cover is not None and all(m.id != cover for m in dive.media):
+        raise HTTPException(status_code=422, detail=f"Dive #{number} has no attachment {cover}")
+    dive.cover = cover
+    await store.save_dive(dive, f"Set cover of dive #{number}")
+    return dive_service.dive_admin_out(store, dive)
 
 
 def _apply_dive(store: Store, dive: DiveRecord | None, body: DiveIn) -> DiveRecord:
@@ -222,6 +242,25 @@ async def admin_upload_gear_photo(
     item.media = [await _store_upload(file, "photo", True)]
     await store.save_gear(f"Set photo for gear item {item_id}")
     return dive_service.attachment_out(item.media[0])
+
+
+@router.put("/dives/{number}/attachments/order", response_model=list[AttachmentOut])
+async def admin_order_attachments(
+    number: int, body: list[str], store: StoreDep
+) -> list[AttachmentOut]:
+    """Put a dive's attachments in the order of the ids given, in one commit.
+
+    Unknown ids are ignored; attachments left out keep their relative order after the listed
+    ones.
+    """
+    dive = _dive_or_404(store, number).model_copy(deep=True)
+    position = {media_id: i for i, media_id in enumerate(body)}
+    current = sorted(dive.media, key=lambda m: m.sort)
+    ordered = sorted(current, key=lambda m: position.get(m.id, len(body)))
+    for i, media in enumerate(ordered):
+        media.sort = i
+    await store.save_dive(dive, f"Reorder attachments of dive #{number}")
+    return [dive_service.attachment_out(m) for m in ordered]
 
 
 @router.patch("/attachments/{media_id}", response_model=AttachmentOut)
@@ -372,6 +411,15 @@ async def admin_get_site(site_id: str, store: StoreDep) -> SiteOut:
 
 @router.post("/sites", response_model=SiteOut, status_code=status.HTTP_201_CREATED)
 async def admin_create_site(body: SiteIn, store: StoreDep) -> SiteOut:
+    """Create a personal site.
+
+    The id must match ``{iso3}-{slug}`` (422 naming the pattern otherwise) and be free (409).
+    Existing sites keep whatever id they have, so the check is on create only.
+    """
+    if not SITE_ID.match(body.site_id):
+        raise HTTPException(
+            status_code=422, detail=f"Site id {body.site_id!r} does not match {SITE_ID.pattern}"
+        )
     if body.site_id in store.sites:
         raise HTTPException(status_code=409, detail="Site id already in use")
     record = _site_from(body, None)
@@ -969,9 +1017,10 @@ async def admin_import_subsurface(store: StoreDep, file: UploadFile = File(...))
                     adopted, f"Link Subsurface site to {resolved.site_id}"
                 )
         else:
-            site_id = slugify(draft_site.name)
+            base_id = site_id_for(None, draft_site.name)
+            site_id = base_id
             while site_id in store.sites:
-                site_id = f"{slugify(draft_site.name)}-{uuid4().hex[:6]}"
+                site_id = f"{base_id}-{uuid4().hex[:6]}"
             resolved = SiteRecord(
                 site_id=site_id,
                 name=draft_site.name,

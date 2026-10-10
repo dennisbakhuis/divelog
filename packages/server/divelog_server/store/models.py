@@ -5,7 +5,7 @@ through the admin editor untouched.
 """
 
 from datetime import date, datetime
-from typing import Any, Literal, Self
+from typing import Any, ClassVar, Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -126,6 +126,9 @@ class TankRecord(BaseModel):
 
 
 class DiveRecord(Record):
+    KEEP_NULL: ClassVar[tuple[str, ...]] = ("gas",)
+    """Keys written as ``null``: a missing ``gas`` key reads as air, a ``null`` one as unknown."""
+
     number: int = Field(ge=1)
     date: date
     time_in: str | None = None
@@ -152,7 +155,7 @@ class DiveRecord(Record):
     operator: str | None = None
     tags: list[str] = Field(default_factory=list)
     types_raw: str | None = None
-    gas: str = "air"
+    gas: str | None = "air"
     o2_pct: int | None = None
     o2_measured_pct: float | None = None
     he_pct: int | None = None

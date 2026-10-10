@@ -424,8 +424,8 @@ def gas_label(gas: str, o2: int | None, he: int | None) -> str:
 
 
 def gases_of(dive: DiveRecord) -> list[str]:
-    """Every distinct mix on the dive, the back gas first."""
-    labels = [gas_label(dive.gas, dive.o2_pct, dive.he_pct)]
+    """Every distinct mix on the dive, the back gas first; none when the gas is not known."""
+    labels = [gas_label(dive.gas, dive.o2_pct, dive.he_pct)] if dive.gas else []
     for tank in dive.tanks:
         label = gas_label(tank.gas, tank.o2_pct, tank.he_pct)
         if label not in labels:
@@ -865,8 +865,26 @@ def gas_summary(tanks: list[TankIn]) -> dict[str, Any]:
     }
 
 
+GAS_FIELDS = (
+    "gas",
+    "o2_pct",
+    "o2_measured_pct",
+    "he_pct",
+    "cylinder",
+    "pressure_in_bar",
+    "pressure_out_bar",
+)
+
+
 def apply_dive_in(store: Store, dive: DiveRecord | None, data: DiveIn) -> DiveRecord:
-    """Build the record for validated input, keeping what the form does not carry."""
+    """Build the record for validated input, keeping what the form does not carry.
+
+    The single-gas fields follow the tanks: with tanks the first back-gas tank sets them, so
+    whatever the body says is ignored. Without tanks they are taken from the body when sent,
+    otherwise kept from the stored dive, and unknown (``null``) on a new dive or once the last
+    tank is removed.
+    """
+    unsent = {f for f in GAS_FIELDS if f not in data.model_fields_set}
     fields = data.model_dump(
         exclude={
             "people_ids",
@@ -876,9 +894,12 @@ def apply_dive_in(store: Store, dive: DiveRecord | None, data: DiveIn) -> DiveRe
             "trip_id",
             "gear_setup_id",
             "cover_attachment_id",
+            *unsent,
         }
     )
     payload: dict[str, Any] = dive.model_dump() if dive else {}
+    if dive is None or dive.tanks:
+        payload.update(dict.fromkeys(unsent))
     payload.update(fields)
     if data.tanks:
         payload.update(gas_summary(data.tanks))

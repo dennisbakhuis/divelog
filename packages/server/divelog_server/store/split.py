@@ -43,12 +43,12 @@ from divelog_server.store.models import (
     SiteRecord,
 )
 from divelog_server.store.overlay import PERSONAL_FIELDS, overlay_frontmatter, overlay_is_empty
+from divelog_server.store.slug import SITE_ID
 from divelog_server.store.sources import REPO_PREFIX, CommonsSource
 from divelog_server.store.store import Store
 from divelog_server.store.validate import (
     LONG_BODY,
     SAFE_UNDERLAYS,
-    SITE_ID,
     Problem,
     errors,
     first_person,

@@ -268,9 +268,17 @@ class LogRepo:
 
 
 def frontmatter(record: BaseModel) -> dict[str, Any]:
-    """Frontmatter for a record: JSON-compatible, without nulls and empty top-level values."""
+    """Frontmatter for a record: JSON-compatible, without nulls and empty top-level values.
+
+    Keys a record lists in ``KEEP_NULL`` are written even when null, where a missing key would
+    read back as the field's default.
+    """
     payload = record.model_dump(mode="json", exclude_none=True, by_alias=True)
-    return {k: v for k, v in payload.items() if v not in (None, [], "", {})}
+    nulls = {k for k in getattr(record, "KEEP_NULL", ()) if getattr(record, k, None) is None}
+    if nulls:
+        order = record.model_dump(mode="json", by_alias=True)
+        payload = {k: payload.get(k) for k in order if k in payload or k in nulls}
+    return {k: v for k, v in payload.items() if k in nulls or v not in (None, [], "", {})}
 
 
 def profile_depths(payload: dict[str, Any]) -> list[float]:

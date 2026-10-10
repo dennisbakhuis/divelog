@@ -22,10 +22,10 @@ from divelog_server.store.gitfiles import GitFilesError, GitTree
 from divelog_server.store.loader import Loader
 from divelog_server.store.manifest import LICENCE_ALLOWLIST, MEDIA_MANIFEST, MediaManifest
 from divelog_server.store.models import ChangeEntry, RegionRecord, SiteMapRecord, SiteRecord
+from divelog_server.store.slug import SITE_ID
 from divelog_server.store.sources import COMMONS_PREFIX, PERSONAL_MAP_ID, REPO_PREFIX, CommonsSource
 from divelog_server.store.store import Store
 
-SITE_ID = re.compile(r"^[a-z]{3}-[a-z0-9-]+$")
 PERSONAL_KEYS = ("notes", "prices", "reference_maps", "subsurface_uuid")
 OVERLAY_KEYS = ("extends", "forked_from", "summary_override", "base_revision")
 SAFE_UNDERLAYS = ("osm", "locator", "seed")

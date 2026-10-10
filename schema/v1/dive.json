@@ -489,9 +489,16 @@
       "title": "Types Raw"
     },
     "gas": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
       "default": "air",
-      "title": "Gas",
-      "type": "string"
+      "title": "Gas"
     },
     "o2_pct": {
       "anyOf": [
