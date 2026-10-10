@@ -18,6 +18,7 @@ export * from './dive/timeline.js';
 export * from './dive/types.js';
 export * from './map/globe.js';
 export * from './map/locator.js';
+export * from './map/trace.js';
 export * from './map/viewport.js';
 export * from './map/world.js';
 export * from './admin/client.js';

@@ -336,7 +336,11 @@ export function defaultTitle(kind: MapKind): string {
   return MAP_KINDS.find((k) => k.kind === kind)?.label ?? 'Map';
 }
 
-export function emptySiteMap(kind: MapKind = 'stickmap'): SiteMap {
+/**
+ * A blank map. `origin` is where the drawing's (0, 0) sits, normally the site's position, so a
+ * new map is placed on the globe from the start; the drawing starts north-up.
+ */
+export function emptySiteMap(kind: MapKind = 'stickmap', origin?: MapOrigin | null): SiteMap {
   return {
     version: 3,
     kind,
@@ -348,9 +352,23 @@ export function emptySiteMap(kind: MapKind = 'stickmap'): SiteMap {
     areas: [],
     lines: [],
     notes: '',
-    origin: null,
+    origin: origin ? { lat: origin.lat, lon: origin.lon } : null,
     underlay: null,
   };
+}
+
+/** The origin a site gives a new map: its position, or null when it has none. */
+export function siteOrigin(site: { lat: number | null; lon: number | null }): MapOrigin | null {
+  return site.lat === null || site.lon === null ? null : { lat: site.lat, lon: site.lon };
+}
+
+/**
+ * A starter map from the server's seed endpoint as an editor draft: normalised, a site map,
+ * north-up, and placed at the site when the payload carries no origin of its own.
+ */
+export function seedDraft(input: unknown, origin: MapOrigin | null): SiteMap {
+  const map = normalizeSiteMap(input);
+  return { ...map, kind: 'sitemap', north: 0, origin: map.origin ?? origin, underlay: null };
 }
 
 /** Bearings wrap, so keep whatever was stored inside a single turn. */
@@ -667,6 +685,22 @@ export function moveLinePoint(
     ...map,
     lines: map.lines.map((l) =>
       l.id === id ? { ...l, points: l.points.map((p, i) => (i === index ? { x, y } : p)) } : l,
+    ),
+  };
+}
+
+/** Move one corner of an area. */
+export function moveAreaPoint(
+  map: SiteMap,
+  id: string,
+  index: number,
+  x: number,
+  y: number,
+): SiteMap {
+  return {
+    ...map,
+    areas: map.areas.map((a) =>
+      a.id === id ? { ...a, points: a.points.map((p, i) => (i === index ? { x, y } : p)) } : a,
     ),
   };
 }
