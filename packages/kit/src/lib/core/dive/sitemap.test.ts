@@ -8,6 +8,9 @@ import {
   legendKey,
   lineLength,
   moveLinePoint,
+  moveAreaPoint,
+  seedDraft,
+  siteOrigin,
   placeByBearing,
   removeLine,
   toLatLon,
@@ -596,5 +599,94 @@ describe('route highlights', () => {
       turn_at: 1,
     };
     expect(routeHighlights(map, track)).toEqual({ turnedAt: null, deepest: null });
+  });
+});
+
+describe('new maps and starter maps', () => {
+  it('starts a new map at the site, north-up, or nowhere without coordinates', () => {
+    const site = { lat: 52.09, lon: 5.12 };
+    const map = emptySiteMap('sitemap', siteOrigin(site));
+    expect(map.origin).toEqual({ lat: 52.09, lon: 5.12 });
+    expect(map.north).toBe(0);
+    expect(map.kind).toBe('sitemap');
+    expect(emptySiteMap('stickmap').origin).toBeNull();
+    expect(siteOrigin({ lat: null, lon: 5 })).toBeNull();
+    expect(emptySiteMap('stickmap', siteOrigin({ lat: 1, lon: null })).origin).toBeNull();
+  });
+
+  it('does not share the origin object with the caller', () => {
+    const origin = { lat: 1, lon: 2 };
+    const map = emptySiteMap('sitemap', origin);
+    origin.lat = 9;
+    expect(map.origin).toEqual({ lat: 1, lon: 2 });
+  });
+
+  it('normalises a seed: a north-up site map at the site, junk dropped', () => {
+    const seed = {
+      version: 3,
+      kind: 'stickmap',
+      title: 'Example Quarry',
+      north: 40,
+      to_scale: true,
+      nodes: [
+        { id: 'entry', x: 0, y: 0, type: 'entry' },
+        { id: 'bad', x: 'nope', y: 1 },
+      ],
+      edges: [],
+      areas: [
+        {
+          id: 'water',
+          kind: 'outline',
+          points: [
+            { x: 0, y: 0 },
+            { x: 10, y: 0 },
+            { x: 5, y: 9 },
+          ],
+        },
+      ],
+      lines: [
+        {
+          id: 'shore',
+          kind: 'shoreline',
+          points: [
+            { x: 0, y: 0 },
+            { x: 40, y: 3 },
+          ],
+        },
+      ],
+      notes: '',
+      origin: null,
+      underlay: { ref: 'scan:x', scale: 1, dx: 0, dy: 0, rotation: 0, opacity: 0.5 },
+    };
+    const draft = seedDraft(seed, { lat: 52, lon: 5 });
+    expect(draft.kind).toBe('sitemap');
+    expect(draft.north).toBe(0);
+    expect(draft.origin).toEqual({ lat: 52, lon: 5 });
+    expect(draft.underlay).toBeNull();
+    expect(draft.nodes.map((n) => n.id)).toEqual(['entry']);
+    expect(draft.areas).toHaveLength(1);
+    expect(draft.lines[0].kind).toBe('shoreline');
+  });
+
+  it('keeps the origin the seed carries', () => {
+    const draft = seedDraft({ kind: 'sitemap', origin: { lat: 10, lon: 20 } }, { lat: 1, lon: 2 });
+    expect(draft.origin).toEqual({ lat: 10, lon: 20 });
+    expect(seedDraft(null, null).origin).toBeNull();
+  });
+
+  it('moves one corner of an area and leaves the rest', () => {
+    const { map, id } = addArea(emptySiteMap('sitemap'), 'outline', [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 5, y: 8 },
+    ]);
+    const moved = moveAreaPoint(map, id, 1, 12, 2);
+    expect(moved.areas[0].points).toEqual([
+      { x: 0, y: 0 },
+      { x: 12, y: 2 },
+      { x: 5, y: 8 },
+    ]);
+    expect(map.areas[0].points[1]).toEqual({ x: 10, y: 0 });
+    expect(moveAreaPoint(map, 'nope', 0, 1, 1).areas).toEqual(map.areas);
   });
 });

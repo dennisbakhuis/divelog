@@ -35,6 +35,7 @@
     type Point,
     type View,
   } from '$lib/core/map/viewport';
+  import { screenAngle, underlayCentre, underlayPoint } from '$lib/core/map/trace';
 
   type Selection = {
     node?: string;
@@ -43,6 +44,21 @@
     line?: string;
     pin?: string;
   } | null;
+
+  /** A picture under the drawing, placed like `SiteMap['underlay']` (pixels → metres). */
+  type TraceImage = {
+    href: string;
+    scale: number;
+    dx: number;
+    dy: number;
+    rotation: number;
+    opacity: number;
+    width?: number;
+    height?: number;
+  };
+
+  /** What a long press landed on. */
+  type PressTarget = { kind: 'node' | 'line' | 'area' | 'edge' | 'canvas'; id?: string };
 
   let {
     map,
@@ -64,8 +80,15 @@
     onPinClick,
     onNodeMove,
     onLinePointMove,
+    onAreaPointMove,
     underlayHref = null,
     showUnderlay = false,
+    locator = null,
+    alignUnderlay = false,
+    underlaySize = null,
+    onUnderlayMove,
+    onUnderlayRotate,
+    onLongPress,
   }: {
     map: SiteMap;
     title?: string;
@@ -92,6 +115,19 @@
     onPinClick?: (pin: DiveMapPin) => void;
     onNodeMove?: (id: string, x: number, y: number, done: boolean) => void;
     onLinePointMove?: (id: string, index: number, x: number, y: number, done: boolean) => void;
+    onAreaPointMove?: (id: string, index: number, x: number, y: number, done: boolean) => void;
+    /** A rendered locator basemap under everything, placed at the map's origin; editing only. */
+    locator?: TraceImage | null;
+    /** Drags move the underlay instead of panning or editing; a handle turns it. */
+    alignUnderlay?: boolean;
+    /** Natural size of the underlay image, for the rotation handle. */
+    underlaySize?: { w: number; h: number } | null;
+    /** The underlay was dragged by `dx`, `dy` metres since the press. */
+    onUnderlayMove?: (dx: number, dy: number, done: boolean) => void;
+    /** The rotation handle was turned to `rotation` degrees. */
+    onUnderlayRotate?: (rotation: number, done: boolean) => void;
+    /** A touch or pen held still for half a second, on a thing or the bare canvas. */
+    onLongPress?: (target: PressTarget, at: Point, client: { x: number; y: number }) => void;
   } = $props();
 
   let clientWidth = $state(0);
@@ -233,6 +269,22 @@
     if (e.button === 0) e.preventDefault();
     active = true;
     pointers[e.pointerId] = toView(e.clientX, e.clientY);
+    if (
+      alignUnderlay &&
+      editable &&
+      e.button === 0 &&
+      Object.keys(pointers).length === 1 &&
+      map.underlay
+    ) {
+      const at = toMap(e);
+      underlayDrag = {
+        moved: false,
+        pointerId: e.pointerId,
+        start: { x: e.clientX, y: e.clientY },
+        from: at,
+      };
+      return;
+    }
     if (Object.keys(pointers).length === 1 && (e.button === 0 || e.button === 1)) {
       panning = { moved: false };
       panned = false;
@@ -240,6 +292,17 @@
   }
 
   function viewMove(e: PointerEvent) {
+    if (press && e.pointerId === press.pointerId) {
+      if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > 8) pressCancel();
+    }
+    if (rotating) {
+      rotateMove(e);
+      return;
+    }
+    if (underlayDrag) {
+      underlayMove(e);
+      return;
+    }
     if (drag) {
       nodeMove(e);
       return;
@@ -273,6 +336,9 @@
   }
 
   function viewUp(e: PointerEvent) {
+    if (press && e.pointerId === press.pointerId) pressCancel();
+    if (rotating) rotateUp(e);
+    if (underlayDrag) underlayUp(e);
     if (drag) nodeUp(e);
     if (pointDrag) pointUp(e);
     delete pointers[e.pointerId];
@@ -344,7 +410,9 @@
   });
   type Drag = { moved: boolean; pointerId: number; start: Point };
   let drag: (Drag & { id: string }) | null = null;
-  let pointDrag: (Drag & { id: string; index: number }) | null = null;
+  let pointDrag: (Drag & { id: string; index: number; shape: 'line' | 'area' }) | null = null;
+  let underlayDrag: (Drag & { from: Point }) | null = null;
+  let rotating: { pointerId: number; centre: Point } | null = null;
 
   /** A press only becomes a drag after a few screen pixels; a click may jitter by one. */
   function stillAClick(d: Drag, e: PointerEvent): boolean {
@@ -373,7 +441,7 @@
   }
 
   function nodeDown(e: PointerEvent, node: MapNode) {
-    if (!editable) return;
+    if (!editable || alignUnderlay) return;
     e.stopPropagation();
     if (e.button === 0) e.preventDefault();
     drag = {
@@ -406,13 +474,19 @@
     }
   }
 
-  function pointDown(e: PointerEvent, line: MapLine, index: number) {
-    if (!editable) return;
+  function pointDown(
+    e: PointerEvent,
+    shape: MapLine | MapArea,
+    index: number,
+    kind: 'line' | 'area' = 'line',
+  ) {
+    if (!editable || alignUnderlay) return;
     e.stopPropagation();
     if (e.button === 0) e.preventDefault();
     pointDrag = {
-      id: line.id,
+      id: shape.id,
       index,
+      shape: kind,
       moved: false,
       pointerId: e.pointerId,
       start: { x: e.clientX, y: e.clientY },
@@ -424,7 +498,8 @@
     const { x, y } = toMap(e);
     if (!pointDrag.moved) capture(e);
     pointDrag.moved = true;
-    onLinePointMove?.(pointDrag.id, pointDrag.index, x, y, false);
+    const move = pointDrag.shape === 'area' ? onAreaPointMove : onLinePointMove;
+    move?.(pointDrag.id, pointDrag.index, x, y, false);
   }
 
   function pointUp(e: PointerEvent) {
@@ -432,6 +507,16 @@
     const current = pointDrag;
     pointDrag = null;
     panned = true;
+    if (current.shape === 'area') {
+      const area = map.areas.find((a) => a.id === current.id);
+      if (current.moved) {
+        const { x, y } = toMap(e);
+        onAreaPointMove?.(current.id, current.index, x, y, true);
+      } else if (area) {
+        onAreaClick?.(area);
+      }
+      return;
+    }
     const line = map.lines.find((l) => l.id === current.id);
     if (current.moved) {
       const { x, y } = toMap(e);
@@ -439,6 +524,85 @@
     } else if (line) {
       onLineClick?.(line);
     }
+  }
+
+  function underlayMove(e: PointerEvent) {
+    if (!underlayDrag || e.pointerId !== underlayDrag.pointerId) return;
+    if (stillAClick(underlayDrag, e)) return;
+    if (!underlayDrag.moved) capture(e);
+    underlayDrag.moved = true;
+    const at = toMap(e);
+    onUnderlayMove?.(at.x - underlayDrag.from.x, at.y - underlayDrag.from.y, false);
+  }
+
+  function underlayUp(e: PointerEvent) {
+    if (!underlayDrag || e.pointerId !== underlayDrag.pointerId) return;
+    const current = underlayDrag;
+    underlayDrag = null;
+    panned = true;
+    if (!current.moved) return;
+    const at = toMap(e);
+    onUnderlayMove?.(at.x - current.from.x, at.y - current.from.y, true);
+  }
+
+  function rotateDown(e: PointerEvent, centre: Point) {
+    e.stopPropagation();
+    e.preventDefault();
+    rotating = { pointerId: e.pointerId, centre };
+    capture(e);
+  }
+
+  function rotateMove(e: PointerEvent) {
+    if (!rotating || e.pointerId !== rotating.pointerId) return;
+    onUnderlayRotate?.(screenAngle(rotating.centre, toMap(e)), false);
+  }
+
+  function rotateUp(e: PointerEvent) {
+    if (!rotating || e.pointerId !== rotating.pointerId) return;
+    const current = rotating;
+    rotating = null;
+    panned = true;
+    onUnderlayRotate?.(screenAngle(current.centre, toMap(e)), true);
+  }
+
+  // A long press (touch or pen) stands in for a right click: it lands on whatever carries
+  // `data-hit`, or on the canvas, and the click that follows it is swallowed.
+  let press: {
+    pointerId: number;
+    x: number;
+    y: number;
+    timer: ReturnType<typeof setTimeout>;
+  } | null = null;
+
+  function pressStart(e: PointerEvent) {
+    const already = press !== null || Object.keys(pointers).length > 0;
+    pressCancel();
+    if (already || !editable || !onLongPress || e.pointerType === 'mouse') return;
+    const hit = (e.target as Element | null)?.closest?.('[data-hit]') as SVGElement | null;
+    const target: PressTarget = hit
+      ? { kind: hit.dataset.hit as PressTarget['kind'], id: hit.dataset.id }
+      : { kind: 'canvas' };
+    const at = toMap(e);
+    const client = { x: e.clientX, y: e.clientY };
+    press = {
+      pointerId: e.pointerId,
+      x: e.clientX,
+      y: e.clientY,
+      timer: setTimeout(() => {
+        press = null;
+        drag = null;
+        pointDrag = null;
+        underlayDrag = null;
+        panning = null;
+        panned = true;
+        onLongPress?.(target, at, client);
+      }, 550),
+    };
+  }
+
+  function pressCancel() {
+    if (press) clearTimeout(press.timer);
+    press = null;
   }
 
   function lineLabelAt(line: MapLine): { x: number; y: number; angle: number } {
@@ -577,6 +741,7 @@
     bind:clientHeight
     class="sitemap"
     class:editable
+    class:aligning={editable && alignUnderlay}
     class:active
     class:routed={route !== null}
     viewBox="{box.minX} {box.minY} {width} {height}"
@@ -586,6 +751,7 @@
     onclick={canvasClick}
     ondblclick={viewDoubleClick}
     onwheel={onWheel}
+    onpointerdowncapture={pressStart}
     onpointerdown={viewDown}
     onpointermove={viewMove}
     onpointerup={viewUp}
@@ -609,6 +775,19 @@
       </marker>
     </defs>
     <g class="view" bind:this={content} transform={toSvgTransform(view)}>
+      {#if locator && editable}
+        <g class="underlay locator" opacity={locator.opacity}>
+          <image
+            href={locator.href}
+            x="0"
+            y="0"
+            width={locator.width}
+            height={locator.height}
+            transform="translate({locator.dx} {locator.dy}) rotate({locator.rotation}) scale({locator.scale})"
+            preserveAspectRatio="xMinYMin"
+          />
+        </g>
+      {/if}
       {#if underlay && underlayHref}
         <g class="underlay" opacity={underlay.opacity}>
           <image
@@ -636,6 +815,8 @@
           <g
             class="area {area.kind}"
             class:selected={selection?.area === area.id}
+            data-hit="area"
+            data-id={area.id}
             role={editable ? 'button' : undefined}
             tabindex={editable ? 0 : undefined}
             onclick={(e) => {
@@ -662,6 +843,20 @@
                 text-anchor="middle">{area.label || depthLabel(area.depth)}</text
               >
             {/if}
+            {#if editable && selection?.area === area.id}
+              {#each area.points as p, i (i)}
+                <circle
+                  class="vertex"
+                  role="button"
+                  tabindex="-1"
+                  aria-label="Corner {i + 1} of {area.label || area.kind}"
+                  cx={p.x}
+                  cy={p.y}
+                  r={4.5 * k}
+                  onpointerdown={(e) => pointDown(e, area, i, 'area')}
+                />
+              {/each}
+            {/if}
           </g>
         {/each}
         {#if draft.length}
@@ -679,6 +874,8 @@
           <g
             class="line {line.kind}"
             class:selected={selection?.line === line.id}
+            data-hit="line"
+            data-id={line.id}
             role={editable ? 'button' : undefined}
             tabindex={editable ? 0 : undefined}
             onclick={(e) => {
@@ -755,6 +952,8 @@
             <g
               class="edge {edge.style}"
               class:selected={isSelectedEdge(edge)}
+              data-hit="edge"
+              data-id="{edge.from}|{edge.to}"
               class:on-route={onRoute(edge)}
               role={editable ? 'button' : undefined}
               tabindex={editable ? 0 : undefined}
@@ -816,6 +1015,8 @@
           <g
             class="node {node.type}"
             class:selected={selection?.node === node.id}
+            data-hit="node"
+            data-id={node.id}
             class:off-route={!nodeOnRoute(node.id)}
             class:turn={turn === node.id}
             transform="translate({node.x} {node.y})"
@@ -917,6 +1118,28 @@
           </g>
         {/each}
       </g>
+
+      {#if alignUnderlay && underlay && underlaySize}
+        {@const c = underlayCentre(underlay, underlaySize)}
+        {@const top = underlayPoint(underlay, { x: underlaySize.w / 2, y: 0 })}
+        {@const len = Math.hypot(top.x - c.x, top.y - c.y) || 1}
+        {@const hx = top.x + ((top.x - c.x) / len) * 24 * k}
+        {@const hy = top.y + ((top.y - c.y) / len) * 24 * k}
+        <g class="align">
+          <circle class="align-centre" cx={c.x} cy={c.y} r={4 * k} />
+          <line class="align-arm" x1={c.x} y1={c.y} x2={hx} y2={hy} />
+          <circle
+            class="rotate-handle"
+            role="button"
+            tabindex="-1"
+            aria-label="Rotate the underlay"
+            cx={hx}
+            cy={hy}
+            r={9 * k}
+            onpointerdown={(e) => rotateDown(e, c)}
+          />
+        </g>
+      {/if}
     </g>
     <g
       class="compass"
@@ -1054,6 +1277,26 @@
   }
   .sitemap.editable {
     cursor: crosshair;
+    touch-action: none;
+  }
+  .sitemap.aligning {
+    cursor: move;
+  }
+  .align-centre {
+    fill: var(--dl-color-warm);
+  }
+  .align-arm {
+    stroke: var(--dl-color-warm);
+    stroke-width: 1.5px;
+    stroke-dasharray: 4 3;
+    vector-effect: non-scaling-stroke;
+  }
+  .rotate-handle {
+    fill: var(--map-bg);
+    stroke: var(--dl-color-warm);
+    stroke-width: 2.5px;
+    vector-effect: non-scaling-stroke;
+    cursor: grab;
   }
   .view-controls {
     position: absolute;
