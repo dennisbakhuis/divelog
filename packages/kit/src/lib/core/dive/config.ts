@@ -20,6 +20,32 @@ export type DivelogPresets = {
   gases?: GasPreset[];
 };
 
+/** Page copy a site may replace with its own voice; plain text. */
+export type DivelogCopy = {
+  /** Under the log page's heading. */
+  logLede?: string;
+  /** Under the sites index heading, before the link to the trips. */
+  sitesLede?: string;
+  /** Under the buddies index heading. */
+  peopleLede?: string;
+  /** The gear page's heading. */
+  gearTitle?: string;
+  /** Under the gear page's heading. */
+  gearLede?: string;
+};
+
+export const DEFAULT_COPY: Required<DivelogCopy> = {
+  logLede:
+    'Every logged dive with its site, depth, time and buddies: searchable, filterable and on the map.',
+  sitesLede:
+    'Every site in the log, grouped by country and region. Each has its own page with the story of the place, a locator map, the dives logged there and, where one has been drawn, a map of the site.',
+  peopleLede:
+    'Nobody dives alone. Everyone here has been on the other end of a buddy check at least once.',
+  gearTitle: 'The gear behind the log',
+  gearLede:
+    'Setups are the combinations that get dived; items are the pieces. Each shows how many logged dives it has been on.',
+};
+
 export type DivelogConfig = {
   basePath: string;
   adminPath: string;
@@ -32,6 +58,8 @@ export type DivelogConfig = {
   /** Ends every page title (`… — <suffix>`); defaults to `ownerName`. */
   titleSuffix?: string;
   presets?: DivelogPresets;
+  /** Page copy; anything left out keeps the kit's default text. */
+  copy?: DivelogCopy;
 };
 
 export const DEFAULT_CONFIG: DivelogConfig = {
@@ -44,6 +72,11 @@ export const DEFAULT_CONFIG: DivelogConfig = {
   ownerName: 'Diver',
   siteUrl: 'http://localhost:3000',
 };
+
+/** The page copy of a config, with the kit's defaults for what it leaves out. */
+export function copyFor(config: DivelogConfig): Required<DivelogCopy> {
+  return { ...DEFAULT_COPY, ...config.copy };
+}
 
 /** The text that ends the log's page titles. */
 export function titleSuffix(config: DivelogConfig): string {

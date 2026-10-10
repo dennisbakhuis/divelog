@@ -11,7 +11,8 @@ This is format **1**. The server publishes the format it reads as `format` in
 prose companion. Unknown frontmatter keys are kept on a round trip through the admin editor, so
 files can carry extra fields.
 
-Check a repository with `divelog validate <root>` (the kind comes from `divelog.yaml`).
+Check a repository with `divelog validate <root>` (the kind comes from `divelog.yaml`); the
+commons rules are listed under [Validating the commons](#validating-the-commons).
 
 ## Repository layout
 
@@ -260,3 +261,45 @@ accepted and `public` must be true:
 
 Structured site data is ODbL 1.0, descriptions and map artwork CC BY-SA 4.0, photos keep their
 own licence from the media manifest. A log repository is private and needs no licence.
+
+## Validating the commons
+
+`divelog validate --kind sites <root>` prints `path: message` per problem. Errors fail the run;
+warnings (`path: warning: message`) are printed but pass unless `--strict` is given.
+
+Rules on the tree as it is:
+
+- ids: site ids match the pattern, name their file and are unique; drawn map ids have no
+  `-p<n>`, name their file and are unique.
+- references: regions, drawn and seed maps, photos (`repo:`/`commons:` files), map sites and
+  underlays resolve inside the commons. `redirects.yaml` (`old: new`) points at existing sites
+  in one step and never redirects a live id.
+- provenance: `lat`/`lon` need a `geo_source`; a body over 400 characters needs `sources`.
+- licences: every media file has a `media/manifest.json` entry with an allowlisted licence and
+  `public: true`; no `reference:` maps or underlays; no personal (`notes`, `prices`,
+  `reference_maps`, `subsurface_uuid`) or overlay/fork keys.
+- editorial: no first-person words (`I`, `my`, `we`, `our`, `us`, ...) in site summaries and
+  bodies, region bodies, or drawn-map titles, notes and labels. A Roman numeral after a name
+  (`Andrea I`, `Malek II`) is not a pronoun. Owner-voice phrases without a pronoun (`in the
+  log`, `the workbook`, `dive(s) here`, `favourite`, `the owner's`) are warnings.
+- visibility: a `location_visibility: region_only` site with more than two decimals in
+  `lat`/`lon` is a warning: such records carry a coarse point only.
+- node ids: ids in `retired_nodes` are not used again; `renamed_nodes` targets are nodes.
+
+With `--base <git ref>` the working tree is also compared with that revision (commons CI passes
+the pull request's base branch):
+
+- a changed site (any objective field or the body) moves `revision` up by exactly 1 and adds a
+  changelog entry at the new revision with a non-empty note, dated no earlier than the newest
+  base entry; the base changelog stays unchanged below it. A revision never goes down.
+- a deleted or renamed site id needs a `redirects.yaml` entry.
+- a drawn map whose geometry changed (`nodes`, `edges`, `lines`, `areas`, `origin`, `north`,
+  `to_scale`) is bumped the same way; title and notes edits need no bump. A node id that
+  disappeared is listed in `retired_nodes` or `renamed_nodes`, and neither list loses entries.
+- a deleted region or removed manifest entry that is still referenced is caught by the
+  reference and licence rules above.
+
+`divelog maps changed --base <ref>` prints the ids of drawn maps added or changed since the
+ref, and `divelog maps render <map-id | file> --out <png> [--root <commons>]` draws one as a
+1600 px PNG (areas, lines, edges, nodes with labels, north arrow, scale bar for maps drawn to
+scale) for review.

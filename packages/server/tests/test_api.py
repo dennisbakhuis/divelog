@@ -255,6 +255,7 @@ async def test_avatar_upload(owner_client: AsyncClient) -> None:
 
 
 async def test_subsurface_import_creates_drafts(owner_client: AsyncClient) -> None:
+    """Ressel is new; Zeelandbrug matches the log site of that name instead of a second copy."""
     response = await owner_client.post(
         "/api/v1/admin/import/subsurface",
         files={"file": ("log.xml", FIXTURE.read_bytes(), "application/xml")},
@@ -262,7 +263,12 @@ async def test_subsurface_import_creates_drafts(owner_client: AsyncClient) -> No
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["created"] == [120, 121]
-    assert body["sites_created"] == 2
+    assert body["sites_created"] == 1 and body["sites_matched"] == 1
+    report = {s["name"]: s for s in body["sites"]}
+    assert report["Émergence du Ressel"]["outcome"] == "created"
+    zeeland = report["Zeelandbrug"]
+    assert zeeland["outcome"] == "matched" and zeeland["matched_by"] == "name"
+    assert zeeland["site_id"] == "zeelandbrug" and zeeland["origin"] == "log"
 
     admin_list = await owner_client.get("/api/v1/admin/dives")
     drafts = [d for d in admin_list.json() if d["visibility"] == "draft"]
@@ -295,6 +301,7 @@ async def test_subsurface_import_creates_drafts(owner_client: AsyncClient) -> No
     )
     assert again.json()["created"] == []
     assert again.json()["skipped"] == 2
+    assert {s["matched_by"] for s in again.json()["sites"]} == {"uuid"}
     imports = (await owner_client.get("/api/v1/admin/imports")).json()
     assert len(imports) == 2
 

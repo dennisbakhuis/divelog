@@ -692,8 +692,7 @@
       >Story (markdown)<textarea rows="8" bind:value={form.body_md}></textarea></label
     >
     <label class="wide"
-      >Original notes (Dutch, as written)<textarea rows="4" bind:value={form.notes_nl}
-      ></textarea></label
+      >Original notes (as written)<textarea rows="4" bind:value={form.notes_nl}></textarea></label
     >
     <label class="wide"
       >Sketch on the page (private)<input type="text" bind:value={form.sketch} /></label

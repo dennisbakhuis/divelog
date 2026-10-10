@@ -4,8 +4,10 @@
   import { formatDate, pluralize } from '$lib/core/dive/format';
   import { reveal } from '$lib/components/anim/reveal';
   import { getDivelog } from '$lib/core/dive/context';
+  import { copyFor } from '$lib/core/dive/config';
 
-  const { urls } = getDivelog();
+  const { urls, config } = getDivelog();
+  const copy = copyFor(config);
 
   let { data }: { data: PublicDataFor<'gear'> } = $props();
   const current = $derived(data.gear.items.filter((i) => !i.retired));
@@ -22,11 +24,8 @@
 <section class="page dl-container">
   <a class="back" href={urls.log()}>← Dive log</a>
   <p class="dl-kicker">Gear</p>
-  <h1>What I dive with</h1>
-  <p class="lede">
-    Setups are the combinations I actually dive; items are the pieces. Each shows how many logged
-    dives it has been on.
-  </p>
+  <h1>{copy.gearTitle}</h1>
+  <p class="lede">{copy.gearLede}</p>
 
   {#if data.owner}
     <OwnerBar edit={{ label: 'Edit gear', href: urls.admin.gear() }} />

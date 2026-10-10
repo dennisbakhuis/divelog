@@ -1,0 +1,526 @@
+/**
+ * A small, made-up dive log in the shapes the divelog server's public API
+ * returns: three dives at two sites, one trip, two buddies and one gear setup.
+ */
+
+const SITES = [
+  {
+    slug: 'nl-example-quarry',
+    name: 'Example Quarry',
+    country: 'NLD',
+    country_code: 'NL',
+    country_name: 'Netherlands',
+    region: 'inland-lakes',
+    region_name: 'Inland lakes',
+    area: 'Utrecht',
+    lat: 52.09,
+    lon: 5.12,
+    site_type: 'quarry lake',
+    water: 'fresh',
+    summary: 'A flooded sand quarry with a training platform at 8 m.',
+  },
+  {
+    slug: 'eg-coral-garden',
+    name: 'Coral Garden',
+    country: 'EGY',
+    country_code: 'EG',
+    country_name: 'Egypt',
+    region: 'red-sea',
+    region_name: 'Northern Red Sea',
+    area: 'Hurghada',
+    lat: 27.23,
+    lon: 33.86,
+    site_type: 'sea',
+    water: 'salt',
+    summary: 'A shallow reef garden for an easy first dive of the week.',
+  },
+];
+
+const PEOPLE = [
+  { slug: 'alex', name: 'Alex', avatar_url: null },
+  { slug: 'robin', name: 'Robin', avatar_url: null },
+];
+
+const TRIP = {
+  id: 'red-sea-2025-03',
+  slug: 'red-sea-2025-03',
+  name: 'Red Sea Mar 2025',
+  start_date: '2025-03-01',
+  end_date: '2025-03-08',
+};
+
+const DIVES = [
+  {
+    number: 1,
+    date: '2024-05-12',
+    time_in: '10:15',
+    duration_min: 45,
+    max_depth_m: 18.2,
+    avg_depth_m: 9.8,
+    water_temp_c: 14,
+    site: 'nl-example-quarry',
+    tags: ['training'],
+    buddies: ['alex'],
+    trip: null,
+  },
+  {
+    number: 2,
+    date: '2024-05-12',
+    time_in: '14:05',
+    duration_min: 52,
+    max_depth_m: 12.4,
+    avg_depth_m: 7.1,
+    water_temp_c: 15,
+    site: 'nl-example-quarry',
+    tags: [],
+    buddies: ['alex', 'robin'],
+    trip: null,
+  },
+  {
+    number: 3,
+    date: '2025-03-02',
+    time_in: '09:30',
+    duration_min: 61,
+    max_depth_m: 22.7,
+    avg_depth_m: 11.3,
+    water_temp_c: 23,
+    site: 'eg-coral-garden',
+    tags: ['boat'],
+    buddies: ['robin'],
+    trip: TRIP.slug,
+  },
+];
+
+const siteOf = (slug) => SITES.find((s) => s.slug === slug);
+const personOf = (slug) => PEOPLE.find((p) => p.slug === slug);
+const divesAt = (slug) => DIVES.filter((d) => d.site === slug);
+const sum = (values) => values.reduce((a, b) => a + b, 0);
+const round1 = (value) => Math.round(value * 10) / 10;
+
+function siteRef(site) {
+  const { slug, name, country_code, country_name, region, area, lat, lon, site_type, water } = site;
+  return { slug, name, country_code, country_name, region, area, lat, lon, site_type, water };
+}
+
+function siteFull(site) {
+  const dives = divesAt(site.slug);
+  return {
+    id: site.slug,
+    slug: site.slug,
+    name: site.name,
+    full_name: site.name,
+    short_name: site.name,
+    aliases: [],
+    country: site.country,
+    country_code: site.country_code,
+    country_name: site.country_name,
+    region: site.region,
+    region_name: site.region_name,
+    area: site.area,
+    system: null,
+    site_type: site.site_type,
+    section_vocabulary: [],
+    lat: site.lat,
+    lon: site.lon,
+    access: null,
+    location_visibility: 'exact',
+    water: site.water,
+    halocline: false,
+    halocline_m: null,
+    summary: site.summary,
+    description_md: site.summary,
+    max_depth_m: Math.max(...dives.map((d) => d.max_depth_m)),
+    dives: dives.length,
+    first_dive: dives[0].date,
+    last_dive: dives.at(-1).date,
+    maps: [],
+    default_map: null,
+    attachments: [],
+    prices: [],
+    sources: [],
+    verified: null,
+    geo_source: null,
+    origin: 'log',
+    attribution: null,
+    revision: 1,
+    changelog: [],
+    forked_from: null,
+    private: null,
+    description_html: `<p>${site.summary}</p>`,
+  };
+}
+
+function mapSite(site) {
+  const dives = divesAt(site.slug);
+  const years = dives.map((d) => Number(d.date.slice(0, 4)));
+  return {
+    slug: site.slug,
+    name: site.name,
+    country_code: site.country_code,
+    lat: site.lat,
+    lon: site.lon,
+    dives: dives.length,
+    minutes: sum(dives.map((d) => d.duration_min)),
+    site_type: site.site_type,
+    max_depth_m: Math.max(...dives.map((d) => d.max_depth_m)),
+    first_year: Math.min(...years),
+    last_year: Math.max(...years),
+  };
+}
+
+function profileOf(dive) {
+  const samples = [];
+  const seconds = dive.duration_min * 60;
+  for (let t = 0; t <= seconds; t += 30) {
+    const phase = t / seconds;
+    const shape = phase < 0.1 ? phase / 0.1 : phase > 0.85 ? (1 - phase) / 0.15 : 1;
+    const d = round1(Math.max(0, dive.max_depth_m * shape * (0.85 + 0.15 * Math.sin(t / 240))));
+    samples.push({ t, d, temp: dive.water_temp_c, ndl: 99, stop: null, tts: 1 });
+  }
+  return samples;
+}
+
+function spark(dive) {
+  return profileOf(dive)
+    .filter((_, i) => i % 4 === 0)
+    .map((s) => Math.round((s.d / dive.max_depth_m) * 140));
+}
+
+function listItem(dive) {
+  const site = siteOf(dive.site);
+  return {
+    number: dive.number,
+    title: '',
+    date: dive.date,
+    time_in: dive.time_in,
+    duration_min: dive.duration_min,
+    max_depth_m: dive.max_depth_m,
+    water_temp_c: dive.water_temp_c,
+    tags: dive.tags,
+    gas: 'nitrox',
+    gases: ['Nitrox 32'],
+    mode: 'OC',
+    site: siteRef(site),
+    section: null,
+    buddies: dive.buddies.map(personOf),
+    gear_setup: null,
+    rating: null,
+    has_photos: false,
+    has_profile: true,
+    spark: spark(dive),
+    cover_url: null,
+    search_text: `#${dive.number} ${site.name} ${site.area} ${site.country_name}`,
+    trip: dive.trip ? { slug: TRIP.slug, name: TRIP.name } : null,
+  };
+}
+
+function diveDetail(dive) {
+  const index = DIVES.indexOf(dive);
+  const prev = DIVES[index - 1] ?? null;
+  const next = DIVES[index + 1] ?? null;
+  const site = siteOf(dive.site);
+  const sameDay = DIVES.filter((d) => d.date === dive.date);
+  return {
+    ...listItem(dive),
+    time_out: null,
+    avg_depth_m: dive.avg_depth_m,
+    surface_temp_c: null,
+    air_temp_c: null,
+    thermocline_m: null,
+    visibility_m: 8,
+    visibility_raw: null,
+    site: siteFull(site),
+    trip: dive.trip
+      ? {
+          ...TRIP,
+          description_md: '',
+          day_index: 2,
+          days: 8,
+          custom: false,
+          description_html: '',
+        }
+      : null,
+    types_raw: null,
+    o2_pct: 32,
+    o2_measured_pct: null,
+    he_pct: 0,
+    gas_raw: null,
+    suit: '7 mm wetsuit',
+    weights_kg: 8,
+    cylinder: null,
+    pressure_in_bar: 200,
+    pressure_out_bar: 70,
+    tanks: [],
+    sac_l_min: null,
+    sac_basis: null,
+    safety_stop_min: 3,
+    surface_interval: null,
+    conditions: null,
+    difficulty: null,
+    course: null,
+    guide: null,
+    body_md: 'A calm dive along the wall.',
+    notes_nl: null,
+    visibility: 'public',
+    buddies: dive.buddies.map((slug) => ({
+      ...personOf(slug),
+      dives_together: DIVES.filter((d) => d.buddies.includes(slug)).length,
+      first_dive: DIVES.find((d) => d.buddies.includes(slug)).date,
+      last_dive: DIVES.findLast((d) => d.buddies.includes(slug)).date,
+      first_together: DIVES.find((d) => d.buddies.includes(slug)) === dive,
+    })),
+    attachments: [],
+    cover_attachment_id: null,
+    computer: [dive.number],
+    profile: profileOf(dive),
+    profile_meta: {
+      gf: '50/85',
+      deco_model: 'ZHL-16C GF',
+      deco: false,
+      gas_switches: [[0, '32']],
+      surface_breaks: [],
+      temp_min_c: dive.water_temp_c,
+      temp_max_c: dive.water_temp_c,
+      sample_interval_s: 30,
+      partial: null,
+      samples: profileOf(dive).length,
+      deco_min: null,
+      deepest_stop_m: null,
+      first_stop_s: null,
+      max_ascent_m_min: 8,
+      max_descent_m_min: 12,
+      time_at_max_s: 300,
+    },
+    map_annotation: null,
+    annotation_stale: false,
+    annotation_dropped_legs: 0,
+    map: null,
+    prev_number: prev?.number ?? null,
+    next_number: next?.number ?? null,
+    prev_site_name: prev ? siteOf(prev.site).name : null,
+    next_site_name: next ? siteOf(next.site).name : null,
+    site_dive_index: divesAt(site.slug).indexOf(dive) + 1,
+    day_index: sameDay.indexOf(dive) + 1,
+    same_day: sameDay
+      .filter((d) => d !== dive)
+      .map((d) => ({ number: d.number, site_name: siteOf(d.site).name, time_in: d.time_in })),
+    context_facts: index === 0 ? ['first dive in the log'] : [],
+    private: null,
+    body_html: '<p>A calm dive along the wall.</p>',
+  };
+}
+
+const countries = () =>
+  [...new Set(SITES.map((s) => s.country_code))].map((code) => {
+    const site = SITES.find((s) => s.country_code === code);
+    return {
+      country_code: code,
+      country_name: site.country_name,
+      dives: DIVES.filter((d) => siteOf(d.site).country_code === code).length,
+    };
+  });
+
+const years = () =>
+  [...new Set(DIVES.map((d) => Number(d.date.slice(0, 4))))].map((year) => {
+    const dives = DIVES.filter((d) => d.date.startsWith(String(year)));
+    return { year, dives: dives.length, minutes: sum(dives.map((d) => d.duration_min)) };
+  });
+
+const ordered = () => [...DIVES].reverse();
+const minutes = () => sum(DIVES.map((d) => d.duration_min));
+const deepest = () => DIVES.reduce((a, b) => (b.max_depth_m > a.max_depth_m ? b : a));
+const longest = () => DIVES.reduce((a, b) => (b.duration_min > a.duration_min ? b : a));
+const coldest = () => DIVES.reduce((a, b) => (b.water_temp_c < a.water_temp_c ? b : a));
+const record = (dive, value) => ({
+  number: dive.number,
+  title: '',
+  value,
+  site: siteOf(dive.site).name,
+});
+const tags = () =>
+  [...new Set(DIVES.flatMap((d) => d.tags))].map((tag) => ({
+    tag,
+    count: DIVES.filter((d) => d.tags.includes(tag)).length,
+  }));
+
+function personStats(slug) {
+  const dives = DIVES.filter((d) => d.buddies.includes(slug));
+  return {
+    dives: dives.length,
+    minutes: sum(dives.map((d) => d.duration_min)),
+    max_depth_m: Math.max(...dives.map((d) => d.max_depth_m)),
+    longest_min: Math.max(...dives.map((d) => d.duration_min)),
+    coldest_c: Math.min(...dives.map((d) => d.water_temp_c)),
+    first_dive: dives[0].date,
+    last_dive: dives.at(-1).date,
+    countries: new Set(dives.map((d) => siteOf(d.site).country_code)).size,
+    sites: new Set(dives.map((d) => d.site)).size,
+  };
+}
+
+const GEAR_ITEMS = [
+  {
+    id: 'primary-regulator',
+    name: 'Primary regulator',
+    category: 'regulator',
+    brand: 'Example',
+    model: 'R1',
+    acquired: null,
+    retired: null,
+    notes_md: 'Long hose on the right post.',
+    sort: 10,
+    photo_url: null,
+    dive_count: 0,
+    notes_html: '<p>Long hose on the right post.</p>',
+  },
+  {
+    id: 'wing',
+    name: 'Wing',
+    category: 'bcd',
+    brand: 'Example',
+    model: 'W18',
+    acquired: null,
+    retired: null,
+    notes_md: '',
+    sort: 20,
+    photo_url: null,
+    dive_count: 0,
+    notes_html: '',
+  },
+];
+
+/** The API responses by path (without the `/api/v1` prefix). */
+export function fixtures() {
+  return {
+    '/version': { version: '0.1.0', format: 1, api: 1 },
+    '/dive/summary': {
+      total_dives: DIVES.length,
+      total_hours: round1(minutes() / 60),
+      countries: countries().length,
+      max_depth_m: deepest().max_depth_m,
+      last_dive: DIVES.at(-1).date,
+      last_dive_site: siteOf(DIVES.at(-1).site).name,
+      cave_dives: 0,
+      scooter_dives: 0,
+    },
+    '/dive/timeline': {
+      years: years().map(({ year, dives }) => ({ year, dives })),
+      latest: {
+        number: DIVES.at(-1).number,
+        date: DIVES.at(-1).date,
+        site: siteOf(DIVES.at(-1).site).name,
+      },
+    },
+    '/dive/stats': {
+      total_dives: DIVES.length,
+      private_dives: 0,
+      total_minutes: minutes(),
+      max_depth_m: deepest().max_depth_m,
+      avg_depth_m: round1(sum(DIVES.map((d) => d.avg_depth_m)) / DIVES.length),
+      avg_duration_min: round1(minutes() / DIVES.length),
+      countries: countries().length,
+      sites: SITES.length,
+      first_dive: DIVES[0].date,
+      last_dive: DIVES.at(-1).date,
+      tags: tags(),
+      deep_dives: 0,
+      years: years(),
+      country_breakdown: countries(),
+      depth_buckets: [
+        { from_m: 0, to_m: 10, dives: 0 },
+        { from_m: 10, to_m: 20, dives: 2 },
+        { from_m: 20, to_m: 30, dives: 1 },
+      ],
+      map_sites: SITES.map(mapSite),
+      deepest: record(deepest(), deepest().max_depth_m),
+      longest: record(longest(), longest().duration_min),
+      coldest: record(coldest(), coldest().water_temp_c),
+    },
+    '/dive/dives': {
+      dives: ordered().map(listItem),
+      total: DIVES.length,
+      tags: tags().map((t) => t.tag),
+      countries: countries(),
+      years: [...new Set(DIVES.map((d) => Number(d.date.slice(0, 4))))].reverse(),
+      regions: [...new Set(SITES.map((s) => s.region))],
+      site_types: [...new Set(SITES.map((s) => s.site_type))],
+      gear_setups: [{ slug: 'backmount-wetsuit', name: 'Backmount, wetsuit' }],
+    },
+    ...Object.fromEntries(DIVES.map((d) => [`/dive/dives/${d.number}`, diveDetail(d)])),
+    '/dive/sites': SITES.map(siteFull),
+    ...Object.fromEntries(
+      SITES.map((s) => [
+        `/dive/sites/${s.slug}`,
+        {
+          site: siteFull(s),
+          dives: [...divesAt(s.slug)].reverse().map(listItem),
+          people: [...new Set(divesAt(s.slug).flatMap((d) => d.buddies))].map(personOf),
+          nearby: [],
+          routes: [],
+        },
+      ]),
+    ),
+    '/dive/regions': SITES.map((s) => ({
+      id: s.region,
+      name: s.region_name,
+      country: s.country,
+      country_code: s.country_code,
+      waters: [],
+      body_md: '',
+      sites: [siteRef(s)],
+      dives: divesAt(s.slug).length,
+      stats: null,
+      map_sites: [],
+      body_html: '',
+    })),
+    '/dive/trips': [
+      {
+        ...TRIP,
+        days: 8,
+        countries: [{ country_code: 'EG', country_name: 'Egypt', dives: 1 }],
+        regions: [{ id: 'red-sea', name: 'Northern Red Sea' }],
+        site_ids: ['eg-coral-garden'],
+        dive_numbers: [3],
+        stats: { dives: 1, minutes: 61, max_depth_m: 22.7, sites: 1 },
+        buddies: [{ ...personOf('robin'), dives: 1 }],
+        description_md: '',
+        cover_url: null,
+        description_html: '',
+      },
+    ],
+    '/dive/people': PEOPLE.map((p) => ({
+      ...p,
+      bio_md: '',
+      stats: personStats(p.slug),
+      countries: [
+        ...new Set(
+          DIVES.filter((d) => d.buddies.includes(p.slug)).map((d) => siteOf(d.site).country_code),
+        ),
+      ],
+      private: null,
+      bio_html: '',
+    })),
+    '/dive/gear': {
+      setups: [
+        {
+          id: 'backmount-wetsuit',
+          slug: 'backmount-wetsuit',
+          name: 'Backmount, wetsuit',
+          description_md: 'Single tank for warm water.',
+          sort: 1,
+          items: GEAR_ITEMS,
+          dive_count: 0,
+          description_html: '<p>Single tank for warm water.</p>',
+        },
+      ],
+      items: GEAR_ITEMS,
+    },
+  };
+}
+
+/** The slug of the site the smoke test opens. */
+export const SITE_SLUG = SITES[0].slug;
+/** The site's display name, the page's heading. */
+export const SITE_NAME = SITES[0].name;
+/** Every public dive number. */
+export const DIVE_NUMBERS = DIVES.map((d) => d.number);

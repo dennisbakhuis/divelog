@@ -13,7 +13,7 @@ instance layers under its own log.
 | `packages/kit` | `@divelog/kit`: pages, components, server helpers, styles | Svelte 5, SvelteKit 2 |
 | `apps/reference` | Minimal SvelteKit app mounting the kit; dev playground and standalone image | |
 | `schema/v1` | JSON Schema of the data formats, exported from the server models | |
-| `docs/` | `FORMAT.md` data format, `DEPLOY.md`, `CONTRIBUTING.md` | |
+| `docs/` | `FORMAT.md` data format, `KIT.md` mounting the kit, `DEPLOY.md`, `CONTRIBUTING.md` | |
 
 Code is Apache-2.0 (see `LICENSE` and `NOTICE`). One diver, one instance, one log repository;
 multi-user accounts are not a goal.

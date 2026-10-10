@@ -1,0 +1,37 @@
+{
+ "version": 3,
+ "kind": "sitemap",
+ "title": "Lac de l'Écluse",
+ "north": 20,
+ "to_scale": true,
+ "origin": {"lat": 44.6, "lon": 1.7},
+ "nodes": [
+  {"id": "entry", "x": 0, "y": 0, "type": "entry", "label": "Entry"},
+  {"id": "wreck", "x": 60, "y": 35, "type": "wreck", "label": "Barge", "depth": 12},
+  {"id": "buoy", "x": 110, "y": -10, "type": "buoy", "label": "Buoy", "color": "#ff8800"}
+ ],
+ "edges": [
+  {"from": "entry", "to": "wreck", "style": "route"},
+  {"from": "wreck", "to": "buoy", "style": "jump"}
+ ],
+ "areas": [
+  {"id": "lake", "kind": "outline", "label": "Lake", "points": [
+   {"x": -20, "y": -30}, {"x": 140, "y": -30}, {"x": 150, "y": 60}, {"x": -25, "y": 70}
+  ]},
+  {"id": "deep", "kind": "depth", "label": "15 m", "depth": 15, "points": [
+   {"x": 40, "y": 10}, {"x": 90, "y": 10}, {"x": 90, "y": 50}, {"x": 40, "y": 50}
+  ]}
+ ],
+ "lines": [
+  {"id": "shore", "kind": "shoreline", "closed": true, "points": [
+   {"x": -20, "y": -30}, {"x": 140, "y": -30}, {"x": 150, "y": 60}, {"x": -25, "y": 70}
+  ]},
+  {"id": "path", "kind": "path", "label": "Dive path", "points": [
+   {"x": 0, "y": 0}, {"x": 30, "y": 20}, {"x": 60, "y": 35}
+  ]}
+ ],
+ "notes": "Example site map for the renderer.",
+ "id": "fra-lake-1",
+ "site_id": "fra-lake",
+ "revision": 1
+}

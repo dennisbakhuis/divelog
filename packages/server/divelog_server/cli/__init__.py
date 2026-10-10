@@ -40,8 +40,16 @@ from divelog_server.store.split import (
     run_split,
 )
 from divelog_server.store.store import Store
-from divelog_server.store.validate import Problem, validate_commons, validate_log
-from divelog_server.tools import access, media, shearwater_pnf, sitemap_osm, stickmap, tiles
+from divelog_server.store.validate import Problem, errors, validate_commons, validate_log
+from divelog_server.tools import (
+    access,
+    maps_render,
+    media,
+    shearwater_pnf,
+    sitemap_osm,
+    stickmap,
+    tiles,
+)
 
 SCHEMAS: dict[str, type[BaseModel]] = {
     "site-core": SiteCore,
@@ -66,6 +74,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate = commands.add_parser("validate", help="validate a log or commons repository")
     validate.add_argument("--kind", choices=("log", "sites"), help="default: divelog.yaml kind")
+    validate.add_argument("--base", help="sites: also check the changes since this git ref")
+    validate.add_argument("--strict", action="store_true", help="fail on warnings too")
     validate.add_argument("root", type=Path)
 
     schema = commands.add_parser("schema", help="JSON Schema of the data files, OpenAPI document")
@@ -98,6 +108,7 @@ def build_parser() -> argparse.ArgumentParser:
     sitemap_osm.register(commands)
     stickmap.register(commands)
     media.register(commands)
+    maps_render.register(commands)
     commons_cli.register(commands)
     return parser
 
@@ -110,7 +121,7 @@ def main(argv: Sequence[str] | None = None, out: TextIO | None = None) -> int:
         code: int = args.run(args, stream)
         return code
     if args.command == "validate":
-        return cmd_validate(args.root, args.kind, stream)
+        return cmd_validate(args.root, args.kind, stream, base=args.base, strict=args.strict)
     if args.command == "schema" and args.schema_command == "openapi":
         return cmd_schema_openapi(args.file, stream)
     if args.command == "schema":
@@ -131,15 +142,22 @@ def main(argv: Sequence[str] | None = None, out: TextIO | None = None) -> int:
     return cmd_status(args.log_root, stream)
 
 
-def print_problems(problems: list[Problem], out: TextIO) -> int:
-    """Print each problem as ``path: message``; 1 when there are any."""
+def print_problems(problems: list[Problem], out: TextIO, strict: bool = False) -> int:
+    """Print each problem as ``path: message``; 1 when there are errors (or, strict, any)."""
     for problem in problems:
         print(problem, file=out)
-    return 1 if problems else 0
+    failing = problems if strict else errors(problems)
+    return 1 if failing else 0
 
 
-def cmd_validate(root: Path, kind: str | None, out: TextIO) -> int:
-    """``divelog validate``: every problem of the repository, exit 1 on any."""
+def cmd_validate(
+    root: Path, kind: str | None, out: TextIO, *, base: str | None = None, strict: bool = False
+) -> int:
+    """``divelog validate``: every problem of the repository, exit 1 on errors.
+
+    ``base`` adds the history rules against that git ref (commons only); ``strict`` fails on
+    warnings as well.
+    """
     try:
         manifest = read_manifest(root)
     except ValueError as exc:
@@ -147,12 +165,17 @@ def cmd_validate(root: Path, kind: str | None, out: TextIO) -> int:
         return 1
     kind = kind or (manifest.kind if manifest else "log")
     if kind == "sites":
-        problems = validate_commons(root)
+        problems = validate_commons(root, base)
     else:
         problems = validate_log(root, commons_root_for(root, manifest))
-    code = print_problems(problems, out)
+    code = print_problems(problems, out, strict)
+    found = len(errors(problems))
+    warned = len(problems) - found
     if not code:
-        print(f"{root}: valid {kind} repository", file=out)
+        suffix = f" ({warned} warnings)" if warned else ""
+        print(f"{root}: valid {kind} repository{suffix}", file=out)
+    else:
+        print(f"{found} errors, {warned} warnings", file=out)
     return code
 
 

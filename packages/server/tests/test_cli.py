@@ -1,5 +1,6 @@
 import io
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -7,7 +8,7 @@ import pytest
 from divelog_server.cli import SCHEMAS, main
 from divelog_server.core import deps
 from divelog_server.core.config import get_settings
-from divelog_server.store.files import write_markdown
+from divelog_server.store.files import read_markdown, write_markdown
 from divelog_server.store.manifest import Manifest, ManifestSource, read_manifest, write_manifest
 from divelog_server.store.store import Store
 from tests.logbuilder import FIXTURE_COMMONS, build_commons, build_log
@@ -38,6 +39,37 @@ def test_validate_fixture_commons_reports_its_legacy_site() -> None:
     code, output = run("validate", str(FIXTURE_COMMONS))
     assert code == 1
     assert "sites/ressel.md: site id 'ressel' does not match" in output
+
+
+def test_validate_warnings_pass_unless_strict(tmp_path: Path) -> None:
+    commons = build_commons(tmp_path / "commons")
+    write_markdown(
+        commons / "sites" / "fra-pool.md",
+        {"site_id": "fra-pool", "name": "Pool"},
+        "Most dives here are training dives.",
+    )
+    code, output = run("validate", str(commons))
+    assert code == 0
+    assert "sites/fra-pool.md: warning: owner voice in body line 1" in output
+    assert "valid sites repository (1 warnings)" in output
+    code, output = run("validate", "--strict", str(commons))
+    assert code == 1
+    assert output.splitlines()[-1] == "0 errors, 1 warnings"
+
+
+def test_validate_base_runs_the_history_rules(tmp_path: Path) -> None:
+    commons = build_commons(tmp_path / "commons")
+    identity = ["-c", "user.name=T", "-c", "user.email=t@example.org", "-c", "commit.gpgsign=false"]
+    for args in (["init", "-q"], ["add", "-A"], ["commit", "-q", "-m", "Base"]):
+        subprocess.run(["git", "-C", str(commons), *identity, *args], check=True)
+    path = commons / "sites" / "fra-commons-only.md"
+    meta, body = read_markdown(path)
+    write_markdown(path, {**meta, "summary": "A spring with a short sump."}, body)
+    code, output = run("validate", str(commons))
+    assert code == 0
+    code, output = run("validate", "--base", "HEAD", str(commons))
+    assert code == 1
+    assert "sites/fra-commons-only.md: changed without a revision bump (still 1)" in output
 
 
 def test_validate_log_defaults_to_log(tmp_path: Path) -> None:

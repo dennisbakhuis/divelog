@@ -12,7 +12,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Version */
+    /**
+     * Version
+     * @description ``version`` of the build, ``format`` of the data it reads, ``api`` of this interface.
+     */
     get: operations['version_api_v1_version_get'];
     put?: never;
     post?: never;
@@ -1995,6 +1998,42 @@ export interface components {
       skipped: number;
       /** Sites Created */
       sites_created: number;
+      /**
+       * Sites Matched
+       * @default 0
+       */
+      sites_matched: number;
+      /** Sites */
+      sites: components['schemas']['ImportSiteOut'][];
+    };
+    /**
+     * ImportSiteOut
+     * @description How one imported site resolved: matched to an existing site, or created as personal.
+     *
+     *     ``matched_by`` is the rule that found the match; ``distance_m`` (whole metres) is set
+     *     whenever both the import and the matched site are placed.
+     */
+    ImportSiteOut: {
+      /** Subsurface Uuid */
+      subsurface_uuid: string | null;
+      /** Name */
+      name: string;
+      /** Site Id */
+      site_id: string;
+      /**
+       * Outcome
+       * @enum {string}
+       */
+      outcome: 'matched' | 'created';
+      /** Matched By */
+      matched_by: ('uuid' | 'name' | 'alias' | 'distance') | null;
+      /** Distance M */
+      distance_m: number | null;
+      /**
+       * Origin
+       * @enum {string}
+       */
+      origin: 'log' | 'commons' | 'fork';
     };
     /** MagicLinkRequest */
     MagicLinkRequest: {
@@ -3492,6 +3531,18 @@ export interface components {
       /** Context */
       ctx?: Record<string, never>;
     };
+    /**
+     * VersionOut
+     * @description The running build and the majors of the data format and the API it speaks.
+     */
+    VersionOut: {
+      /** Version */
+      version: string;
+      /** Format */
+      format: number;
+      /** Api */
+      api: number;
+    };
     /** YearStat */
     YearStat: {
       /** Year */
@@ -3525,9 +3576,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          'application/json': {
-            [key: string]: string;
-          };
+          'application/json': components['schemas']['VersionOut'];
         };
       };
     };
