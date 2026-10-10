@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { PublicDataFor } from '../public';
-  import { goto } from '$app/navigation';
   import DiveTable from '$lib/components/dive/DiveTable.svelte';
   import WorldMap from '$lib/components/dive/WorldMap.svelte';
   import DiveGlobe from '$lib/components/dive/DiveGlobe.svelte';
@@ -29,7 +28,18 @@
 <section class="trip dl-container dl-detail">
   <DetailTop
     back={{ href: urls.trips(), label: 'Dive trips' }}
-    owner={data.owner ? { edit: { label: 'Edit trip', href: data.editHref } } : null}
+    label="Trip navigation"
+    owner={data.owner
+      ? {
+          edit: { label: 'Edit trip', href: data.editHref },
+          actions: [
+            {
+              label: '+ Log a dive on this trip',
+              href: urls.admin.newDive({ trip: trip.slug }),
+            },
+          ],
+        }
+      : null}
   />
   <p class="dl-kicker">
     Trip · {trip.countries.map((c) => `${flagEmoji(c.country_code)} ${c.country_name}`).join(', ')}
@@ -74,7 +84,6 @@
           map={data.map}
           compact
           label="Map of {pluralize(data.map.dots.length, 'dive site')} of {trip.name}"
-          onSelect={(slug) => slug && goto(urls.site(slug))}
         />
       </DiveGlobe>
     </div>
@@ -127,7 +136,9 @@
   }
   .where a {
     color: var(--dl-color-text);
-    text-decoration: none;
+    text-decoration: underline;
+    text-decoration-color: var(--dl-color-border-strong);
+    text-underline-offset: 3px;
   }
   .where a:hover {
     color: var(--dl-color-accent);

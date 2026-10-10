@@ -15,6 +15,7 @@
   import { reveal } from '$lib/components/anim/reveal';
   import { getDivelog } from '$lib/core/dive/context';
   import { copyFor } from '$lib/core/dive/config';
+  import OwnerBar from '$lib/components/shell/OwnerBar.svelte';
 
   const { urls, config } = getDivelog();
   const copy = copyFor(config);
@@ -51,6 +52,12 @@
   <p class="dl-kicker">Dive buddies</p>
   <h1>{data.people.length} people, <span class="accent">one log</span></h1>
   <p class="lede">{copy.peopleLede}</p>
+  {#if data.owner}
+    <OwnerBar
+      edit={{ label: 'Edit people', href: data.editHref }}
+      actions={[{ label: '+ New dive', href: urls.admin.newDive() }]}
+    />
+  {/if}
 
   <div class="toolbar">
     <div class="sorts" role="group" aria-label="Sort people">
@@ -249,5 +256,8 @@
   }
   .faint {
     color: var(--dl-color-text-faint);
+  }
+  .page > :global(.owner-bar) {
+    margin: 0 0 28px;
   }
 </style>

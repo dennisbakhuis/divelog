@@ -416,6 +416,91 @@ const GEAR_ITEMS = [
   },
 ];
 
+function tripSummary() {
+  return {
+    ...TRIP,
+    days: 8,
+    countries: [{ country_code: 'EG', country_name: 'Egypt', dives: 1 }],
+    regions: [{ id: 'red-sea', name: 'Northern Red Sea' }],
+    site_ids: ['eg-coral-garden'],
+    dive_numbers: [3],
+    stats: { dives: 1, minutes: 61, max_depth_m: 22.7, sites: 1 },
+    buddies: [{ ...personOf('robin'), dives: 1 }],
+    description_md: '',
+    cover_url: null,
+    description_html: '',
+  };
+}
+
+/** A region page: its one site, the dives there and the numbers. */
+function regionDetail(site) {
+  const dives = divesAt(site.slug);
+  const years = dives.map((d) => Number(d.date.slice(0, 4)));
+  return {
+    id: site.region,
+    name: site.region_name,
+    country: site.country_name,
+    country_code: site.country_code,
+    waters: [site.water],
+    body_md: '',
+    sites: [siteRef(site)],
+    dives: dives.length,
+    stats: {
+      dives: dives.length,
+      sites: 1,
+      minutes: sum(dives.map((d) => d.duration_min)),
+      max_depth_m: Math.max(...dives.map((d) => d.max_depth_m)),
+      first_year: Math.min(...years),
+      last_year: Math.max(...years),
+      top_site: null,
+    },
+    map_sites: [mapSite(site)],
+    body_html: '',
+  };
+}
+
+/** A buddy's page: the dives together, where, when and on which trips. */
+function personDetail(person) {
+  const dives = DIVES.filter((d) => d.buddies.includes(person.slug));
+  const sites = [...new Set(dives.map((d) => d.site))].map(siteOf);
+  const yearList = [...new Set(dives.map((d) => Number(d.date.slice(0, 4))))];
+  return {
+    person: {
+      ...person,
+      bio_md: '',
+      stats: personStats(person.slug),
+      countries: [...new Set(sites.map((s) => s.country_code))],
+      private: null,
+      bio_html: '',
+    },
+    countries: [...new Set(sites.map((s) => s.country_code))].map((code) => {
+      const site = sites.find((s) => s.country_code === code);
+      return {
+        country_code: code,
+        country_name: site.country_name,
+        dives: dives.filter((d) => siteOf(d.site).country_code === code).length,
+      };
+    }),
+    dives: [...dives].reverse().map(listItem),
+    map_sites: sites.map(mapSite),
+    years: yearList.map((year) => {
+      const inYear = dives.filter((d) => d.date.startsWith(String(year)));
+      return { year, dives: inYear.length, minutes: sum(inYear.map((d) => d.duration_min)) };
+    }),
+    trips: dives.some((d) => d.trip)
+      ? [
+          {
+            slug: TRIP.slug,
+            name: TRIP.name,
+            start_date: TRIP.start_date,
+            end_date: TRIP.end_date,
+            dives: dives.filter((d) => d.trip).length,
+          },
+        ]
+      : [],
+  };
+}
+
 /** The API responses by path (without the `/api/v1` prefix). */
 export function fixtures() {
   return {
@@ -507,21 +592,14 @@ export function fixtures() {
       map_sites: [],
       body_html: '',
     })),
-    '/dive/trips': [
-      {
-        ...TRIP,
-        days: 8,
-        countries: [{ country_code: 'EG', country_name: 'Egypt', dives: 1 }],
-        regions: [{ id: 'red-sea', name: 'Northern Red Sea' }],
-        site_ids: ['eg-coral-garden'],
-        dive_numbers: [3],
-        stats: { dives: 1, minutes: 61, max_depth_m: 22.7, sites: 1 },
-        buddies: [{ ...personOf('robin'), dives: 1 }],
-        description_md: '',
-        cover_url: null,
-        description_html: '',
-      },
-    ],
+    '/dive/trips': [tripSummary()],
+    [`/dive/trips/${TRIP.slug}`]: {
+      trip: tripSummary(),
+      dives: DIVES.filter((d) => d.trip === TRIP.slug).map(listItem),
+      map_sites: [mapSite(siteOf('eg-coral-garden'))],
+    },
+    ...Object.fromEntries(SITES.map((s) => [`/dive/regions/${s.region}`, regionDetail(s)])),
+    ...Object.fromEntries(PEOPLE.map((p) => [`/dive/people/${p.slug}`, personDetail(p)])),
     '/dive/people': PEOPLE.map((p) => ({
       ...p,
       bio_md: '',
@@ -614,9 +692,75 @@ const COMMONS_HITS = [
   distance_km,
 }));
 
-/** Owner endpoints for the sharing features, by path (without `/api/v1`). */
+/** A dive as the editor loads it: the public record plus the ids the form edits. */
+function diveAdmin(dive) {
+  const site = siteOf(dive.site);
+  return {
+    ...diveDetail(dive),
+    id: dive.number,
+    people_ids: dive.buddies,
+    site_id: site.slug,
+    trip_id: dive.trip,
+    gear_setup_id: null,
+    country: site.country,
+  };
+}
+
+/** A buddy as the editor sees them: the public card plus the private name fields. */
+function personPrivate(person) {
+  return {
+    ...person,
+    id: person.slug,
+    first_name: person.name,
+    last_name: null,
+    alias: null,
+    aliases: [],
+    email: null,
+    display: 'first',
+    notes: null,
+    dives: DIVES.filter((d) => d.buddies.includes(person.slug)).length,
+  };
+}
+
+/** The editor's lists and records the admin pages load, by path. */
+function adminFixtures() {
+  return {
+    '/admin/dives': ordered().map((dive) => ({
+      number: dive.number,
+      date: dive.date,
+      title: '',
+      site_name: siteOf(dive.site).name,
+      max_depth_m: dive.max_depth_m,
+      duration_min: dive.duration_min,
+      tags: dive.tags,
+      attachments: 0,
+      visibility: 'public',
+    })),
+    ...Object.fromEntries(DIVES.map((d) => [`/admin/dives/${d.number}`, diveAdmin(d)])),
+    '/admin/dives/next-number': { number: DIVES.length + 1 },
+    '/admin/sites': [...SITES, COMMONS_SITE].map(siteFull),
+    ...Object.fromEntries(
+      [...SITES, COMMONS_SITE].map((s) => [`/admin/sites/${s.slug}`, siteFull(s)]),
+    ),
+    '/admin/trips': [
+      {
+        ...TRIP,
+        description_md: '',
+        day_index: null,
+        days: 8,
+        custom: false,
+        description_html: '',
+      },
+    ],
+    '/admin/people': PEOPLE.map(personPrivate),
+    '/admin/gear/setups': [],
+  };
+}
+
+/** Owner endpoints for the sharing features and the editor, by path (without `/api/v1`). */
 export function ownerFixtures() {
   return {
+    ...adminFixtures(),
     '/auth/me': { email: 'sam@example.com' },
     '/admin/repo/status': {
       state: 'clean',

@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { PublicDataFor } from '../public';
-  import { goto } from '$app/navigation';
   import DiveTable from '$lib/components/dive/DiveTable.svelte';
   import WorldMap from '$lib/components/dive/WorldMap.svelte';
   import DetailTop from '$lib/components/dive/DetailTop.svelte';
@@ -39,7 +38,18 @@
 <section class="person dl-container dl-detail">
   <DetailTop
     back={{ href: urls.people(), label: 'Dive buddies' }}
-    owner={data.owner ? { edit: { label: 'Edit person', href: data.editHref } } : null}
+    label="Buddy navigation"
+    owner={data.owner
+      ? {
+          edit: { label: 'Edit person', href: data.editHref },
+          actions: [
+            {
+              label: `+ Log a dive with ${person.name}`,
+              href: urls.admin.newDive({ person: person.private?.id ?? person.slug }),
+            },
+          ],
+        }
+      : null}
   />
   <header class="head">
     <span class="avatar">
@@ -131,7 +141,7 @@
   {#if data.map.dots.length}
     <section class="block">
       <h2>Where we dived</h2>
-      <WorldMap map={data.map} compact onSelect={(slug) => slug && goto(urls.site(slug))} />
+      <WorldMap map={data.map} compact />
     </section>
   {/if}
 
@@ -168,11 +178,14 @@
               <a
                 class="flag-chip"
                 href={urls.filter({ country: country.country_code, with: person.slug })}
-                title="{pluralize(country.dives, 'dive')} in {country.country_name}"
               >
                 <span class="flag" aria-hidden="true">{flagEmoji(country.country_code)}</span>
                 {country.country_name}
-                <span class="dl-num faint">{country.dives}</span>
+                <span class="dl-num faint"
+                  >{country.dives}<span class="dl-visually-hidden">
+                    {country.dives === 1 ? 'dive' : 'dives'}</span
+                  ></span
+                >
               </a>
             {/each}
           </div>
@@ -186,16 +199,16 @@
       <h2>Trips together</h2>
       <div class="flags">
         {#each data.trips as trip (trip.slug)}
-          <a
-            class="flag-chip"
-            href={urls.trip(trip.slug)}
-            title="{pluralize(trip.dives, 'dive')} together, {formatDateRange(
-              trip.start_date,
-              trip.end_date,
-            )}"
-          >
+          <a class="flag-chip" href={urls.trip(trip.slug)}>
             {trip.name}
-            <span class="dl-num faint">{trip.dives}</span>
+            <span class="dl-num faint"
+              >{trip.dives}<span class="dl-visually-hidden">
+                {trip.dives === 1 ? 'dive' : 'dives'} together, {formatDateRange(
+                  trip.start_date,
+                  trip.end_date,
+                )}</span
+              ></span
+            >
           </a>
         {/each}
       </div>
@@ -205,15 +218,16 @@
   {#if data.years.length > 1}
     <section class="block">
       <h2>By year</h2>
-      <div class="bars dl-card" style="--n: {data.years.length}">
+      <ul class="bars dl-card" style="--n: {data.years.length}">
         {#each data.years as year, i (year.year)}
-          <div class="bar-col" title="{year.year}: {year.dives} dives">
-            <span class="bar-value dl-num">{year.dives}</span>
+          <li class="bar-col">
+            <span class="bar-value dl-num" aria-hidden="true">{year.dives}</span>
             <span class="bar" style="height: {yearHeights[i]}%"></span>
-            <span class="bar-label dl-num">{String(year.year).slice(2)}</span>
-          </div>
+            <span class="bar-label dl-num" aria-hidden="true">{String(year.year).slice(2)}</span>
+            <span class="dl-visually-hidden">{year.year}: {pluralize(year.dives, 'dive')}</span>
+          </li>
         {/each}
-      </div>
+      </ul>
     </section>
   {/if}
 
@@ -416,6 +430,8 @@
     }
   }
   .bars {
+    list-style: none;
+    margin: 0;
     display: grid;
     grid-template-columns: repeat(var(--n), minmax(0, 1fr));
     gap: 6px;

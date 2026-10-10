@@ -88,15 +88,15 @@ export function titleSuffix(config: DivelogConfig): string {
 export type QueryParams =
   string | URLSearchParams | Record<string, string | number | null | undefined>;
 
-/** Prefill of the new-dive form: a site id, a trip slug, a person id, an ISO date. */
+export type OgKind = 'dive' | 'site';
+
+/** Prefill for the new-dive editor: a site id, trip slug, person slug and/or `YYYY-MM-DD` date. */
 export type NewDiveParams = {
   site?: string | null;
   trip?: string | null;
   person?: string | null;
   date?: string | null;
 };
-
-export type OgKind = 'dive' | 'site';
 
 /**
  * Query string without the leading `?`. Records keep their key order, skip
@@ -158,8 +158,11 @@ export function createUrls(config: DivelogConfig) {
       /** The dive list; `params` filter it (`{ status: 'draft' }`). */
       dives: (params?: QueryParams): string => withQuery(`${admin}/dives`, params),
       dive: (n: number | string, hash?: string): string => withHash(`${admin}/dives/${n}`, hash),
-      /** The new-dive form, prefilled from `site`, `trip`, `person` and `date` when given. */
-      newDive: (params?: NewDiveParams): string => withQuery(`${admin}/dives/new`, params),
+      newDive: (params?: NewDiveParams): string =>
+        withQuery(
+          `${admin}/dives/new`,
+          params ? Object.fromEntries(Object.entries(params).filter(([, v]) => v)) : undefined,
+        ),
       sites: (): string => `${admin}/sites`,
       site: (id: string): string => `${admin}/sites/${id}`,
       siteMaps: (id: string): string => `${admin}/sites/${id}/maps`,

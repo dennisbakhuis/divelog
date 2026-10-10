@@ -148,6 +148,11 @@
   border: 1px solid var(--dl-color-border);
   white-space: nowrap;
 }
+:where(.divelog) a.dl-tag,
+:where(.divelog) button.dl-tag {
+  min-height: 24px;
+  box-sizing: border-box;
+}
 :where(.divelog) .dl-tag::before {
   content: '';
   width: 6px;

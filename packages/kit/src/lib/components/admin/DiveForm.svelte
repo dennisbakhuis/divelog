@@ -108,8 +108,8 @@
     if (prefill?.site && sites.some((s) => s.id === prefill.site)) form.site_id = prefill.site;
     const trip = prefill?.trip ?? template?.trip_for_date?.slug ?? null;
     if (trip && trips.some((t) => t.slug === trip)) form.trip_id = trip;
-    if (prefill?.person && people.some((p) => p.id === prefill.person))
-      form.people_ids = [prefill.person];
+    const person = people.find((p) => p.id === prefill?.person || p.slug === prefill?.person);
+    if (person) form.people_ids = [person.id];
     return form;
   }
 
