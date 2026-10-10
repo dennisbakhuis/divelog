@@ -4,32 +4,33 @@
   import { reveal } from '$lib/components/anim/reveal';
   import { getDivelog } from '$lib/core/dive/context';
   import { copyFor } from '$lib/core/dive/config';
+  import { page } from '$app/state';
+  import { replaceState } from '$app/navigation';
+  import {
+    siteMatches,
+    sitesFilterFromParams,
+    sitesFilterToParams,
+  } from '$lib/core/dive/sites-filter';
+  import { announce } from '$lib/core/ui/announce';
+  import OwnerBar from '$lib/components/shell/OwnerBar.svelte';
 
   const { urls, config } = getDivelog();
   const copy = copyFor(config);
 
   let { data }: { data: PublicDataFor<'sites'> } = $props();
-  let type = $state('');
-  let country = $state('');
-  let query = $state('');
+  const initial = sitesFilterFromParams(page.url.searchParams);
+  let type = $state(initial.type);
+  let country = $state(initial.country);
+  let query = $state(initial.q);
 
+  const filter = $derived({ q: query, country, type });
   const shown = $derived(
     data.countries
       .filter((c) => !country || c.code === country)
       .map((c) => ({
         ...c,
         regions: c.regions
-          .map((r) => ({
-            ...r,
-            sites: r.sites.filter(
-              (s) =>
-                (!type || s.site_type === type) &&
-                (!query ||
-                  `${s.name} ${s.area ?? ''} ${r.name}`
-                    .toLowerCase()
-                    .includes(query.toLowerCase())),
-            ),
-          }))
+          .map((r) => ({ ...r, sites: r.sites.filter((s) => siteMatches(s, r.name, filter)) }))
           .filter((r) => r.sites.length),
       }))
       .filter((c) => c.regions.length),
@@ -37,6 +38,25 @@
   const count = $derived(
     shown.reduce((n, c) => n + c.regions.reduce((m, r) => m + r.sites.length, 0), 0),
   );
+
+  let syncTimer: ReturnType<typeof setTimeout> | undefined;
+  let lastCount: number | null = null;
+
+  /** Mirror the filter in the URL (so a view is a link) and speak the new count. */
+  function sync(delay = 0) {
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => {
+      const url = new URL(page.url);
+      url.search = sitesFilterToParams(filter, url.searchParams).toString();
+      if (url.search !== page.url.search) replaceState(url, page.state);
+      if (count !== lastCount) {
+        lastCount = count;
+        announce(`${count} ${count === 1 ? 'site' : 'sites'}`);
+      }
+    }, delay);
+  }
+
+  $effect(() => () => clearTimeout(syncTimer));
 </script>
 
 <section class="page dl-container">
@@ -45,6 +65,15 @@
   <p class="lede">
     {copy.sitesLede} Or go by <a href={urls.trips()}>trip</a>.
   </p>
+  {#if data.owner}
+    <OwnerBar
+      edit={{ label: 'Edit sites', href: data.editHref }}
+      actions={[
+        { label: '+ New site', href: urls.admin.newSite() },
+        { label: '+ New dive', href: urls.admin.newDive() },
+      ]}
+    />
+  {/if}
 
   <div class="toolbar">
     <input
@@ -52,15 +81,16 @@
       type="search"
       placeholder="Find a site…"
       bind:value={query}
+      oninput={() => sync(300)}
       aria-label="Find a site"
     />
-    <select class="dl-select" bind:value={country} aria-label="Country">
+    <select class="dl-select" bind:value={country} onchange={() => sync()} aria-label="Country">
       <option value="">All countries</option>
       {#each data.countries as c (c.code)}
         <option value={c.code}>{flagEmoji(c.code)} {c.name}</option>
       {/each}
     </select>
-    <select class="dl-select" bind:value={type} aria-label="Site type">
+    <select class="dl-select" bind:value={type} onchange={() => sync()} aria-label="Site type">
       <option value="">All types</option>
       {#each data.types as t (t)}<option value={t}>{t}</option>{/each}
     </select>
@@ -273,5 +303,8 @@
     background: var(--dl-color-accent-soft);
     color: var(--dl-color-accent);
     margin-left: auto;
+  }
+  .page > :global(.owner-bar) {
+    margin: 0 0 28px;
   }
 </style>

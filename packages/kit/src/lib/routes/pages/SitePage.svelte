@@ -32,6 +32,8 @@
   });
   let openYear = $state<number | null>(null);
   const temps = $derived(waterTempByMonth(data.dives));
+  const monthFormat = new Intl.DateTimeFormat('en-GB', { month: 'long', timeZone: 'UTC' });
+  const monthName = (month: number) => monthFormat.format(Date.UTC(2000, month - 1, 1));
   const tempHeights = $derived(temps ? barHeights(temps, (m) => m.temp ?? 0) : []);
   const latestPrice = $derived(
     [...site.prices].sort((a, b) => b.date.localeCompare(a.date))[0] ?? null,
@@ -49,10 +51,14 @@
 <section class="site dl-container dl-detail">
   <DetailTop
     back={{ href: urls.sites(), label: 'Dive sites' }}
+    label="Site navigation"
     owner={owner
       ? {
           edit: { label: 'Edit site', href: data.editHref },
-          actions: [{ label: 'Maps', href: urls.admin.siteMaps(site.id) }],
+          actions: [
+            { label: 'Maps', href: urls.admin.siteMaps(site.id) },
+            { label: '+ Log a dive here', href: urls.admin.newDive({ site: site.id }) },
+          ],
           note: provenance,
         }
       : null}
@@ -257,7 +263,11 @@
     <section class="block">
       <h2>What it cost</h2>
       <table class="prices">
-        <thead><tr><th>When</th><th>Price</th><th>Note</th></tr></thead>
+        <caption class="dl-visually-hidden">Entry prices at {site.name}, newest first</caption>
+        <thead
+          ><tr><th scope="col">When</th><th scope="col">Price</th><th scope="col">Note</th></tr
+          ></thead
+        >
         <tbody>
           {#each [...site.prices].sort( (a, b) => b.date.localeCompare(a.date) ) as price (price.date + price.note)}
             <tr>
@@ -318,18 +328,26 @@
       <div class="site-charts">
         {#if visits.length > 1}
           <div class="site-chart">
-            <h3 class="chart-title">Dives per year</h3>
-            <div class="years">
+            <h3 class="chart-title" id="site-years">Dives per year</h3>
+            <div class="years" role="group" aria-labelledby="site-years">
               {#each visits as [year, dives] (year)}
                 <button
                   type="button"
                   class="year"
                   class:active={openYear === year}
+                  aria-pressed={openYear === year}
                   onclick={() => (openYear = openYear === year ? null : year)}
                 >
-                  <span class="dl-num">{year}</span>
-                  <span class="bar" style="height: {Math.min(100, 12 + dives.length * 12)}%"></span>
-                  <span class="dl-num faint">{dives.length}</span>
+                  <span class="dl-num" aria-hidden="true">{year}</span>
+                  <span
+                    class="bar"
+                    aria-hidden="true"
+                    style="height: {Math.min(100, 12 + dives.length * 12)}%"
+                  ></span>
+                  <span class="dl-num faint" aria-hidden="true">{dives.length}</span>
+                  <span class="dl-visually-hidden"
+                    >{year}: {pluralize(dives.length, 'dive')}, show only these</span
+                  >
                 </button>
               {/each}
             </div>
@@ -338,18 +356,9 @@
         {#if temps}
           <div class="site-chart">
             <h3 class="chart-title">Water temperature by month</h3>
-            <div
-              class="temps"
-              role="img"
-              aria-label="Mean water temperature per month at {site.name}"
-            >
+            <div class="temps" aria-hidden="true">
               {#each temps as month, i (month.month)}
-                <div
-                  class="temp-col"
-                  title={month.temp !== null
-                    ? `${month.temp.toFixed(1)} °C over ${pluralize(month.dives, 'dive')}`
-                    : 'no dives'}
-                >
+                <div class="temp-col">
                   <span class="temp-value dl-num"
                     >{month.temp !== null ? `${Math.round(month.temp)}°` : ''}</span
                   >
@@ -362,6 +371,22 @@
                 </div>
               {/each}
             </div>
+            <p class="temp-legend">Mean water temperature in °C; an empty month had no dives.</p>
+            <table class="dl-visually-hidden">
+              <caption>Mean water temperature per month at {site.name}</caption>
+              <thead>
+                <tr><th scope="col">Month</th><th scope="col">Mean</th><th scope="col">Dives</th></tr>
+              </thead>
+              <tbody>
+                {#each temps as month (month.month)}
+                  <tr>
+                    <th scope="row">{monthName(month.month)}</th>
+                    <td>{month.temp !== null ? `${month.temp.toFixed(1)} °C` : 'no dives'}</td>
+                    <td>{month.dives}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
           </div>
         {/if}
       </div>
@@ -374,7 +399,7 @@
 
   {#if site.sources.length}
     <section class="block sources">
-      <h3>Sources</h3>
+      <h2 class="minor">Sources</h2>
       <ul>
         {#each site.sources as source (source)}
           {@const [title, url] = source.split(' — ')}
@@ -388,7 +413,7 @@
 
   {#if owner && site.private?.notes}
     <section class="block private">
-      <h3>Provenance (only you)</h3>
+      <h2 class="minor">Provenance (only you)</h2>
       <p class="muted">{site.private.notes}</p>
     </section>
   {/if}
@@ -721,8 +746,17 @@
     border-top: 1px dashed var(--dl-color-warm);
     padding-top: 16px;
   }
-  .private h3 {
+  .private h2 {
     color: var(--dl-color-warm);
+  }
+  h2.minor {
+    font-size: 16px;
+    margin-bottom: 8px;
+  }
+  .temp-legend {
+    margin: 6px 0 0;
+    font-size: 12px;
+    color: var(--dl-color-text-muted);
   }
   @media (max-width: 800px) {
     .grid {

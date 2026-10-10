@@ -39,7 +39,6 @@
         label: 'SAC',
         value: `${dive.sac_l_min.toFixed(1)} l/min`,
         numeric: true,
-        title: dive.sac_basis ?? undefined,
         sub: dive.sac_basis ?? undefined,
       },
       dive.surface_temp_c !== null && {
@@ -153,7 +152,7 @@
       </div>
     {/if}
     {#each numbers as fact (fact.label)}
-      <div title={fact.title}>
+      <div>
         <dt>{fact.label}</dt>
         <dd class:dl-num={fact.numeric}>
           {fact.value}{#if fact.sub}<small class="sub dl-num">{fact.sub}</small>{/if}
@@ -177,8 +176,10 @@
       </div>{/if}
     {#if dive.rating}<div>
         <dt>Rating</dt>
-        <dd aria-label="{dive.rating} out of 5">
-          {'★'.repeat(dive.rating)}{'☆'.repeat(5 - dive.rating)}
+        <dd>
+          <span role="img" aria-label="{dive.rating} out of 5"
+            >{'★'.repeat(dive.rating)}{'☆'.repeat(5 - dive.rating)}</span
+          >
         </dd>
       </div>{/if}
     {#if dive.conditions}<div class="wide">

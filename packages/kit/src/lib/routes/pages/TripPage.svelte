@@ -28,7 +28,18 @@
 <section class="trip dl-container dl-detail">
   <DetailTop
     back={{ href: urls.trips(), label: 'Dive trips' }}
-    owner={data.owner ? { edit: { label: 'Edit trip', href: data.editHref } } : null}
+    label="Trip navigation"
+    owner={data.owner
+      ? {
+          edit: { label: 'Edit trip', href: data.editHref },
+          actions: [
+            {
+              label: '+ Log a dive on this trip',
+              href: urls.admin.newDive({ trip: trip.slug }),
+            },
+          ],
+        }
+      : null}
   />
   <p class="dl-kicker">
     Trip · {trip.countries.map((c) => `${flagEmoji(c.country_code)} ${c.country_name}`).join(', ')}

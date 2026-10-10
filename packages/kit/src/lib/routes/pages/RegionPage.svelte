@@ -15,7 +15,13 @@
 <section class="region dl-container dl-detail">
   <DetailTop
     back={{ href: urls.sites(), label: 'Dive sites' }}
-    owner={data.owner ? { edit: { label: 'Edit region', href: data.editHref } } : null}
+    label="Region navigation"
+    owner={data.owner
+      ? {
+          edit: { label: 'Edit region', href: data.editHref },
+          actions: [{ label: '+ New dive', href: urls.admin.newDive() }],
+        }
+      : null}
   />
   <p class="dl-kicker">Region · {flagEmoji(region.country_code)} {region.country ?? ''}</p>
   <h1>{region.name}</h1>
