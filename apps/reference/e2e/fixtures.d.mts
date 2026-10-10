@@ -15,3 +15,5 @@ export function ownerEditor(): {
     body: unknown,
   ): { status: number; body: unknown } | undefined;
 };
+export function adminSite(id: string): Record<string, unknown> | null;
+export function mapSeed(id: string): Record<string, unknown> | null;

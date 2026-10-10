@@ -5,12 +5,21 @@
  * an empty tile index and one small PNG for anything else under `/media`.
  * A request carrying the `OWNER_COOKIE` is the signed-in owner: it also gets the owner
  * endpoints the sharing features call (repo status, commons search and pull) and the dive
- * editor's (form data, template, list pages, create and update, kept in memory).
+ * editor's (form data, template, list pages, create and update, kept in memory) and the site
+ * map editor's (site, OpenStreetMap seed, map create and update, also kept in memory).
  * Usage: node e2e/stub-backend.mjs [port]   (default 8399, or STUB_PORT)
  */
 import { createServer } from 'node:http';
 import { crc32, deflateSync } from 'node:zlib';
-import { commonsSearch, fixtures, OWNER_COOKIE, ownerEditor, ownerFixtures } from './fixtures.mjs';
+import {
+  adminSite,
+  commonsSearch,
+  fixtures,
+  mapSeed,
+  OWNER_COOKIE,
+  ownerEditor,
+  ownerFixtures,
+} from './fixtures.mjs';
 
 const port = Number(process.argv[2] ?? process.env.STUB_PORT ?? 8399);
 const API = '/api/v1';
@@ -57,6 +66,73 @@ function png(size = 8, rgb = [76, 201, 240]) {
 
 const PNG = png();
 
+/** Drawn maps saved during the run, by site id. */
+const savedMaps = new Map();
+
+function storedMap(siteId, id, data, revision, note, sort) {
+  return {
+    ...data,
+    id,
+    site_id: siteId,
+    sort,
+    revision,
+    changelog: [{ revision, date: '2026-10-10', author: 'sam@example.com', note }],
+    updated_at: '2026-10-10T12:00:00Z',
+  };
+}
+
+function mapRef(map) {
+  return {
+    ref: `drawn:${map.id}`,
+    collection: 'drawn',
+    title: map.title,
+    url: null,
+    public: true,
+    credit: null,
+    warning: null,
+    drawn: map,
+  };
+}
+
+/** The site map editor's endpoints as `[status, body]`; undefined for any other request. */
+function siteMaps(method, path, body) {
+  let match = path.match(/^\/admin\/sites\/([^/]+)$/);
+  if (match && method === 'GET') {
+    const site = adminSite(match[1]);
+    if (!site) return undefined;
+    return [200, { ...site, maps: (savedMaps.get(site.id) ?? []).map(mapRef) }];
+  }
+  match = path.match(/^\/admin\/sites\/([^/]+)\/maps\/seed$/);
+  if (match && method === 'POST') {
+    const seed = mapSeed(match[1]);
+    return seed ? [200, seed] : [404, { detail: 'Site has no coordinates' }];
+  }
+  match = path.match(/^\/admin\/sites\/([^/]+)\/maps$/);
+  if (match && method === 'POST') {
+    const site = adminSite(match[1]);
+    if (!site || !body?.data) return [404, { detail: 'Not found' }];
+    const maps = savedMaps.get(site.id) ?? [];
+    const id = `${site.id}-${String(maps.length + 1).padStart(6, '0')}`;
+    const map = storedMap(site.id, id, body.data, 1, body.note || 'Created', maps.length);
+    savedMaps.set(site.id, [...maps, map]);
+    return [200, map];
+  }
+  match = path.match(/^\/admin\/maps\/([^/]+)$/);
+  if (match && method === 'PUT' && body?.data) {
+    for (const [siteId, maps] of savedMaps) {
+      const at = maps.findIndex((m) => m.id === match[1]);
+      if (at === -1) continue;
+      const old = maps[at];
+      const note = body.note || 'Updated';
+      const map = storedMap(siteId, old.id, body.data, old.revision + 1, note, old.sort);
+      savedMaps.set(siteId, maps.with(at, map));
+      return [200, map];
+    }
+    return [404, { detail: 'Not found' }];
+  }
+  return undefined;
+}
+
 function send(res, status, body, type = 'application/json') {
   const payload = typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body);
   res.writeHead(status, { 'content-type': type, 'content-length': Buffer.byteLength(payload) });
@@ -74,7 +150,10 @@ const server = createServer(async (req, res) => {
     const path = pathname.slice(API.length);
     if (path === '/admin/commons/sites')
       return send(res, 200, commonsSearch(searchParams.get('q')));
-    const answer = editor.handle(req.method ?? 'GET', path, searchParams, await readJson(req));
+    const json = await readJson(req);
+    const maps = siteMaps(req.method ?? 'GET', path, json);
+    if (maps) return send(res, maps[0], maps[1]);
+    const answer = editor.handle(req.method ?? 'GET', path, searchParams, json);
     if (answer) return send(res, answer.status, answer.body);
     const body = owned[req.method === 'GET' ? path : `${req.method} ${path}`];
     return body === undefined ? send(res, 404, { detail: 'Not found' }) : send(res, 200, body);

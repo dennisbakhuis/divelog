@@ -232,6 +232,62 @@ site's `origin` (`log`, `commons` or `fork`); the kit shows what follows from it
 `stalePinSite`, `forkSite`, `fakeMap`, `staleAnnotation`, `fakeRepoStatus`, `fakeCommonsHits`
 and `fakeCommonsPull`.
 
+## Map editor
+
+The site workspace's **Maps** tab (`AdminSiteMapsPage`, deep link `/admin/sites/{id}/maps`)
+lists the drawn maps and opens one in `SiteMapEditor`.
+
+**New maps.** "Start from OpenStreetMap" (site maps; needs the site's coordinates) asks
+`POST /admin/sites/{id}/maps/seed` for a starter map (water, coastline, piers, wrecks, buoys,
+slipways from Overpass; radius per site type) and opens it as an unsaved draft; "Blank site map" and "Blank
+stick map" open an empty one. Every new map starts at the site's position (`origin` = site
+lat/lon, `north` 0; `emptySiteMap(kind, siteOrigin(site))`, `seedDraft(seed.map, origin)`).
+Nothing is stored until **Save map**, which POSTs the map once (one commit); later saves PUT it
+with the "What changed" note. Leaving, opening another map or starting a new one while there is
+unsaved work asks first (`ConfirmDialog`). "Shown first" is a radio per map (PATCHes the site's
+`default_map`); the reorder buttons are named "Move {title} up/down".
+
+**Tools and shortcuts.** The tools are a `Toolbar` radio group (arrow keys, Home/End) with their
+key shown next to each label. Shortcuts act only while the drawing canvas has focus (Tab to it, or
+click it; a note under the canvas says "Shortcuts active"):
+
+| Keys | Action |
+| --- | --- |
+| A S C M L R O | Station, Survey (stick maps), Connect, Move, Line, Area, Object |
+| U | Show or hide the underlay |
+| ? | List the shortcuts |
+| Delete, Backspace | Remove the selection, or the last point of the shape being drawn |
+| Enter / Escape | Finish the shape / cancel drawing, measuring or aligning, clear the selection |
+| Ctrl/⌘-Z | Undo (anywhere in the editor except text fields) |
+| + − [ ] 0, arrows | Zoom, rotate, reset, pan (the map view itself focused) |
+
+The "?" popover lists them and holds **Enable single-key shortcuts** (WCAG 2.1.4), remembered in
+`localStorage` under `dl-map-editor-shortcuts`; off, the letter keys do nothing and the key hints
+disappear, the other keys keep working.
+
+**Underlays.** Under "Trace over":
+- *Trace over the locator map* renders the self-hosted PMTiles basemap for the drawing's extent
+  (or 200 m round an empty map) into a picture with a hidden MapLibre map (no labels, pixel ratio
+  1, `toDataURL` after `idle`; it needs `setMapWorkerUrl` like the other maps). The scale is
+  `156543.03 · cos(lat) / 2^zoom` m/px and the picture is placed from the map's origin and north,
+  so it needs no aligning. It stays in the browser (never saved); re-render it after the drawing
+  grew, change the detail (zoom) or opacity, or hide it. Pure maths in `core/map/trace.ts`
+  (`locatorFrame`, `metresPerPixel`), rendering in `components/map/locator-image.ts`.
+- A stored underlay (sketch, reference map, upload) keeps its numeric fields and gains **Drag to
+  align** (drags move the picture; the round handle turns it about its centre) and **Scale by two
+  points** (click two spots a known distance apart, type the distance; the first spot stays put).
+  Helpers: `moveUnderlay`, `rotateUnderlay`, `rescaleUnderlay`.
+
+**Shapes.** Selecting a line or an area shows its points; drag them to reshape (areas no longer
+need deleting and redrawing; `moveAreaPoint`).
+
+**Touch and phones.** One finger taps to add and drags to pan; two fingers pinch-zoom and pan
+(the map view's pointer gestures). Press and hold (touch or pen, about half a second, held still)
+on a station, line, area or the bare canvas for an actions menu (edit details, delete, finish
+shape, undo). Below 700 px the tool strip docks to the bottom of the screen and scrolls sideways
+(44 px targets), and the details panel becomes a scrollable sheet under the canvas with a
+"Hide/Show details" toggle.
+
 ## Ejecting a page
 
 The catch-all only handles paths no more specific route claims. To replace one page, add a

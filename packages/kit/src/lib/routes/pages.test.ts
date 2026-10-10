@@ -4,7 +4,9 @@ import { adminPageImports, withAdminPage } from './admin-pages.js';
 import { adminRoutes } from './admin.js';
 import { publicRoutes } from './public.js';
 
-describe('page components', () => {
+// The first dynamic import compiles every page; under a full parallel run that takes longer
+// than the default five seconds.
+describe('page components', { timeout: 30000 }, () => {
   it('has one per public and admin page', () => {
     expect(Object.keys(publicPageImports)).toHaveLength(10);
     expect(Object.keys(adminPageImports)).toHaveLength(18);
