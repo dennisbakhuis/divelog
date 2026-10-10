@@ -58,9 +58,7 @@ def _by_date(dives: list[DiveRecord]) -> list[DiveRecord]:
 async def dive_stats(store: StoreDep, owner: OptionalOwnerDep, response: Response) -> DiveStats:
     is_owner = owner is not None
     _cache(response, is_owner)
-    return stats_service.compute_stats(
-        list(store.dives.values()), store.listed_sites(is_owner)
-    )
+    return stats_service.compute_stats(list(store.dives.values()), store.listed_sites(is_owner))
 
 
 @router.get("/summary", response_model=DiveSummary)
@@ -180,8 +178,7 @@ async def list_regions(
     is_owner = owner is not None
     _cache(response, is_owner)
     return [
-        region_out(store, rid, is_owner, with_body=False)
-        for rid in store.listed_regions(is_owner)
+        region_out(store, rid, is_owner, with_body=False) for rid in store.listed_regions(is_owner)
     ]
 
 
@@ -216,9 +213,7 @@ def region_out(store: Store, region_id: str, owner: bool, *, with_body: bool) ->
         sites=[dive_service.site_summary(store, s) for s in sites],
         dives=len(numbers),
         stats=stats_service.region_stats(region_dives, listed) if with_body else None,
-        map_sites=stats_service.compute_stats(region_dives, listed).map_sites
-        if with_body
-        else [],
+        map_sites=stats_service.compute_stats(region_dives, listed).map_sites if with_body else [],
     )
 
 

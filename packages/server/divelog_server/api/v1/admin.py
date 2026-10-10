@@ -960,17 +960,19 @@ async def admin_import_subsurface(store: StoreDep, file: UploadFile = File(...))
     sites_by_uuid: dict[str, SiteRecord] = {}
     site_report: list[ImportSiteOut] = []
     for uuid, draft_site in log.sites.items():
-        match = match_site(draft_site, store.sites)
-        if match is not None:
-            site = store.sites[match.site_id]
-            if uuid and match.matched_by != "uuid" and not site.subsurface_uuid:
-                adopted = site.model_copy(update={"subsurface_uuid": uuid})
-                site = await store.save_site(adopted, f"Link Subsurface site to {site.site_id}")
+        site_match = match_site(draft_site, store.sites)
+        if site_match is not None:
+            resolved = store.sites[site_match.site_id]
+            if uuid and site_match.matched_by != "uuid" and not resolved.subsurface_uuid:
+                adopted = resolved.model_copy(update={"subsurface_uuid": uuid})
+                resolved = await store.save_site(
+                    adopted, f"Link Subsurface site to {resolved.site_id}"
+                )
         else:
             site_id = slugify(draft_site.name)
             while site_id in store.sites:
                 site_id = f"{slugify(draft_site.name)}-{uuid4().hex[:6]}"
-            site = SiteRecord(
+            resolved = SiteRecord(
                 site_id=site_id,
                 name=draft_site.name,
                 lat=draft_site.lat,
@@ -978,17 +980,17 @@ async def admin_import_subsurface(store: StoreDep, file: UploadFile = File(...))
                 subsurface_uuid=uuid or None,
                 body_md=draft_site.description,
             )
-            site = await store.save_site(site, f"Import site {site_id}")
-        sites_by_uuid[uuid] = site
+            resolved = await store.save_site(resolved, f"Import site {site_id}")
+        sites_by_uuid[uuid] = resolved
         site_report.append(
             ImportSiteOut(
                 subsurface_uuid=uuid or None,
                 name=draft_site.name,
-                site_id=site.site_id,
-                outcome="created" if match is None else "matched",
-                matched_by=match.matched_by if match else None,
-                distance_m=match.distance_m if match else None,
-                origin=store.site_origin.get(site.site_id, "log"),
+                site_id=resolved.site_id,
+                outcome="created" if site_match is None else "matched",
+                matched_by=site_match.matched_by if site_match else None,
+                distance_m=site_match.distance_m if site_match else None,
+                origin=store.site_origin.get(resolved.site_id, "log"),
             )
         )
 
