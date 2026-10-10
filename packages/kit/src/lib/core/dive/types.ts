@@ -168,6 +168,15 @@ export type ImportResult = Schemas['ImportResult'];
 /** One imported site: matched to a site in the log or the commons, or created as personal. */
 export type ImportSite = Schemas['ImportSiteOut'];
 
+/** A commons site offered for adoption by `GET /admin/commons/sites`. */
+export type CommonsSiteHit = Schemas['CommonsSiteHit'];
+
+/** `POST /admin/commons/pull`: the heads before and after, the manifest pin, stale sites. */
+export type CommonsPullOut = Schemas['CommonsPullOut'];
+
+/** An overlay or fork the commons moved past; `new` when the pull made it stale. */
+export type CommonsStaleSite = Schemas['CommonsStaleSite'];
+
 /** One past import, newest first in `GET /admin/imports`. */
 export type ImportRecord = Schemas['ImportRecordOut'];
 

@@ -9,6 +9,8 @@ export {
   COMMONS_ATTRIBUTION,
   commonsSite,
   drawnRef,
+  fakeCommonsHits,
+  fakeCommonsPull,
   fakeMap,
   fakeRepoStatus,
   fakeSite,

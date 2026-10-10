@@ -4,7 +4,7 @@
  * pin of a dive's route against the current revision of its map.
  */
 import { fitAnnotation, type DiveMapAnnotation, type MapEdgeRef, type SiteMap } from './sitemap';
-import type { Attribution, ImportSite, MapRef, SiteOrigin } from './types';
+import type { Attribution, CommonsSiteHit, ImportSite, MapRef, SiteOrigin } from './types';
 
 /** The commons' name when the API gives none: the shared repository of dive sites. */
 export const COMMONS_NAME = 'divelog-sites';
@@ -161,4 +161,29 @@ export function importMatchLabel(site: ImportSite): string {
 /** The licence text for a commons site, without the source link. */
 export function attributionText(attribution: Attribution | null): string {
   return `Site data © ${sourceName(attribution?.source)} contributors ${COMMONS_LICENCES}`;
+}
+
+/** The query of `GET /admin/commons/sites`: a text, a point to search around, a limit. */
+export function commonsSearchPath(
+  q: string,
+  near: { lat: number; lon: number } | null = null,
+  limit = 20,
+): string {
+  const params = new URLSearchParams();
+  if (q.trim()) params.set('q', q.trim());
+  if (near) params.set('near', `${near.lat},${near.lon}`);
+  params.set('limit', String(limit));
+  return `?${params.toString()}`;
+}
+
+/**
+ * Commons search hits split into those to offer for adoption (not dived and not forked) and
+ * those already in the log.
+ */
+export function splitHits(hits: CommonsSiteHit[]): {
+  fresh: CommonsSiteHit[];
+  known: CommonsSiteHit[];
+} {
+  const known = (hit: CommonsSiteHit) => hit.has_dives || hit.origin === 'fork';
+  return { fresh: hits.filter((h) => !known(h)), known: hits.filter(known) };
 }

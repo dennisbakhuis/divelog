@@ -2,7 +2,14 @@
  * Sample records for the site-sharing features: a personal site, a commons site with an
  * overlay, a stale pin, a fork, a stale route on a changed map and a repo status with notices.
  */
-import type { Attribution, MapRef, RepoStatus, Site } from '$lib/core/dive/types';
+import type {
+  Attribution,
+  CommonsPullOut,
+  CommonsSiteHit,
+  MapRef,
+  RepoStatus,
+  Site,
+} from '$lib/core/dive/types';
 import type { DiveMapAnnotation, SiteMapOut } from '$lib/core/dive/sitemap';
 
 /** A personal site with every field filled; `overrides` replace fields. */
@@ -234,6 +241,56 @@ export function fakeRepoStatus(overrides: Partial<RepoStatus> = {}): RepoStatus 
     ],
     commons_head: '3f0c1a2b9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a',
     commons_state: 'clean',
+    ...overrides,
+  };
+}
+
+/** Hits of a commons search near Lot: two not in the log yet, one dived, one forked. */
+export function fakeCommonsHits(): CommonsSiteHit[] {
+  const hit = (patch: Partial<CommonsSiteHit>): CommonsSiteHit => ({
+    id: 'fra-x',
+    name: 'X',
+    country: 'FRA',
+    type: 'cave',
+    lat: 44.6,
+    lon: 1.7,
+    area: 'Lot',
+    dives: 0,
+    has_dives: false,
+    origin: 'commons',
+    distance_km: null,
+    ...patch,
+  });
+  return [
+    hit({
+      id: 'fra-emergence-du-ressel',
+      name: 'Ressel',
+      dives: 40,
+      has_dives: true,
+      distance_km: 0.4,
+    }),
+    hit({ id: 'fra-fontaine-de-truffe', name: 'Fontaine de Truffe', distance_km: 1.2 }),
+    hit({ id: 'fra-goul', name: 'Goul de la Tannerie', origin: 'fork', distance_km: 3.5 }),
+    hit({ id: 'fra-saint-sauveur', name: 'Saint-Sauveur', area: 'Gramat', distance_km: 12.75 }),
+  ];
+}
+
+/** A commons pull that moved the head, pinned the log and made two sites stale. */
+export function fakeCommonsPull(overrides: Partial<CommonsPullOut> = {}): CommonsPullOut {
+  return {
+    previous_head: '3f0c1a2b9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a',
+    head: '9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b',
+    pinned: true,
+    stale: [
+      {
+        site_id: 'fra-cabouy',
+        origin: 'commons',
+        pinned_revision: 4,
+        current_revision: 7,
+        new: true,
+      },
+      { site_id: 'fra-goul', origin: 'fork', pinned_revision: 4, current_revision: 6, new: false },
+    ],
     ...overrides,
   };
 }

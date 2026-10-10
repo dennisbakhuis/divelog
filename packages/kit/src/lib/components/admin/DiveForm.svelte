@@ -15,6 +15,7 @@
   import { siteIdFor, slugify } from '$lib/core/admin/slug';
   import type {
     DiveAdmin,
+    CommonsSiteHit,
     GearSetup,
     PersonPrivate,
     Region,
@@ -24,6 +25,7 @@
   import { toast } from '$lib/components/stores/toast.svelte';
   import DiveRouteEditor from './DiveRouteEditor.svelte';
   import AnnotationStale from './AnnotationStale.svelte';
+  import CommonsSearch from './CommonsSearch.svelte';
   import { legLabel } from '$lib/core/dive/sharing';
   import type { DiveMapAnnotation, MapEdgeRef } from '$lib/core/dive/sitemap';
   import { getDivelog } from '$lib/core/dive/context';
@@ -241,6 +243,34 @@
     }
   }
 
+  let adopting = $state(false);
+  let commonsQuery = $state('');
+  const nearSite = $derived.by(() => {
+    const like = site ?? recentSite;
+    return like && like.lat !== null && like.lon !== null ? { lat: like.lat, lon: like.lon } : null;
+  });
+
+  function openCommons() {
+    commonsQuery = siteQuery.trim();
+    adopting = true;
+  }
+
+  async function adoptSite(hit: CommonsSiteHit) {
+    try {
+      const adopted = await adminJson<Site>(adminApi('sites', hit.id));
+      sites = [...sites.filter((s) => s.id !== adopted.id), adopted];
+      form.site_id = adopted.id;
+      siteQuery = '';
+      adopting = false;
+      toast.show({ kind: 'success', message: `${adopted.name} from the commons` });
+    } catch (err) {
+      toast.show({
+        kind: 'error',
+        message: err instanceof AdminApiError ? err.message : 'Could not load the site',
+      });
+    }
+  }
+
   let tripDialog = $state<HTMLDialogElement>();
   let newTrip = $state({ name: '', start_date: '', end_date: '' });
   let tripError = $state('');
@@ -393,6 +423,11 @@
               </li>
             {/each}
             <li>
+              <button type="button" class="new-option" onclick={openCommons}
+                >Search the commons for “{siteQuery.trim()}”</button
+              >
+            </li>
+            <li>
               <button type="button" class="new-option" onclick={openSiteDialog}
                 >+ New site “{siteQuery.trim()}”</button
               >
@@ -410,10 +445,21 @@
           onclick={() => (form.site_id = null)}>clear</button
         >
       {/if}
+      <button
+        type="button"
+        class="dl-btn dl-btn-ghost dl-btn-sm"
+        aria-expanded={adopting}
+        onclick={() => (adopting ? (adopting = false) : openCommons())}>From the commons</button
+      >
       <button type="button" class="dl-btn dl-btn-ghost dl-btn-sm" onclick={openSiteDialog}
         >+ New site</button
       >
     </div>
+    {#if adopting}
+      <div class="commons-pick">
+        <CommonsSearch bind:query={commonsQuery} near={nearSite} onUse={adoptSite} />
+      </div>
+    {/if}
     <div class="field-row">
       <label>
         Section / line
@@ -876,6 +922,11 @@
   .grow {
     flex: 1;
     position: relative;
+  }
+  .commons-pick {
+    padding: 10px;
+    border: 1px dashed var(--dl-color-border-strong);
+    border-radius: var(--dl-radius-sm);
   }
   .options {
     position: absolute;

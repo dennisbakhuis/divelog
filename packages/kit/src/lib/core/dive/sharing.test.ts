@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   annotationHealth,
   attributionText,
+  commonsSearchPath,
   importMatchLabel,
   isPersonalMapId,
   isUrl,
@@ -12,12 +13,14 @@ import {
   repinAnnotation,
   shortRef,
   sourceName,
+  splitHits,
   staleMessage,
 } from './sharing';
 import type { ImportSite } from './types';
 import {
   COMMONS_ATTRIBUTION,
   commonsSite,
+  fakeCommonsHits,
   fakeMap,
   fakeRepoStatus,
   fakeSite,
@@ -172,5 +175,18 @@ describe('import site report', () => {
     expect(importMatchLabel(row({ outcome: 'created', matched_by: null, origin: 'log' }))).toBe(
       'created as a personal site',
     );
+  });
+});
+
+describe('commons search', () => {
+  it('builds the query', () => {
+    expect(commonsSearchPath(' ressel ')).toBe('?q=ressel&limit=20');
+    expect(commonsSearchPath('', { lat: 44.6, lon: 1.7 }, 5)).toBe('?near=44.6%2C1.7&limit=5');
+  });
+
+  it('offers sites neither dived nor forked', () => {
+    const { fresh, known } = splitHits(fakeCommonsHits());
+    expect(fresh.map((h) => h.id)).toEqual(['fra-fontaine-de-truffe', 'fra-saint-sauveur']);
+    expect(known.map((h) => h.id)).toEqual(['fra-emergence-du-ressel', 'fra-goul']);
   });
 });

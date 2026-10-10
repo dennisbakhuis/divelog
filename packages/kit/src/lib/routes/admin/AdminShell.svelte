@@ -87,7 +87,13 @@
               ? ` ↓${repo.behind}`
               : ''}{repo.load_errors.length ? ` · ${repo.load_errors.length} file errors` : ''}
           </span>
-          <CommonsStatus {repo} />
+          <CommonsStatus
+            {repo}
+            onPulled={async () => {
+              await refreshRepo();
+              await invalidateAll();
+            }}
+          />
           {#if repo.state === 'unpushed' || repo.state === 'conflict' || repo.state === 'error'}
             <button
               type="button"
