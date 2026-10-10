@@ -47,14 +47,20 @@
   </p>
 
   <div class="toolbar">
-    <input type="search" placeholder="Find a site…" bind:value={query} aria-label="Find a site" />
-    <select bind:value={country} aria-label="Country">
+    <input
+      class="dl-input"
+      type="search"
+      placeholder="Find a site…"
+      bind:value={query}
+      aria-label="Find a site"
+    />
+    <select class="dl-select" bind:value={country} aria-label="Country">
       <option value="">All countries</option>
       {#each data.countries as c (c.code)}
         <option value={c.code}>{flagEmoji(c.code)} {c.name}</option>
       {/each}
     </select>
-    <select bind:value={type} aria-label="Site type">
+    <select class="dl-select" bind:value={type} aria-label="Site type">
       <option value="">All types</option>
       {#each data.types as t (t)}<option value={t}>{t}</option>{/each}
     </select>
@@ -137,7 +143,7 @@
     font-size: 14.5px;
     color: var(--dl-color-text);
     background: var(--dl-color-surface);
-    border: 1px solid var(--dl-color-border-strong);
+    border: 1px solid var(--dl-color-border-control);
     border-radius: var(--dl-radius-sm);
     padding: 9px 12px;
   }

@@ -26,6 +26,7 @@
   <label class="sort">
     Sort
     <select
+      class="dl-select"
       value={filter.sort}
       onchange={(e) => onChange({ ...filter, sort: e.currentTarget.value as SortKey })}
     >
@@ -46,6 +47,7 @@
     <label class="sort">
       <span class="dl-visually-hidden">Jump to year</span>
       <select
+        class="dl-select"
         value=""
         onchange={(e) => {
           const year = Number(e.currentTarget.value);
@@ -81,7 +83,7 @@
     font-size: 14.5px;
     color: var(--dl-color-text);
     background: var(--dl-color-surface);
-    border: 1px solid var(--dl-color-border-strong);
+    border: 1px solid var(--dl-color-border-control);
     border-radius: var(--dl-radius-sm);
     padding: 6px 10px;
   }

@@ -65,7 +65,12 @@
 {/snippet}
 
 <div class="map dl-card" class:compact>
-  <svg viewBox="0 0 {map.width} {map.height}" role="img" aria-labelledby="map-title" class="world">
+  <svg
+    viewBox="0 0 {map.width} {map.height}"
+    role="group"
+    aria-labelledby="map-title"
+    class="world"
+  >
     <title id="map-title">{label || `World map with ${map.dots.length} dive sites`}</title>
     <path d={map.spherePath} class="sphere" />
     <path d={map.landPath} class="land" />

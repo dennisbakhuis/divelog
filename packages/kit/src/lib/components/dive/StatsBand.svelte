@@ -47,23 +47,23 @@
       {/each}
     </dl>
     <div class="secondary">
-      <dl class="notable">
+      <div class="notable">
         {#each notable as tile (tile.label)}
           <a class="mini" href={tile.href} data-reveal>
-            <dt>{tile.label}</dt>
-            <dd class="dl-num">{tile.value}</dd>
+            <span class="k">{tile.label}</span>
+            <span class="v dl-num">{tile.value}</span>
           </a>
         {/each}
-      </dl>
-      <dl class="records">
+      </div>
+      <div class="records">
         {#each records as tile (tile.label)}
           <a class="mini record" href={tile.href} data-reveal>
-            <dt>{tile.label}</dt>
-            <dd class="dl-num">{tile.value}</dd>
+            <span class="k">{tile.label}</span>
+            <span class="v dl-num">{tile.value}</span>
             {#if tile.note}<span class="note">{tile.note}</span>{/if}
           </a>
         {/each}
-      </dl>
+      </div>
     </div>
   </div>
 </section>
@@ -84,9 +84,9 @@
     gap: 24px 16px;
   }
   .tile dt,
-  .mini dt {
+  .mini .k {
     font-family: var(--dl-font-mono);
-    font-size: 11px;
+    font-size: var(--dl-text-xs);
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--dl-color-text-muted);
@@ -106,7 +106,7 @@
   }
   .note {
     display: block;
-    font-size: 12px;
+    font-size: var(--dl-text-sm);
     color: var(--dl-color-text-faint);
     margin-top: 4px;
   }
@@ -140,13 +140,13 @@
   .mini:hover {
     border-color: var(--dl-color-accent);
   }
-  .mini dd {
+  .mini .v {
     margin: 0;
-    font-size: 22px;
+    font-size: var(--dl-text-2xl);
     font-weight: 500;
     line-height: 1.1;
   }
-  .record dd {
+  .record .v {
     color: var(--dl-color-warm);
   }
 </style>

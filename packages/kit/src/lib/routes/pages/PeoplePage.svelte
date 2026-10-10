@@ -67,6 +67,7 @@
       {/each}
     </div>
     <select
+      class="dl-select"
       bind:value={country}
       onchange={sync}
       aria-label="Dived together in"
@@ -170,7 +171,7 @@
     font-size: 14px;
     color: var(--dl-color-text);
     background: var(--dl-color-surface);
-    border: 1px solid var(--dl-color-border-strong);
+    border: 1px solid var(--dl-color-border-control);
     border-radius: var(--dl-radius-sm);
     padding: 8px 12px;
   }

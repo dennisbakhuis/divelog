@@ -126,6 +126,10 @@ export const load = ({ data }) => withPublicPage(data);
 
 `DivelogProvider` puts the config in Svelte context (`getDivelog()`), points the editor's
 browser client at `apiBase` and wraps its children in `.divelog`, the scope of the theme tokens.
+It also mounts a "Skip to content" link as its first child (shown only when the page has
+`#dl-main`, which `DivePage` and `AdminPage` render around the page; pass `skipLink={false}` to
+leave it out), the two live regions behind `announce()` and the dialog that answers
+`confirmDialog()`. Mount `<Toast />` once in the root layout; its container is always present.
 Each page's data carries `meta` (`title`, `description`): render it in your layout's
 `<svelte:head>`. `diveMetaFor(urls, name)` gives the meta of the index pages and
 `diveOgImageFor(urls, pathname)` the card of dive and site pages.
@@ -274,10 +278,51 @@ to the default dark palette, so either of these works:
 ```
 
 The tokens: `--dl-color-{bg,bg-elevated,surface,surface-2,text,text-muted,text-faint,border,
-border-strong,accent,accent-strong,accent-soft,warm,warm-soft,success,error,focus-ring,link,
-link-hover,button-bg,button-text,button-hover}`, `--dl-c-abyss`, `--dl-tag-<tag>` for the dive
-tags, `--dl-font-{display,body,sans,mono}`, `--dl-radius{-sm,,-md,-lg}`, `--dl-shadow-{sm,md}`,
-`--dl-container-{max,narrow,detail}`, `--dl-space-{page-x,section}` and `--dl-header-h`.
+border-strong,border-control,accent,accent-strong,accent-soft,warm,warm-soft,success,success-fg,
+error,danger,danger-fg,danger-soft,info,info-fg,focus-ring,link,link-hover,button-bg,button-text,
+button-hover}`, `--dl-focus-ring` / `--dl-focus-offset`, `--dl-c-abyss`, `--dl-tag-<tag>` for
+the dive tags, `--dl-font-{display,body,sans,mono}`, `--dl-radius{-sm,,-md,-lg}`,
+`--dl-shadow-{sm,md}`, `--dl-container-{max,narrow,detail}`, `--dl-space-{page-x,section}` and
+`--dl-header-h`. The type scale `--dl-text-{xs,sm,md,base,lg,xl,2xl,3xl}` (11, 12, 13, 14, 16,
+18, 22, 28 px, in rem) and the spacing scale `--dl-space-1…8` (4, 8, 12, 16, 20, 24, 32, 48 px)
+belong to the kit and have no host fallback.
+
+The default palette meets WCAG 2.2 AA on every background (`styles/tokens.test.ts` checks it):
+text ≥ 4.5:1 (`text-faint` `#8a9bb3` is 4.7:1 on `surface-2`), `border-control` (`#6b82a3`)
+and the focus ring ≥ 3:1. `border` and `border-strong` stay decorative (card outlines, rules);
+controls use `border-control`. A host that sets `--color-text-faint` or `--color-border-control`
+must keep those ratios.
 `apps/reference/src/lib/theme.css` sets the fallback names for a dark and a light scheme.
 `styles/divelog.css` holds the `.dl-*` utility classes (`dl-container`, `dl-kicker`, `dl-num`,
-`dl-btn`, `dl-card`, `dl-tag`, …) scoped to `.divelog`.
+`dl-btn`, `dl-btn-danger`, `dl-card`, `dl-tag`, `dl-input`, `dl-select`, `dl-textarea`,
+`dl-visually-hidden`, `dl-skip-link`, …) scoped to `.divelog`, a visible `:focus-visible` ring
+for everything inside `.divelog`, and `prefers-reduced-motion` rules that stop the kit's own
+transitions and animations.
+
+## UI primitives
+
+Exported from `@divelog/kit`, keyboard and screen-reader complete, styled only with `--dl-*`
+tokens. Use them instead of hand-made widgets; `window.confirm()` is replaced by
+`confirmDialog()`.
+
+| Component | Use | Key props | Keyboard / ARIA |
+| --- | --- | --- | --- |
+| `Dialog` | Modal on native `<dialog>` + `showModal()` | `bind:open`, `title` or `label`, `description`, `size` `sm\|md\|lg\|full`, `bare`, `closeOnBackdrop`, `initialFocus` (selector), `returnFocus`, `onclose`; snippets `children`, `footer` | Escape closes (and stops there: page shortcuts behind it never see a key), focus goes to the first control and back to the opener; `aria-labelledby`/`aria-describedby` |
+| `ConfirmDialog` | Yes/no question | `bind:open`, `title`, `body`, `confirmLabel`, `cancelLabel`, `danger`, `onconfirm`, `oncancel` | Focus starts on Cancel when `danger`, else on the confirm button |
+| `confirmDialog(opts)` | `if (await confirmDialog({ title, body?, danger? }))` | `ConfirmOptions` | Answered by the dialog `DivelogProvider` mounts; falls back to `window.confirm` without one |
+| `Popover` | Non-modal panel under a button | `bind:open`, `label`, `id`, `role`, `focus` `panel\|first\|none`, `class`; snippets `trigger(props)` (spread on a `<button>`), `children({ close })` | `aria-expanded`/`aria-controls`/`aria-haspopup` on the trigger, focus into the panel, Escape returns focus, click outside closes |
+| `Tabs` | Tab list + panels | `tabs: TabItem[]` (`id`, `label`, `class?`, `disabled?`), `bind:active`, `label`, `variant` `underline\|pills`, `hash`, `idPrefix`, `tablistAlways`, `onchange`; snippets `panel(id)`, `tab(item, selected)` | `tablist/tab/tabpanel`, `aria-controls`, roving tabindex, arrows, Home, End; one tab renders just its panel |
+| `Combobox` | Pick one or several from static or async options | `bind:value` / `multiple` + `bind:values`, `options` or `source(query, signal)`, `known`, `debounce`, `minChars`, `required`, `clearable`, `name`, `placeholder`, `emptyText`, `onchange`; snippets `option(o)`, `footer({ query, close })`; spread `Field`'s control props on it | ARIA 1.2 combobox: `aria-expanded`, `aria-controls`, `aria-activedescendant`, listbox/option/group; arrows, Home/End, Enter picks (never submits the form), Escape closes then restores, Backspace removes the last chip. Options: `ComboOption` (`value`, `label`, `group`, `hint`, `keywords`, `disabled`) |
+| `Field` | Label + hint + error around one control | `label`, `id`, `hint`, `error`, `required`, `layout` `stacked\|horizontal`, `hideLabel`, `describedby`; snippets `children(control)`, `extra` | `<label for>`, `aria-describedby` (error, hint), `aria-invalid`, `required`; spread `control` on the input |
+| `Disclosure` | Collapsible section | `summary` or `label` snippet, `bind:open`, `persistKey` (localStorage `dl-disclosure:<key>`), `count`, `ontoggle` | Native `<details>`/`<summary>` |
+| `Toolbar` | Tool picker | `items: ToolItem[]` (`value`, `label`, `hint?`, `shortcut?`, `disabled?`), `bind:value`, `label`, `mode` `radio\|pressed`, `orientation`, `itemClass(item, selected)`, `showShortcuts`, `onchange`; snippet `item(tool, selected)` | `radiogroup`/`radio` + `aria-checked`, or `toolbar` + `aria-pressed`; roving tabindex, arrows, Home, End; hints as `aria-describedby`, shortcuts as `aria-keyshortcuts` |
+| `SkipLink` | "Skip to content" | `target` (default `dl-main`), `label` | Mounted by `DivelogProvider` |
+| `LiveRegion` / `announce(text, { assertive })` | Status messages for screen readers | — | One polite and one assertive region; only the first mounted region speaks |
+
+Field errors from the API: a 422 throws `AdminApiError` with `fieldErrors`
+(`{ max_depth_m: 'Field required', 'tanks.0.o2_pct': '…' }`, keyed by the `loc` without
+`body`); pass `err.fieldErrors[name]` to each `Field`'s `error`.
+
+Toasts: `toast.show({ kind: 'success' | 'info' | 'error', message, sticky?, duration? })`.
+Errors stay until dismissed; others leave after 5 s, paused while hovered or focused. Every
+toast is announced through the live regions (errors assertively).

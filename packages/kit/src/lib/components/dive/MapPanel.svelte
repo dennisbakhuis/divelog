@@ -7,6 +7,7 @@
   import { formatDate } from '$lib/core/dive/format';
   import { defaultTitle, mapSummary, normalizeSiteMap, routeKeys } from '$lib/core/dive/sitemap';
   import { getDivelog } from '$lib/core/dive/context';
+  import Tabs from '$lib/components/ui/Tabs.svelte';
 
   const { urls } = getDivelog();
 
@@ -58,86 +59,109 @@
 
 {#if maps.length}
   <section class="panel dl-card">
-    {#if maps.length > 1 || owner}
-      <div class="tabs" role="tablist">
-        {#each maps as m, i (m.ref)}
-          <button
-            type="button"
-            role="tab"
-            aria-selected={i === current}
-            class:active={i === current}
-            class:private={!m.public}
-            onclick={() => (current = i)}
-          >
-            <span class="coll">{LABEL[m.collection]}</span>
-            {m.title}
-            {#if defaultRef === m.ref}<span class="star" title="Shown first">★</span>{/if}
-          </button>
-        {/each}
-      </div>
-    {/if}
-
-    {#if active}
-      {#if !active.public}
-        <p class="warning">
-          <strong>Not for publication.</strong>
-          {active.warning ?? 'Third-party map kept for reference; only you can see it.'}
-          {#if active.credit}<span class="credit">Source: {active.credit}</span>{/if}
-        </p>
-      {/if}
-      {#if active.collection === 'drawn' && drawn}
-        {#if dived.length}
-          <div class="tabs dives" role="group" aria-label="Dives on this map">
-            <button
-              type="button"
-              class:active={shown === 'all' || (typeof shown === 'number' && !selected)}
-              onclick={() => (shown = 'all')}>All dived lines</button
-            >
-            {#each dived as r (r.number)}
-              <button
-                type="button"
-                class:active={selected?.number === r.number}
-                title={r.title}
-                onclick={() => (shown = r.number)}>{formatDate(r.date)} · #{r.number}</button
-              >
-            {/each}
-            <button type="button" class:active={shown === 'none'} onclick={() => (shown = 'none')}
-              >Map only</button
-            >
-            {#if selected}<a class="open" href={urls.dive(selected.number)}>open dive ↗</a>{/if}
-          </div>
+    <Tabs
+      tabs={maps.map((m) => ({ id: m.ref, label: m.title, class: m.public ? '' : 'private' }))}
+      bind:active={
+        () => active?.ref ?? '',
+        (ref) =>
+          (current = Math.max(
+            0,
+            maps.findIndex((m) => m.ref === ref),
+          ))
+      }
+      label="Maps of {siteName}"
+      variant="pills"
+      listClass="tabs"
+      tablistAlways={owner}
+    >
+      {#snippet tab(t)}
+        {@const m = maps.find((x) => x.ref === t.id)}
+        {#if m}
+          <span class="coll">{LABEL[m.collection]}</span>
+          {m.title}
+          {#if defaultRef === m.ref}<span class="star" aria-hidden="true">★</span><span
+              class="dl-visually-hidden">(shown first)</span
+            >{/if}
         {/if}
-        <SiteMapView
-          map={drawn}
-          title="{active.title} of {siteName}"
-          route={routeSet}
-          legs={selected?.annotation.route ?? []}
-          path={selected?.annotation.path ?? []}
-          pathTurn={selected?.annotation.turn_at ?? null}
-          turn={selected?.annotation.turn ?? null}
-          pins={selected?.annotation.pins ?? []}
-        />
-        {#if selected?.annotation.note}<p class="muted">{selected.annotation.note}</p>{/if}
-        <div class="foot">
-          <MapLegend map={drawn} />
-          <span class="muted dl-num">{defaultTitle(drawn.kind)} · {mapSummary(drawn)}</span>
-        </div>
-        {#if drawn.notes}<p class="muted">{drawn.notes}</p>{/if}
-      {:else if active.url}
-        <figure class="image" class:reference={active.collection === 'reference'}>
-          <img src={active.url} alt="{active.title} of {siteName}" loading="lazy" />
-          {#if active.credit}<figcaption>{active.credit}</figcaption>{/if}
-        </figure>
-      {/if}
-      {#if fromCommons}<SiteAttribution {origin} {attribution} variant="map" />{/if}
-    {/if}
+      {/snippet}
+      {#snippet panel()}
+        {@render body()}
+      {/snippet}
+    </Tabs>
   </section>
 {/if}
+
+{#snippet body()}
+  {#if active}
+    {#if !active.public}
+      <p class="warning">
+        <strong>Not for publication.</strong>
+        {active.warning ?? 'Third-party map kept for reference; only you can see it.'}
+        {#if active.credit}<span class="credit">Source: {active.credit}</span>{/if}
+      </p>
+    {/if}
+    {#if active.collection === 'drawn' && drawn}
+      {#if dived.length}
+        <div class="tabs dives" role="group" aria-label="Dives on this map">
+          <button
+            type="button"
+            aria-pressed={shown === 'all' || (typeof shown === 'number' && !selected)}
+            class:active={shown === 'all' || (typeof shown === 'number' && !selected)}
+            onclick={() => (shown = 'all')}>All dived lines</button
+          >
+          {#each dived as r (r.number)}
+            <button
+              type="button"
+              aria-pressed={selected?.number === r.number}
+              class:active={selected?.number === r.number}
+              title={r.title}
+              onclick={() => (shown = r.number)}>{formatDate(r.date)} · #{r.number}</button
+            >
+          {/each}
+          <button
+            type="button"
+            aria-pressed={shown === 'none'}
+            class:active={shown === 'none'}
+            onclick={() => (shown = 'none')}>Map only</button
+          >
+          {#if selected}<a class="open" href={urls.dive(selected.number)}>open dive ↗</a>{/if}
+        </div>
+      {/if}
+      <SiteMapView
+        map={drawn}
+        title="{active.title} of {siteName}"
+        route={routeSet}
+        legs={selected?.annotation.route ?? []}
+        path={selected?.annotation.path ?? []}
+        pathTurn={selected?.annotation.turn_at ?? null}
+        turn={selected?.annotation.turn ?? null}
+        pins={selected?.annotation.pins ?? []}
+      />
+      {#if selected?.annotation.note}<p class="muted">{selected.annotation.note}</p>{/if}
+      <div class="foot">
+        <MapLegend map={drawn} />
+        <span class="muted dl-num">{defaultTitle(drawn.kind)} · {mapSummary(drawn)}</span>
+      </div>
+      {#if drawn.notes}<p class="muted">{drawn.notes}</p>{/if}
+    {:else if active.url}
+      <figure class="image" class:reference={active.collection === 'reference'}>
+        <img src={active.url} alt="{active.title} of {siteName}" loading="lazy" />
+        {#if active.credit}<figcaption>{active.credit}</figcaption>{/if}
+      </figure>
+    {/if}
+    {#if fromCommons}<SiteAttribution {origin} {attribution} variant="map" />{/if}
+  {/if}
+{/snippet}
 
 <style>
   .panel {
     padding: 10px;
     background: var(--dl-color-bg-elevated);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .panel > :global(.dl-tabpanel:not([hidden])) {
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -165,7 +189,7 @@
     border-color: var(--dl-color-accent);
     background: var(--dl-color-accent-soft);
   }
-  .tabs button.private {
+  .panel :global(.dl-tab.private) {
     border-style: dashed;
   }
   .coll {

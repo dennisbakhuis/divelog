@@ -2,6 +2,7 @@
   import type { AdminDataFor } from '../admin';
   import { goto, invalidateAll } from '$app/navigation';
   import { adminJson, AdminApiError } from '$lib/core/admin/client';
+  import { confirmDialog } from '$lib/core/ui/confirm.js';
   import type { TripAdmin, TripIn } from '$lib/core/dive/types';
   import { toast } from '$lib/components/stores/toast.svelte';
   import { getDivelog } from '$lib/core/dive/context';
@@ -50,9 +51,12 @@
 
   async function removeOverride() {
     if (
-      !confirm(
-        `Remove the override for ${data.trip.name}? The derived trip (built from the logged dives) will show again.`,
-      )
+      !(await confirmDialog({
+        title: `Remove the override for ${data.trip.name}?`,
+        body: 'The derived trip (built from the logged dives) will show again.',
+        confirmLabel: 'Remove override',
+        danger: true,
+      }))
     )
       return;
     error = '';

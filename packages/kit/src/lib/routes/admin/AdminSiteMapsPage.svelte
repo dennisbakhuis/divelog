@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { AdminDataFor } from '../admin';
-  import { beforeNavigate, invalidateAll } from '$app/navigation';
+  import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
   import { adminJson, AdminApiError } from '$lib/core/admin/client';
+  import { confirmDialog } from '$lib/core/ui/confirm.js';
   import SiteMapEditor, { type UnderlayOption } from '$lib/components/map/SiteMapEditor.svelte';
   import type { MapRef } from '$lib/core/dive/types';
   import {
@@ -53,8 +54,15 @@
       : openMap,
   );
 
-  function open(map: SiteMapOut) {
-    if (dirty && !confirm('Discard unsaved changes to the open map?')) return;
+  async function open(map: SiteMapOut) {
+    if (
+      dirty &&
+      !(await confirmDialog({
+        title: 'Discard unsaved changes to the open map?',
+        confirmLabel: 'Discard',
+      }))
+    )
+      return;
     openId = map.id;
     draft = map;
     dirty = false;
@@ -63,8 +71,12 @@
     editorKey += 1;
   }
 
-  function close() {
-    if (dirty && !confirm('Discard unsaved changes?')) return;
+  async function close() {
+    if (
+      dirty &&
+      !(await confirmDialog({ title: 'Discard unsaved changes?', confirmLabel: 'Discard' }))
+    )
+      return;
     openId = null;
     draft = null;
     dirty = false;
@@ -79,7 +91,7 @@
         note: 'Created',
       });
       await invalidateAll();
-      open(created);
+      await open(created);
     } catch (err) {
       toast.show({ kind: 'error', message: err instanceof AdminApiError ? err.message : 'Failed' });
     }
@@ -113,9 +125,11 @@
 
   async function remove(map: SiteMapOut) {
     if (
-      !confirm(
-        `Delete “${map.title || defaultTitle(map.kind)}”? Dives annotated on it lose their route.`,
-      )
+      !(await confirmDialog({
+        title: `Delete “${map.title || defaultTitle(map.kind)}”?`,
+        body: 'Dives annotated on it lose their route.',
+        danger: true,
+      }))
     )
       return;
     await adminJson(`/admin/maps/${map.id}`, 'DELETE');
@@ -152,10 +166,25 @@
     if (dirty) e.preventDefault();
   }
 
+  let leaving = false;
+
   beforeNavigate((nav) => {
-    if (dirty && nav.type !== 'leave' && !confirm('Leave the map editor with unsaved changes?')) {
-      nav.cancel();
-    }
+    if (!dirty || leaving || nav.type === 'leave') return;
+    nav.cancel();
+    const to = nav.to?.url;
+    confirmDialog({
+      title: 'Leave the map editor with unsaved changes?',
+      confirmLabel: 'Leave',
+      cancelLabel: 'Stay',
+    }).then(async (ok) => {
+      if (!ok || !to) return;
+      leaving = true;
+      try {
+        await goto(to);
+      } finally {
+        leaving = false;
+      }
+    });
   });
 </script>
 

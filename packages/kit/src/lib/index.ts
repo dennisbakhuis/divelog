@@ -1,6 +1,7 @@
 /**
  * The dive log's components: dive, map and admin building blocks, the owner
- * bar, toasts and the motion helpers they share. Pure logic is in `./core`,
+ * bar, toasts, the UI primitives (dialog, popover, tabs, combobox, field,
+ * disclosure, toolbar, skip link, live region) and the motion helpers they share. Pure logic is in `./core`,
  * page components in `./routes`, server helpers in `./server`.
  */
 export { default as Charts } from './components/dive/Charts.svelte';
@@ -33,11 +34,29 @@ export { default as DiveRouteEditor } from './components/admin/DiveRouteEditor.s
 export { default as ChangeList } from './components/shell/ChangeList.svelte';
 export { default as OwnerBar } from './components/shell/OwnerBar.svelte';
 export { default as Toast } from './components/shell/Toast.svelte';
+export { default as Combobox } from './components/ui/Combobox.svelte';
+export { default as ConfirmDialog } from './components/ui/ConfirmDialog.svelte';
+export { default as Dialog } from './components/ui/Dialog.svelte';
+export { default as Disclosure } from './components/ui/Disclosure.svelte';
+export { default as Field, type FieldControlProps } from './components/ui/Field.svelte';
+export { default as LiveRegion } from './components/ui/LiveRegion.svelte';
+export { default as Popover, type PopoverTriggerProps } from './components/ui/Popover.svelte';
+export { default as SkipLink } from './components/ui/SkipLink.svelte';
+export { default as Tabs, type TabItem } from './components/ui/Tabs.svelte';
+export { default as Toolbar, type ToolItem } from './components/ui/Toolbar.svelte';
+export { announce } from './core/ui/announce.js';
+export { confirmDialog, type ConfirmOptions } from './core/ui/confirm.js';
+export type { ComboOption } from './core/ui/combobox.js';
 export { counter, formatCount } from './components/anim/counter.js';
 export { inView } from './components/anim/inview.js';
 export * from './components/anim/motion.js';
 export { reveal } from './components/anim/reveal.js';
-export { toast, type ToastItem, type ToastKind } from './components/stores/toast.svelte';
+export {
+  toast,
+  type ToastItem,
+  type ToastKind,
+  type ToastOptions,
+} from './components/stores/toast.svelte';
 export { getDivelog, setDivelog, divelogContext, type Divelog } from './core/dive/context.js';
 export type { DivelogConfig } from './core/dive/config.js';
 export { KIT_VERSION } from './version.js';

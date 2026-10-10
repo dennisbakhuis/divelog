@@ -21,6 +21,7 @@
   import SiteAttribution from '$lib/components/dive/SiteAttribution.svelte';
   import { mapFromCommons } from '$lib/core/dive/sharing';
   import DetailTop from '$lib/components/dive/DetailTop.svelte';
+  import Tabs from '$lib/components/ui/Tabs.svelte';
   import {
     defaultTitle,
     fitAnnotation,
@@ -46,7 +47,7 @@
   const scans = $derived(dive.attachments.filter((a) => a.kind === 'scan'));
   const maps = $derived(dive.attachments.filter((a) => a.kind === 'map'));
   const hasProfile = $derived(!!dive.profile && dive.profile.length > 1);
-  let tab = $state<'story' | 'original' | 'logbook'>('story');
+  let tab = $state<string>('story');
   const provenance = $derived.by(() => {
     if (!isProvenance(dive.body_md)) return null;
     const text = dive.body_md.trim();
@@ -143,7 +144,6 @@
       scans.length ? { id: 'logbook' as TabId, label: 'Logbook page' } : null,
     ].filter((t) => t !== null),
   );
-  const activeTab = $derived(tabs.some((t) => t.id === tab) ? tab : (tabs[0]?.id ?? 'story'));
 </script>
 
 {#snippet pager()}
@@ -415,27 +415,18 @@
 
   {#if tabs.length}
     <section class="block">
-      {#if tabs.length > 1}
-        <div class="tabs" role="tablist">
-          {#each tabs as t (t.id)}
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === t.id}
-              class:active={activeTab === t.id}
-              onclick={() => (tab = t.id)}>{t.label}</button
-            >
-          {/each}
-        </div>
-      {/if}
-      {#if activeTab === 'story'}
-        <!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitised by the backend -->
-        <div class="dl-prose">{@html dive.body_html}</div>
-      {:else if activeTab === 'original'}
-        <blockquote class="original">{dive.notes_nl}</blockquote>
-      {:else}
-        <Gallery items={scans} kind="scan" />
-      {/if}
+      <Tabs {tabs} bind:active={tab} label="Notes on this dive">
+        {#snippet panel(id)}
+          {#if id === 'story'}
+            <!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitised by the backend -->
+            <div class="dl-prose">{@html dive.body_html}</div>
+          {:else if id === 'original'}
+            <blockquote class="original">{dive.notes_nl}</blockquote>
+          {:else}
+            <Gallery items={scans} kind="scan" />
+          {/if}
+        {/snippet}
+      </Tabs>
     </section>
   {/if}
 
@@ -783,6 +774,10 @@
   .also {
     margin-left: 0.4em;
   }
+  .also a {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
   .context-cards {
     display: grid;
     grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
@@ -1002,26 +997,6 @@
   .block.private h2 {
     color: var(--dl-color-warm);
     font-size: 16px;
-  }
-  .tabs {
-    display: flex;
-    gap: 4px;
-    margin-bottom: 16px;
-    border-bottom: 1px solid var(--dl-color-border);
-  }
-  .tabs button {
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    padding: 8px 14px;
-    color: var(--dl-color-text-muted);
-    font-family: var(--dl-font-display);
-    font-weight: 600;
-    margin-bottom: -1px;
-  }
-  .tabs button.active {
-    color: var(--dl-color-text);
-    border-bottom-color: var(--dl-color-accent);
   }
   .original {
     margin: 0;

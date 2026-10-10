@@ -1,5 +1,6 @@
 <script lang="ts">
   import MapGlyph from '$lib/components/dive/MapGlyph.svelte';
+  import Toolbar from '$lib/components/ui/Toolbar.svelte';
   import { OBJECT_KINDS, type ObjectKind } from '$lib/core/dive/sitemap';
 
   let {
@@ -9,36 +10,32 @@
   }: {
     value: ObjectKind;
     onchange: (kind: ObjectKind) => void;
-    /** Icons only, with the name as a tooltip; for narrow panels. */
+    /** Icons only, the name kept for assistive technology and as a tooltip; for narrow panels. */
     compact?: boolean;
   } = $props();
+
+  const items = OBJECT_KINDS.map((o) => ({ value: o.kind, label: o.label }));
 </script>
 
-<div class="picker" class:compact role="radiogroup" aria-label="Object">
-  {#each OBJECT_KINDS as o (o.kind)}
-    <button
-      type="button"
-      role="radio"
-      aria-checked={value === o.kind}
-      class:selected={value === o.kind}
-      title={o.label}
-      onclick={() => onchange(o.kind)}
+<Toolbar
+  {items}
+  bind:value={() => value, (kind) => onchange(kind as ObjectKind)}
+  label="Object"
+  class="dl-object-picker{compact ? ' compact' : ''}"
+  itemClass={() => 'dl-object-kind'}
+>
+  {#snippet item(tool)}
+    <svg viewBox="-16 -16 32 32" aria-hidden="true"
+      ><MapGlyph type="object" objectKind={tool.value as ObjectKind} /></svg
     >
-      <svg viewBox="-16 -16 32 32" aria-hidden="true"
-        ><MapGlyph type="object" objectKind={o.kind} /></svg
-      >
-      {#if !compact}<span>{o.label}</span>{/if}
-    </button>
-  {/each}
-</div>
+    <span class:dl-visually-hidden={compact} title={compact ? tool.label : undefined}
+      >{tool.label}</span
+    >
+  {/snippet}
+</Toolbar>
 
 <style>
-  .picker {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-  }
-  button {
+  :global(.dl-object-picker .dl-object-kind) {
     --map-bg: var(--dl-color-bg-elevated);
     display: flex;
     flex-direction: column;
@@ -46,23 +43,23 @@
     gap: 2px;
     width: 64px;
     padding: 5px 2px;
-    border: 1px solid var(--dl-color-border);
+    border: 1px solid var(--dl-color-border-control);
     border-radius: 8px;
     background: var(--dl-color-bg-elevated);
     color: var(--dl-color-text-muted);
-    font-size: 10px;
+    font-size: var(--dl-text-xs);
     line-height: 1.1;
     cursor: pointer;
   }
-  .compact button {
+  :global(.dl-object-picker.compact .dl-object-kind) {
     width: 36px;
     padding: 4px;
   }
-  button:hover {
+  :global(.dl-object-picker .dl-object-kind:hover) {
     border-color: var(--dl-color-border-strong);
     color: var(--dl-color-text);
   }
-  button.selected {
+  :global(.dl-object-picker .dl-object-kind.selected) {
     border-color: var(--dl-color-accent);
     color: var(--dl-color-text);
     box-shadow: 0 0 0 1px var(--dl-color-accent);
@@ -72,7 +69,7 @@
     height: 28px;
     overflow: visible;
   }
-  .compact svg {
+  :global(.dl-object-picker.compact) svg {
     width: 24px;
     height: 24px;
   }

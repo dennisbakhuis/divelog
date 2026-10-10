@@ -2,6 +2,7 @@
   import type { AdminDataFor } from '../admin';
   import { invalidateAll } from '$app/navigation';
   import { adminJson, adminUpload, AdminApiError } from '$lib/core/admin/client';
+  import { confirmDialog } from '$lib/core/ui/confirm.js';
   import type { GearItem, GearSetup } from '$lib/core/dive/types';
   import { toast } from '$lib/components/stores/toast.svelte';
   import { getDivelog } from '$lib/core/dive/context';
@@ -53,12 +54,26 @@
     return JSON.stringify(a) !== JSON.stringify(b);
   }
 
-  function editItem(i: GearItem) {
-    if (isDirty(item, emptyItem()) && !confirm('Discard the item you were typing?')) return;
+  async function editItem(i: GearItem) {
+    if (
+      isDirty(item, emptyItem()) &&
+      !(await confirmDialog({
+        title: 'Discard the item you were typing?',
+        confirmLabel: 'Discard',
+      }))
+    )
+      return;
     item = { ...emptyItem(), ...i, acquired: i.acquired ?? '', retired: i.retired ?? '' };
   }
-  function editSetup(s: GearSetup) {
-    if (isDirty(setup, emptySetup()) && !confirm('Discard the setup you were typing?')) return;
+  async function editSetup(s: GearSetup) {
+    if (
+      isDirty(setup, emptySetup()) &&
+      !(await confirmDialog({
+        title: 'Discard the setup you were typing?',
+        confirmLabel: 'Discard',
+      }))
+    )
+      return;
     setup = {
       id: s.id,
       slug: s.slug,
@@ -108,12 +123,12 @@
   }
 
   async function removeItem(i: GearItem) {
-    if (!confirm(`Delete ${i.name}?`)) return;
+    if (!(await confirmDialog({ title: `Delete ${i.name}?`, danger: true }))) return;
     await adminJson(`/admin/gear/items/${i.id}`, 'DELETE');
     await invalidateAll();
   }
   async function removeSetup(s: GearSetup) {
-    if (!confirm(`Delete setup ${s.name}?`)) return;
+    if (!(await confirmDialog({ title: `Delete setup ${s.name}?`, danger: true }))) return;
     await adminJson(`/admin/gear/setups/${s.id}`, 'DELETE');
     await invalidateAll();
   }

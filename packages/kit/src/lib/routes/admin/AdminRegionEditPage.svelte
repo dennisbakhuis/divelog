@@ -2,6 +2,7 @@
   import type { AdminDataFor } from '../admin';
   import { goto, invalidateAll } from '$app/navigation';
   import { adminJson, AdminApiError } from '$lib/core/admin/client';
+  import { confirmDialog } from '$lib/core/ui/confirm.js';
   import { toast } from '$lib/components/stores/toast.svelte';
   import RegionForm from './RegionForm.svelte';
   import { getDivelog } from '$lib/core/dive/context';
@@ -13,7 +14,8 @@
   let deleteError = $state('');
 
   async function remove() {
-    if (!confirm(`Delete the region ${region.name}?`)) return;
+    if (!(await confirmDialog({ title: `Delete the region ${region.name}?`, danger: true })))
+      return;
     deleteError = '';
     try {
       await adminJson(`/admin/regions/${region.id}`, 'DELETE');

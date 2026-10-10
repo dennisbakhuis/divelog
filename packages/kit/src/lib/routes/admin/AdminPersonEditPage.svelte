@@ -2,6 +2,7 @@
   import type { AdminDataFor } from '../admin';
   import { goto, invalidateAll } from '$app/navigation';
   import { adminJson, adminUpload, AdminApiError } from '$lib/core/admin/client';
+  import { confirmDialog } from '$lib/core/ui/confirm.js';
   import type { PersonPrivate } from '$lib/core/dive/types';
   import { toast } from '$lib/components/stores/toast.svelte';
   import { getDivelog } from '$lib/core/dive/context';
@@ -71,7 +72,7 @@
 
   async function remove() {
     if (data.person.dives) return;
-    if (!confirm(`Delete ${data.person.name}?`)) return;
+    if (!(await confirmDialog({ title: `Delete ${data.person.name}?`, danger: true }))) return;
     deleteError = '';
     try {
       await adminJson(`/admin/people/${data.person.id}`, 'DELETE');
