@@ -1,22 +1,49 @@
 <script lang="ts">
   import type { AdminDataFor } from '../admin';
-  import { goto, invalidateAll } from '$app/navigation';
+  import { onMount } from 'svelte';
+  import { goto, invalidateAll, replaceState } from '$app/navigation';
   import { adminJson, adminUpload, AdminApiError } from '$lib/core/admin/client';
   import { confirmDialog } from '$lib/core/ui/confirm.js';
-  import { defaultTitle, mapSummary } from '$lib/core/dive/sitemap';
   import type { Attachment } from '$lib/core/dive/types';
   import { toast } from '$lib/components/stores/toast.svelte';
   import SiteForm from './SiteForm.svelte';
+  import AdminSiteMapsPage from './AdminSiteMapsPage.svelte';
+  import Tabs, { type TabItem } from '$lib/components/ui/Tabs.svelte';
+  import OriginBadge from '$lib/components/shell/OriginBadge.svelte';
   import { getDivelog } from '$lib/core/dive/context';
 
   const { urls } = getDivelog();
 
-  let { data }: { data: AdminDataFor<'site-edit'> } = $props();
+  let { data }: { data: AdminDataFor<'site-edit'> | AdminDataFor<'site-maps'> } = $props();
   const site = $derived(data.site);
-  const drawn = $derived(
-    site.maps.flatMap((m) => (m.collection === 'drawn' && m.drawn ? [m.drawn] : [])),
-  );
-  const otherMaps = $derived(site.maps.filter((m) => m.collection !== 'drawn'));
+
+  const TABS: TabItem[] = [
+    { id: 'details', label: 'Details' },
+    { id: 'maps', label: 'Maps' },
+    { id: 'photos', label: 'Photos' },
+  ];
+
+  // svelte-ignore state_referenced_locally
+  let tab = $state(data.page === 'site-maps' ? 'maps' : 'details');
+
+  /** The URL a tab lives at: the Maps tab keeps its own path, the others a hash. */
+  function tabUrl(id: string): string {
+    if (id === 'maps') return urls.admin.siteMaps(site.id);
+    return id === 'details' ? urls.admin.site(site.id) : `${urls.admin.site(site.id)}#${id}`;
+  }
+
+  function onTab(id: string) {
+    try {
+      replaceState(tabUrl(id), {});
+    } catch {
+      // the router is not ready (tests, early clicks): the tab still switches
+    }
+  }
+
+  onMount(() => {
+    const id = decodeURIComponent(location.hash.slice(1));
+    if (id && id !== 'maps' && TABS.some((t) => t.id === id)) tab = id;
+  });
 
   let mediaKind = $state<'photo' | 'map'>('photo');
   let mediaPublic = $state(true);
@@ -80,130 +107,105 @@
 <nav class="crumbs" aria-label="Breadcrumb">
   <a href={urls.admin.sites()}>Sites</a> › <span>{site.name}</span>
 </nav>
-<div class="head">
+<header class="head">
   <h1>{site.name}</h1>
+  <OriginBadge
+    origin={site.origin}
+    title={site.forked_from ? `forked from ${site.forked_from}` : undefined}
+  />
   <a
     class="dl-btn dl-btn-ghost dl-btn-sm"
     href={urls.site(site.slug)}
     target="_blank"
     rel="noopener">View ↗</a
   >
-</div>
+</header>
 
-{#key site.id}
-  <SiteForm {site} regions={data.regions} onSaved={() => invalidateAll()} />
-{/key}
-
-<section class="dl-card panel">
-  <div class="panel-head">
-    <h2>Drawn maps</h2>
-    <a class="dl-btn dl-btn-solid dl-btn-sm" href={urls.admin.siteMaps(site.id)}>Open map editor</a>
-  </div>
-  {#if drawn.length}
-    <ul class="maps">
-      {#each drawn as m (m.id)}
-        <li>
-          <span class="badge">{defaultTitle(m.kind)}</span>
-          <span class="map-title">{m.title || defaultTitle(m.kind)}</span>
-          <span class="muted dl-num">{mapSummary(m)}</span>
-          {#if site.default_map === `drawn:${m.id}`}<span class="star">★ shown first</span>{/if}
-        </li>
-      {/each}
-    </ul>
-  {:else}
-    <p class="muted">
-      No drawn maps yet. Draw a stick map (cave line survey) or a site map (shoreline, depth lines,
-      objects) in the map editor.
-    </p>
-  {/if}
-  {#if otherMaps.length || site.private?.reference_maps.length}
-    <p class="muted">
-      {#if otherMaps.length}Also shown: {otherMaps
-          .map((m) => `${m.title} (${m.collection})`)
-          .join(', ')}.{/if}
-      {#if site.private?.reference_maps.length}
-        Plus {site.private.reference_maps.length} private reference map{site.private.reference_maps
-          .length === 1
-          ? ''
-          : 's'} only you can see.
-      {/if}
-    </p>
-  {/if}
-</section>
-
-<section class="dl-card panel">
-  <h2>Photos & uploaded maps</h2>
-  <div class="dropzone">
-    <label class="kind">
-      Upload as
-      <select bind:value={mediaKind}>
-        <option value="photo">site photo</option>
-        <option value="map">map image (scan, screenshot)</option>
-      </select>
-    </label>
-    <label class="kind"><input type="checkbox" bind:checked={mediaPublic} /> public</label>
-    <label class="file">
-      <span class="dl-btn dl-btn-ghost dl-btn-sm"
-        >{uploading ? `Uploading ${uploading}…` : 'Choose images'}</span
-      >
-      <input
-        type="file"
-        multiple
-        accept="image/*"
-        onchange={(e) => {
-          void upload(e.currentTarget.files);
-          e.currentTarget.value = '';
-        }}
-      />
-    </label>
-  </div>
-  {#if site.attachments.length}
-    <ul class="media">
-      {#each site.attachments as a (a.id)}
-        <li class="media-row" class:private={!a.public}>
-          <img src={a.variants.thumb ?? a.url} alt="" />
-          <div class="media-fields">
+<Tabs tabs={TABS} bind:active={tab} label="Site workspace" idPrefix="site" onchange={onTab}>
+  {#snippet panel(id)}
+    {#if id === 'details'}
+      {#key site.id}
+        <SiteForm {site} regions={data.regions} onSaved={() => invalidateAll()} />
+      {/key}
+    {:else if id === 'maps'}
+      <AdminSiteMapsPage {site} />
+    {:else if id === 'photos'}
+      <section class="dl-card panel">
+        <h2>Photos & uploaded maps</h2>
+        <div class="dropzone">
+          <label class="kind">
+            Upload as
+            <select bind:value={mediaKind}>
+              <option value="photo">site photo</option>
+              <option value="map">map image (scan, screenshot)</option>
+            </select>
+          </label>
+          <label class="kind"><input type="checkbox" bind:checked={mediaPublic} /> public</label>
+          <label class="file">
+            <span class="dl-btn dl-btn-ghost dl-btn-sm"
+              >{uploading ? `Uploading ${uploading}…` : 'Choose images'}</span
+            >
             <input
-              type="text"
-              placeholder="Caption"
-              value={a.caption}
-              onchange={(e) => patchMedia(a, { caption: e.currentTarget.value })}
+              type="file"
+              multiple
+              accept="image/*"
+              onchange={(e) => {
+                void upload(e.currentTarget.files);
+                e.currentTarget.value = '';
+              }}
             />
-            <input
-              type="text"
-              placeholder="Credit (author, licence)"
-              value={a.credit}
-              onchange={(e) => patchMedia(a, { credit: e.currentTarget.value })}
-            />
-            <div class="media-meta">
-              <select
-                value={a.kind}
-                onchange={(e) =>
-                  patchMedia(a, { kind: e.currentTarget.value as Attachment['kind'] })}
-              >
-                <option value="map">map</option>
-                <option value="photo">photo</option>
-              </select>
-              <label class="kind"
-                ><input
-                  type="checkbox"
-                  checked={a.public}
-                  onchange={(e) => patchMedia(a, { public: e.currentTarget.checked })}
-                /> public</label
-              >
-              <a href={a.url} target="_blank" rel="noopener" class="muted">open</a>
-              <button
-                type="button"
-                class="dl-btn dl-btn-ghost dl-btn-sm danger"
-                onclick={() => removeMedia(a)}>Delete</button
-              >
-            </div>
-          </div>
-        </li>
-      {/each}
-    </ul>
-  {/if}
-</section>
+          </label>
+        </div>
+        {#if site.attachments.length}
+          <ul class="media">
+            {#each site.attachments as a (a.id)}
+              <li class="media-row" class:private={!a.public}>
+                <img src={a.variants.thumb ?? a.url} alt="" />
+                <div class="media-fields">
+                  <input
+                    type="text"
+                    placeholder="Caption"
+                    value={a.caption}
+                    onchange={(e) => patchMedia(a, { caption: e.currentTarget.value })}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Credit (author, licence)"
+                    value={a.credit}
+                    onchange={(e) => patchMedia(a, { credit: e.currentTarget.value })}
+                  />
+                  <div class="media-meta">
+                    <select
+                      value={a.kind}
+                      onchange={(e) =>
+                        patchMedia(a, { kind: e.currentTarget.value as Attachment['kind'] })}
+                    >
+                      <option value="map">map</option>
+                      <option value="photo">photo</option>
+                    </select>
+                    <label class="kind"
+                      ><input
+                        type="checkbox"
+                        checked={a.public}
+                        onchange={(e) => patchMedia(a, { public: e.currentTarget.checked })}
+                      /> public</label
+                    >
+                    <a href={a.url} target="_blank" rel="noopener" class="muted">open</a>
+                    <button
+                      type="button"
+                      class="dl-btn dl-btn-ghost dl-btn-sm danger"
+                      onclick={() => removeMedia(a)}>Delete</button
+                    >
+                  </div>
+                </div>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </section>
+    {/if}
+  {/snippet}
+</Tabs>
 
 <section class="danger-zone">
   {#if site.dives}
@@ -249,49 +251,6 @@
   .panel h2 {
     font-size: 15px;
     margin: 0;
-  }
-  .panel-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-  .maps {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-  .maps li {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    padding: 8px 10px;
-    border: 1px solid var(--dl-color-border);
-    border-radius: var(--dl-radius);
-    background: var(--dl-color-surface);
-  }
-  .map-title {
-    font-weight: 500;
-  }
-  .badge {
-    font-family: var(--dl-font-mono);
-    font-size: 10.5px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: var(--dl-color-accent-soft);
-    color: var(--dl-color-accent);
-  }
-  .star {
-    color: var(--dl-color-warm);
-    font-size: 13px;
-    margin-left: auto;
   }
   .dropzone {
     display: flex;

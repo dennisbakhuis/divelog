@@ -5,7 +5,7 @@ name or alias, then the nearest placed site within :data:`MATCH_RADIUS_M`. A nam
 several sites goes to the nearest of them when the import is placed, else to the first id.
 """
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Literal
 
@@ -91,3 +91,54 @@ def match_site(
         return None
     distance, site = min(placed, key=lambda item: (item[0], item[1].site_id))
     return SiteMatch(site.site_id, "distance", round(distance))
+
+
+def nearby(
+    name: str | None,
+    lat: float | None,
+    lon: float | None,
+    sites: Iterable[SiteRecord],
+    radius_m: float = MATCH_RADIUS_M,
+) -> list[SiteMatch]:
+    """Every site that could be the one described: same name or alias, or placed within reach.
+
+    The rules of :func:`match_site` without the UUID, applied to every site instead of the
+    first hit: a name rule wins over the distance rule for the same site.
+
+    Parameters
+    ----------
+    name
+        The name being typed, or None.
+    lat, lon
+        The point being placed, or None.
+    sites
+        The sites to look through.
+    radius_m
+        Largest distance for a match by position alone.
+
+    Returns
+    -------
+    list[SiteMatch]
+        Nearest first (unplaced ones last), then by site id; ``distance_m`` in whole metres
+        whenever both ends are placed.
+    """
+    key = _key(name) if name and name.strip() else None
+    point = DraftSite(uuid="", name=name or "", lat=lat, lon=lon)
+    found: list[SiteMatch] = []
+    for site in sites:
+        distance = _distance_m(point, site)
+        rule: MatchedBy | None = None
+        if key and key in {_key(n) for n in (site.name, site.full_name, site.short_name) if n}:
+            rule = "name"
+        elif key and key in {_key(a) for a in site.aliases}:
+            rule = "alias"
+        elif distance is not None and distance <= radius_m:
+            rule = "distance"
+        if rule is not None:
+            found.append(
+                SiteMatch(site.site_id, rule, round(distance) if distance is not None else None)
+            )
+    return sorted(
+        found,
+        key=lambda m: (m.distance_m is None, m.distance_m or 0.0, m.site_id),
+    )

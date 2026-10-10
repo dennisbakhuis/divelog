@@ -166,27 +166,26 @@ export const siteNewRoute = defineRoute({
   load: async (divelog, _params, event) => ({ regions: await publicRegions(divelog, event) }),
 });
 
+/** The site workspace: the site with the reference data its tabs need. */
+async function siteWorkspace(divelog: Divelog, id: string, event: RequestEvent) {
+  const [site, regions] = await Promise.all([
+    divelog.apiOrError<Site>(event, divelog.urls.api(`/admin/sites/${encodeURIComponent(id)}`)),
+    publicRegions(divelog, event),
+  ]);
+  return { site, regions };
+}
+
 export const siteEditRoute = defineRoute({
   page: 'site-edit',
   pattern: /^sites\/([^/]+)$/,
-  load: async (divelog, [id], event) => {
-    const [site, regions] = await Promise.all([
-      divelog.apiOrError<Site>(event, divelog.urls.api(`/admin/sites/${encodeURIComponent(id)}`)),
-      publicRegions(divelog, event),
-    ]);
-    return { site, regions };
-  },
+  load: (divelog, [id], event) => siteWorkspace(divelog, id, event),
 });
 
+/** A deep link to the workspace's Maps tab; renders the same page. */
 export const siteMapsRoute = defineRoute({
   page: 'site-maps',
   pattern: /^sites\/([^/]+)\/maps$/,
-  load: async (divelog, [id], event) => ({
-    site: await divelog.apiOrError<Site>(
-      event,
-      divelog.urls.api(`/admin/sites/${encodeURIComponent(id)}`),
-    ),
-  }),
+  load: (divelog, [id], event) => siteWorkspace(divelog, id, event),
 });
 
 export const regionsRoute = defineRoute({

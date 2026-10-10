@@ -209,6 +209,17 @@ class LogRepo:
             self._index()
             await self.git.commit(message)
 
+    async def save_dives(self, records: list[DiveRecord], message: str) -> None:
+        """Write several dives in one commit; their numbers stay as they are."""
+        if not records:
+            return
+        async with self.lock:
+            for record in records:
+                write_markdown(self.dive_path(record.number), frontmatter(record), record.body_md)
+                self.dives[record.number] = record
+            self._index()
+            await self.git.commit(message)
+
     async def delete_dive(self, number: int, message: str) -> None:
         """Remove a dive file."""
         async with self.lock:

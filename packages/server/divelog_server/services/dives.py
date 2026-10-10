@@ -2,6 +2,7 @@
 
 import bisect
 import math
+from collections.abc import Sequence
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
@@ -74,6 +75,9 @@ def attachment_out(media: MediaRef) -> AttachmentOut:
         original_name=media.original_name,
         url=media_url(media.key),
         variants={name: media_url(variant_key(media.key, name)) for name in media.variants},
+        licence=media.licence,
+        author=media.author,
+        source=media.source,
     )
 
 
@@ -839,14 +843,14 @@ def tank_out(tank: TankRecord) -> TankOut:
 STAGE_ROLES = {"stage", "deco"}
 
 
-def with_stage_tag(tags: list[str], tanks: list[TankIn]) -> list[str]:
+def with_stage_tag(tags: list[str], tanks: Sequence[TankIn]) -> list[str]:
     """The tags with ``stage`` added when a stage or deco cylinder was carried."""
     if "stage" in tags or not any(t.role in STAGE_ROLES for t in tanks):
         return list(tags)
     return [*tags, "stage"]
 
 
-def gas_summary(tanks: list[TankIn]) -> dict[str, Any]:
+def gas_summary(tanks: Sequence[TankIn]) -> dict[str, Any]:
     """The single-gas fields the list, filters and stats read, taken from the back gas.
 
     The first ``back`` tank (or the first tank) is the gas of the dive; its

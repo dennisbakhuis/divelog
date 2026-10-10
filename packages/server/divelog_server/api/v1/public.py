@@ -332,6 +332,9 @@ async def gear(store: StoreDep, owner: OptionalOwnerDep, response: Response) -> 
                 sort=s.sort,
                 items=[i for item_id in s.items if (i := item_out(item_id)) is not None],
                 dive_count=setup_counts.get(s.id, 0),
+                tanks=[dive_service.tank_out(t) for t in s.tanks],
+                suit=s.suit,
+                weights_kg=s.weights_kg,
             )
             for s in setups
         ],

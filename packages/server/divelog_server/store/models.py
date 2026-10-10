@@ -30,7 +30,9 @@ class MediaRef(BaseModel):
     """A stored file attached to a dive, site, person or gear item.
 
     ``key`` addresses the media storage; a ``repo:`` prefix points into the data repository
-    instead. ``variants`` names the rendered WebP sizes that exist for this file.
+    instead. ``variants`` names the rendered WebP sizes that exist for this file. ``licence``
+    (an allowlisted id such as ``CC-BY-4.0``), ``author`` and ``source`` (a URL) credit a photo
+    taken by someone else; they stay unset on the owner's own files.
     """
 
     model_config = ConfigDict(extra="allow")
@@ -49,6 +51,9 @@ class MediaRef(BaseModel):
     public: bool = True
     variants: list[str] = Field(default_factory=list)
     original_name: str = ""
+    licence: str | None = None
+    author: str | None = None
+    source: str | None = None
 
 
 class Price(BaseModel):
@@ -452,11 +457,19 @@ class GearItemRecord(Record):
 
 
 class GearSetupRecord(Record):
+    """A named combination of gear items, with the tanks, suit and weights it is dived with.
+
+    ``tanks``, ``suit`` and ``weights_kg`` are a template the dive editor copies into a dive.
+    """
+
     id: str = Field(min_length=1)
     name: str
     description_md: str = ""
     sort: int = 0
     items: list[str] = Field(default_factory=list)
+    tanks: list[TankRecord] = Field(default_factory=list)
+    suit: str | None = None
+    weights_kg: float | None = None
 
 
 class ReferenceMap(BaseModel):
