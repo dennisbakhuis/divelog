@@ -26,6 +26,7 @@ from divelog_server.schemas.admin import (
     MarkdownPreviewOut,
     NearbySitesOut,
     SiteFieldsOut,
+    SiteMapDraft,
     SiteMapSeedIn,
     SiteMapSeedOut,
 )
@@ -54,7 +55,6 @@ from divelog_server.schemas.dive import (
     TripOut,
 )
 from divelog_server.schemas.gear import GearItemIn, GearItemOut, GearSetupIn, GearSetupOut
-from divelog_server.schemas.sitemap import SiteMap
 from divelog_server.services import admin_views
 from divelog_server.services import dives as dive_service
 from divelog_server.services.images import IMAGE_MIMES, process_image
@@ -662,7 +662,7 @@ async def admin_seed_map(
         source=body.source,
         radius_m=radius,
         elements=len(osm.get("elements", [])),
-        map=SiteMap.model_validate(raw),
+        map=SiteMapDraft.model_validate(raw),
     )
 
 

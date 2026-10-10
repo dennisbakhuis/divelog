@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Any, Literal
 
@@ -249,13 +250,6 @@ class SiteOut(ApiModel):
         return render(self.description_md) or ""
 
 
-class AccessPointIn(AccessPoint):
-    """Where to get in, as the editor sends it: coordinates within their ranges."""
-
-    lat: float | None = Field(default=None, ge=-90, le=90)
-    lon: float | None = Field(default=None, ge=-180, le=180)
-
-
 class SiteIn(ApiModel):
     """A site as the editor sends it.
 
@@ -276,7 +270,7 @@ class SiteIn(ApiModel):
     section_vocabulary: list[str] = Field(default_factory=list)
     lat: float | None = Field(default=None, ge=-90, le=90)
     lon: float | None = Field(default=None, ge=-180, le=180)
-    access: AccessPointIn | None = None
+    access: AccessPoint | None = None
     location_visibility: Literal["exact", "region_only"] = "exact"
     water: Literal["salt", "fresh", "brackish"] | None = None
     halocline: bool = False
@@ -290,6 +284,18 @@ class SiteIn(ApiModel):
     geo_source: str | None = None
     notes: str | None = None
     note: str | None = Field(default=None, max_length=200)
+
+    @field_validator("access")
+    @classmethod
+    def _access_in_range(cls, value: AccessPoint | None) -> AccessPoint | None:
+        """The access point's coordinates within their ranges."""
+        if value is None:
+            return value
+        if value.lat is not None and not -90 <= value.lat <= 90:
+            raise ValueError("access lat must be between -90 and 90")
+        if value.lon is not None and not -180 <= value.lon <= 180:
+            raise ValueError("access lon must be between -180 and 180")
+        return value
 
 
 class SitePatch(ApiModel):
@@ -651,7 +657,7 @@ class DiveIn(ApiModel):
     cylinder: str | None = Field(default=None, max_length=120)
     pressure_in_bar: float | None = Field(default=None, ge=0, le=400)
     pressure_out_bar: float | None = Field(default=None, ge=0, le=400)
-    tanks: list[TankIn] = Field(default_factory=list, max_length=8)
+    tanks: Sequence[TankIn] = Field(default_factory=list, max_length=8)
     safety_stop_min: float | None = Field(default=None, ge=0, le=120)
     surface_interval: str | None = Field(default=None, max_length=40)
     conditions: str | None = Field(default=None, max_length=300)

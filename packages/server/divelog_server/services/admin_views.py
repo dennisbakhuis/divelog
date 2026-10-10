@@ -12,6 +12,7 @@ from divelog_server.schemas.admin import (
     AdminDivePage,
     AdminDiveRow,
     DiveSort,
+    DiveTemplateDive,
     DiveTemplateOut,
     NearbyCommonsSite,
     NearbyLogSite,
@@ -44,7 +45,7 @@ def _when(dive: DiveRecord) -> tuple[date, str, int]:
     return (dive.date, dive.time_in or "", dive.number)
 
 
-def dive_input(dive: DiveRecord) -> DiveIn:
+def dive_input(dive: DiveRecord) -> DiveTemplateDive:
     """A stored dive as the form's input, without its profile.
 
     Values a hand-edited file holds outside the input's ranges are dropped (or, for the
@@ -60,7 +61,7 @@ def dive_input(dive: DiveRecord) -> DiveIn:
     payload["body_md"] = dive.body_md
     for _ in range(len(payload)):
         try:
-            return DiveIn.model_validate(payload)
+            return DiveTemplateDive.model_validate(payload)
         except ValidationError as exc:
             for error in exc.errors():
                 field = str(error["loc"][0])
@@ -71,7 +72,7 @@ def dive_input(dive: DiveRecord) -> DiveIn:
                     payload[field] = min(max(float(number), low), high)
                 else:
                     payload.pop(field, None)
-    return DiveIn.model_validate(payload)
+    return DiveTemplateDive.model_validate(payload)
 
 
 def _trip_containing(store: Store, day: date) -> TripOut | None:

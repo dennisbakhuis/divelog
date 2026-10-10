@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import Field
 
 from divelog_server.schemas.base import ApiModel
-from divelog_server.schemas.dive import AdminDiveListItem, DiveIn, TripOut, TripRef
+from divelog_server.schemas.dive import AdminDiveListItem, DiveIn, TankOut, TripOut, TripRef
 from divelog_server.schemas.sitemap import SiteMap
 
 SiteOriginName = Literal["log", "commons", "fork"]
@@ -46,6 +46,16 @@ class SiteLastDive(ApiModel):
     visibility_m: float | None
 
 
+class DiveTemplateDive(DiveIn):
+    """A stored dive as the form's input; the same fields as ``DiveIn``, sent back out."""
+
+    tanks: list[TankOut] = Field(default_factory=list, max_length=8)
+
+
+class SiteMapDraft(SiteMap):
+    """A drawn-map payload that is not saved yet; the same fields as ``SiteMap``."""
+
+
 class DiveTemplateOut(ApiModel):
     """Everything the new-dive form starts from, in one request.
 
@@ -57,7 +67,7 @@ class DiveTemplateOut(ApiModel):
 
     date: date
     next_number: int
-    previous: DiveIn | None = None
+    previous: DiveTemplateDive | None = None
     at_site: SiteLastDive | None = None
     recent_sites: list[TemplateSite] = Field(default_factory=list)
     frequent_people: list[TemplatePerson] = Field(default_factory=list)
@@ -192,4 +202,4 @@ class SiteMapSeedOut(ApiModel):
     source: Literal["osm"]
     radius_m: int
     elements: int
-    map: SiteMap
+    map: SiteMapDraft

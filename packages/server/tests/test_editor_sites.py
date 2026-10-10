@@ -238,8 +238,8 @@ async def test_site_note_without_objective_change_adds_no_revision(
     [
         ({"lat": 95}, ["body", "lat"]),
         ({"lon": -181}, ["body", "lon"]),
-        ({"access": {"lat": -91, "lon": 0}}, ["body", "access", "lat"]),
-        ({"access": {"lat": 0, "lon": 200}}, ["body", "access", "lon"]),
+        ({"access": {"lat": -91, "lon": 0}}, ["body", "access"]),
+        ({"access": {"lat": 0, "lon": 200}}, ["body", "access"]),
     ],
 )
 async def test_site_coordinates_out_of_range_are_422(
