@@ -243,7 +243,8 @@ component (exported, with `LocationPicker`); the dialog passes `compact`.
    whether it is free (`GET /admin/sites/{id}`, a 404 means free).
 2. **Tap the map.** `LocationPicker` draws the self-hosted PMTiles basemap (the planet archive,
    the regional ones from zoom 8) or, without tiles, the world-atlas country outlines, so a pin
-   can always be placed. Tap or click places the pin, dragging moves it; with the map focused
+   can always be placed (with tiles the ~750 kB outlines are only fetched on the first pin, to
+   name the country). Tap or click places the pin, dragging moves it; with the map focused
    the arrow keys move the pin (Shift for larger steps), `+`/`-` zoom and Enter drops the pin at
    the centre. The coordinates field takes a paste in either order, degrees-minutes-seconds,
    hemisphere letters or a map link (`@lat,lon`, `mlat=…&mlon=…`, `#map=z/lat/lon`); "Use my
@@ -254,7 +255,13 @@ component (exported, with `LocationPicker`); the dialog passes `compact`.
    60 km; Bonaire, Sint Eustatius and Saba become `BES`), and `regionNearest` picks the region of
    that country with the closest site. Both are marked "from the pin" / "nearest" until changed
    by hand; a hand-picked country is kept when the pin moves. The country list is
-   `GET /meta/countries` plus whatever code the pin found.
+   `GET /meta/countries` (every ISO 3166 country, the log's own under the names it shows) plus
+   whatever code the pin found. Territories follow the world atlas: an overseas territory with
+   its own ISO code in the atlas keeps it (Curaçao `CUW`, Aruba `ABW`, Sint Maarten `SXM`,
+   Puerto Rico `PRI`…), but one drawn as part of its country's outline gets the parent's code:
+   Réunion, Guadeloupe, Martinique, French Guiana and Mayotte become `FRA`, the Canaries `ESP`,
+   Madeira and the Azores `PRT`. Only the Dutch Caribbean is split out, as `BES`. Change the
+   country by hand where that matters.
 4. **Already known?** While the name or pin changes, `GET /admin/sites/nearby` lists log sites
    and commons sites with the same name, an alias, or within 300 m, nearest first: "Use this
    site" (log) or "Adopt" (commons) instead of creating a duplicate. Nothing is blocked.
@@ -264,7 +271,9 @@ component (exported, with `LocationPicker`); the dialog passes `compact`.
    filled in. "More details" (remembered open or closed) holds the other names, area, system,
    summary, location visibility and halocline.
 6. **Create.** Page: **Create** (opens the site), **Create & log a dive here**
-   (`urls.admin.newDive({ site })`) or **Create & draw a map** (the Maps tab). Dialog: **Create &
+   (`urls.admin.newDive({ site })`) or **Create & draw a map** (the Maps tab with a blank map
+   already open: `?draft=sitemap`, or `?draft=stickmap` for a cave or cenote; the query is
+   dropped from the address once the draft is open). Dialog: **Create &
    use** sets the dive's site. Enter in a text field never creates a half-filled site; errors
    from the server land on their fields.
 
@@ -279,8 +288,10 @@ fields locked as above, overlay fields marked "yours"), **Location** (`LocationP
 site, a second compact one for the entry point with the site shown, location visibility),
 **Maps** (the map list and editor; `/admin/sites/{id}/maps` opens this tab), **Photos**
 (`Attachments` with `site`: kind photo or map, public, and for someone else's photo a licence
-from `GET /meta/licences`, the author and a source URL) and **Dives** (the dives at the site and
-"Log a dive here"). Details and Location share one form, so switching between them keeps what
+from `GET /meta/licences`, the author and a source URL; ↑/↓ reorder them in one
+`PUT /admin/sites/{id}/attachments/order`, on log and forked sites only, since a commons site's
+photo order is the commons' own) and **Dives** (`GET /admin/dives/page?site={id}`, and "Log a
+dive here"). Details and Location share one form, so switching between them keeps what
 was typed; the save bar carries a "What changed" note that becomes the revision's changelog
 entry (`SiteIn.note`). Tabs other than Details and Maps live in the URL hash (`#location`).
 Leaving the page with unsaved changes, or the Maps tab with an unsaved map, asks first.
@@ -297,7 +308,8 @@ stick map" open an empty one. Every new map starts at the site's position (`orig
 lat/lon, `north` 0; `emptySiteMap(kind, siteOrigin(site))`, `seedDraft(seed.map, origin)`).
 Nothing is stored until **Save map**, which POSTs the map once (one commit); later saves PUT it
 with the "What changed" note. Leaving, opening another map or starting a new one while there is
-unsaved work asks first (`ConfirmDialog`). "Shown first" is a radio per map (PATCHes the site's
+unsaved work asks first (`ConfirmDialog`); a blank map nothing was drawn on yet is not unsaved
+work, so "Start from OpenStreetMap" replaces it without asking. "Shown first" is a radio per map (PATCHes the site's
 `default_map`); the reorder buttons are named "Move {title} up/down".
 
 **Tools and shortcuts.** The tools are a `Toolbar` radio group (arrow keys, Home/End) with their
@@ -331,13 +343,18 @@ disappear, the other keys keep working.
   points** (click two spots a known distance apart, type the distance; the first spot stays put).
   Helpers: `moveUnderlay`, `rotateUnderlay`, `rescaleUnderlay`.
 
+**Positions.** `toLatLon(map, point)` turns a drawing point into latitude and longitude with the
+same rotation as survey shots (`placeByBearing`) and the locator underlay (`drawingToWorld`):
+`north` is the compass bearing the top of the drawing points to. (Before 0.3.0 it turned the
+other way for `north ≠ 0`; maps drawn north-up were never affected.)
+
 **Shapes.** Selecting a line or an area shows its points; drag them to reshape (areas no longer
 need deleting and redrawing; `moveAreaPoint`).
 
 **Touch and phones.** One finger taps to add and drags to pan; two fingers pinch-zoom and pan
 (the map view's pointer gestures). Press and hold (touch or pen, about half a second, held still)
 on a station, line, area or the bare canvas for an actions menu (edit details, delete, finish
-shape, undo). Below 700 px the tool strip docks to the bottom of the screen and scrolls sideways
+shape, undo); it takes focus, the arrow keys, Home and End move through it and Escape closes it. Below 700 px the tool strip docks to the bottom of the screen and scrolls sideways
 (44 px targets), and the details panel becomes a scrollable sheet under the canvas with a
 "Hide/Show details" toggle.
 
@@ -447,9 +464,10 @@ the editor root.
 **What the page loads.** One `GET /admin/dives/template?site=&date=` replaces the old list and
 last-dive fetches: `previous` (the latest dive on or before the date, in the input shape),
 `at_site` (the last dive at the site), `recent_sites`, `frequent_people`, `next_number` and
-`trip_for_date`. On a draft the loader asks again for the day before when the draft itself is
-the latest dive, so a draft never copies itself; it also loads every draft's number for
-"Save & next draft". The form asks for a new template when the site or date changes (new dives
+`trip_for_date`. On an existing dive the loader adds `before={number}`, so `previous` is the
+dive logged before it, also an earlier dive of the same day (by start time, or by number when
+a start time is missing), and never the dive itself; on a draft it also loads every draft's
+number for "Save & next draft". The form asks for a new template when the site or date changes (new dives
 and drafts only).
 
 **The form** (`DiveForm`), in sections that remember their open state per browser:
@@ -461,7 +479,8 @@ and drafts only).
 2. *Gas & kit* (open): gear setup with "Use gear setup" (tanks, suit and weights from the
    setup; edit them on the gear page), tank cards, mode, suit, weights, surface interval,
    safety stop.
-3. *Conditions*, 4. *On the map* (the only drawn map of a site is picked by itself),
+3. *Conditions*, 4. *On the map* (the only drawn map of a site is picked by itself; the
+   route tools are a `Toolbar`: Route, Turn point, Note pin),
    5. *Story* with a server-rendered preview (`POST /admin/preview/markdown`) and the
    *Transcription* of the paper log inside it, 6. *Private*, 7. *Publishing* ("Published as",
    "Save as draft"). Then *Photos & files*: on a new dive the chosen files are queued and

@@ -27,7 +27,7 @@ directories, so a checkout owned by another user on the host still works.
 ```yaml
 services:
   divelog-server:
-    image: ghcr.io/<owner>/divelog-server:0.2.0
+    image: ghcr.io/<owner>/divelog-server:0.3.0
     restart: unless-stopped
     environment:
       SITE_NAME: Jane's dive log
@@ -57,7 +57,7 @@ services:
       - deploy_key
 
   web:
-    image: ghcr.io/<owner>/divelog-reference:0.2.0
+    image: ghcr.io/<owner>/divelog-reference:0.3.0
     restart: unless-stopped
     depends_on: [divelog-server]
     environment:

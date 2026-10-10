@@ -81,6 +81,11 @@ describe('countryAt on the world atlas', () => {
     [36.05, 14.19, 'MLT', true],
     [12.15, -68.28, 'BES', true],
     [12.12, -68.95, 'CUW', true],
+    [12.52, -70.03, 'ABW', true],
+    [-21.12, 55.53, 'FRA', true],
+    [16.17, -61.68, 'FRA', true],
+    [28.27, -16.6, 'ESP', true],
+    [32.75, -16.95, 'PRT', true],
   ])('places %s, %s in %s', async (lat, lon, iso3, inside) => {
     const hit = await countryAt(lat, lon);
     expect(hit?.iso3).toBe(iso3);

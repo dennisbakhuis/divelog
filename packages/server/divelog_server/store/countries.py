@@ -242,6 +242,7 @@ COUNTRIES: dict[str, tuple[str, str]] = {
     "YEM": ("YE", "Yemen"),
     "ZMB": ("ZM", "Zambia"),
     "ZWE": ("ZW", "Zimbabwe"),
+    "XKX": ("XK", "Kosovo"),
 }
 
 
