@@ -8,19 +8,15 @@
     title,
   }: {
     origin: SiteOrigin;
-    /** A short remark shown after the origin, e.g. "from fra-ressel" for a fork. */
+    /** A short remark shown as visible text after the origin, e.g. "from fra-ressel". */
     detail?: string;
-    /** Deprecated alias of `detail`; shown as visible text, never as a tooltip only. */
+    /** Deprecated: a tooltip only screen-reader and mouse users can find; pass `detail`. */
     title?: string;
   } = $props();
-
-  const extra = $derived(detail ?? title ?? '');
 </script>
 
-<span class="dl-tag origin" data-origin={origin}
-  ><span class="dl-visually-hidden">Origin: </span>{ORIGIN_LABEL[origin]}{#if extra}<span
-      class="detail">· {extra}</span
-    >{/if}</span
+<span class="dl-tag origin" data-origin={origin} {title}
+  >{ORIGIN_LABEL[origin]}{#if detail}<span class="detail">· {detail}</span>{/if}</span
 >
 
 <style>

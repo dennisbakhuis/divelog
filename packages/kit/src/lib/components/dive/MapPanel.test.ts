@@ -157,7 +157,12 @@ describe('MapPanel dive overlays', () => {
     flushSync();
 
     const chips = [...target.querySelectorAll('.dives button')].map((b) => b.textContent?.trim());
-    expect(chips).toEqual(['All dived lines', '11 Feb 2026 · #5', '12 Feb 2026 · #6', 'Map only']);
+    expect(chips).toEqual([
+      'All dived lines',
+      '11 Feb 2026 · #5, First',
+      '12 Feb 2026 · #6, Second',
+      'Map only',
+    ]);
     expect(target.querySelectorAll('.edge.on-route').length).toBe(2);
     expect(target.querySelector('.turn-ring')).toBeNull();
 
