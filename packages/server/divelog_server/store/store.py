@@ -343,7 +343,7 @@ class Store(LogRepo):
         self._index()
 
     async def save_site(
-        self, record: SiteRecord, message: str, *, fork: bool = False
+        self, record: SiteRecord, message: str, *, fork: bool = False, note: str | None = None
     ) -> SiteRecord:
         """Write a site to the log by its origin, and return it as the merged view now shows it.
 
@@ -353,8 +353,9 @@ class Store(LogRepo):
         ``forked_from: commons@<revision>`` instead.
 
         ``revision`` and ``changelog`` of ``record`` are ignored: a new site starts at revision
-        1, a full record moves to the next revision (with ``message`` as the changelog note)
-        only when an objective field changed, and a fork continues the commons changelog.
+        1, a full record moves to the next revision (with ``note``, else ``message``, as the
+        changelog note) only when an objective field changed, and a fork continues the commons
+        changelog.
 
         Raises
         ------
@@ -374,7 +375,7 @@ class Store(LogRepo):
                         raise CommonsEditError(COMMONS_SITE)
                     self._write_overlay(record, base)
             else:
-                self._version(record, self.log_sites.sites.get(site_id), message)
+                self._version(record, self.log_sites.sites.get(site_id), note or message)
                 self._write_full(record)
             self._refresh()
             await self.git.commit(message)

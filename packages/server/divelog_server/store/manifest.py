@@ -112,6 +112,19 @@ LICENCE_ALLOWLIST = frozenset(
         "PDM",
     }
 )
+LICENCES: dict[str, tuple[str, str]] = {
+    "CC0-1.0": ("CC0 1.0 Universal", "https://creativecommons.org/publicdomain/zero/1.0/"),
+    "PDM": ("Public Domain Mark 1.0", "https://creativecommons.org/publicdomain/mark/1.0/"),
+    "CC-BY-4.0": ("CC BY 4.0", "https://creativecommons.org/licenses/by/4.0/"),
+    "CC-BY-SA-4.0": ("CC BY-SA 4.0", "https://creativecommons.org/licenses/by-sa/4.0/"),
+    "CC-BY-3.0": ("CC BY 3.0", "https://creativecommons.org/licenses/by/3.0/"),
+    "CC-BY-SA-3.0": ("CC BY-SA 3.0", "https://creativecommons.org/licenses/by-sa/3.0/"),
+    "CC-BY-2.5": ("CC BY 2.5", "https://creativecommons.org/licenses/by/2.5/"),
+    "CC-BY-SA-2.5": ("CC BY-SA 2.5", "https://creativecommons.org/licenses/by-sa/2.5/"),
+    "CC-BY-2.0": ("CC BY 2.0", "https://creativecommons.org/licenses/by/2.0/"),
+    "CC-BY-SA-2.0": ("CC BY-SA 2.0", "https://creativecommons.org/licenses/by-sa/2.0/"),
+}
+"""Name and deed URL of every allowlisted licence, most open first."""
 _PUBLIC_DOMAIN = {"PDM", "PDM-1.0", "PUBLIC-DOMAIN", "PUBLIC-DOMAIN-MARK", "PUBLIC-DOMAIN-MARK-1.0"}
 
 
