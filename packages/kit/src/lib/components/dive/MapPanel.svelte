@@ -1,7 +1,9 @@
 <script lang="ts">
   import MapLegend from './MapLegend.svelte';
   import SiteMapView from './SiteMapView.svelte';
-  import type { MapRef, SiteDiveRoute } from '$lib/core/dive/types';
+  import SiteAttribution from './SiteAttribution.svelte';
+  import type { Attribution, MapRef, SiteDiveRoute, SiteOrigin } from '$lib/core/dive/types';
+  import { mapFromCommons } from '$lib/core/dive/sharing';
   import { formatDate } from '$lib/core/dive/format';
   import { defaultTitle, mapSummary, normalizeSiteMap, routeKeys } from '$lib/core/dive/sitemap';
   import { getDivelog } from '$lib/core/dive/context';
@@ -14,6 +16,8 @@
     owner = false,
     defaultRef = null,
     routes = [],
+    origin = 'log',
+    attribution = null,
   }: {
     maps: MapRef[];
     siteName: string;
@@ -21,11 +25,15 @@
     defaultRef?: string | null;
     /** Logged dives with a route on one of the drawn maps. */
     routes?: SiteDiveRoute[];
+    /** Where the site comes from; maps taken from the commons get an attribution line. */
+    origin?: SiteOrigin;
+    attribution?: Attribution | null;
   } = $props();
 
   let current = $state(0);
   const active = $derived(maps[Math.min(current, maps.length - 1)]);
   const drawn = $derived(active?.drawn ? normalizeSiteMap(active.drawn) : null);
+  const fromCommons = $derived(!!active && mapFromCommons(active, origin));
 
   // Which dive's route to overlay: every dive together (the lines ever dived), one dive, or none.
   let shown = $state<'all' | 'none' | number>('all');
@@ -121,6 +129,7 @@
           {#if active.credit}<figcaption>{active.credit}</figcaption>{/if}
         </figure>
       {/if}
+      {#if fromCommons}<SiteAttribution {origin} {attribution} variant="map" />{/if}
     {/if}
   </section>
 {/if}

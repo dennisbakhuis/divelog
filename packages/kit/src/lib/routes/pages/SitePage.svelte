@@ -8,7 +8,8 @@
   import { flagEmoji, formatDate, formatDepth, pluralize } from '$lib/core/dive/format';
   import { barHeights, waterTempByMonth } from '$lib/core/dive/stats-view';
   import { getDivelog } from '$lib/core/dive/context';
-  import { forkedFromRevision, revisionLine } from '$lib/core/dive/revision';
+  import { revisionLine } from '$lib/core/dive/revision';
+  import SiteAttribution from '$lib/components/dive/SiteAttribution.svelte';
 
   const { urls } = getDivelog();
 
@@ -36,7 +37,6 @@
     [...site.prices].sort((a, b) => b.date.localeCompare(a.date))[0] ?? null,
   );
   const historyLine = $derived(revisionLine(site));
-  const forkRevision = $derived(forkedFromRevision(site.forked_from));
   const provenance = $derived(
     site.private
       ? `${site.verified ? `verified: ${site.verified}` : 'not verified'}${
@@ -157,16 +157,9 @@
           </div>
         {/if}
       </dl>
-      {#if historyLine || site.origin === 'fork'}
+      {#if historyLine}
         <div class="versioning">
-          {#if historyLine}<p class="revision dl-num">{historyLine}</p>{/if}
-          {#if site.origin === 'fork'}
-            <p class="revision">
-              {forkRevision !== null
-                ? `Forked from commons revision ${forkRevision}`
-                : 'Forked from the commons'}
-            </p>
-          {/if}
+          <p class="revision dl-num">{historyLine}</p>
           {#if site.changelog.length}
             <details class="dl-detail history">
               <summary>History</summary>
@@ -184,6 +177,11 @@
           {/if}
         </div>
       {/if}
+      <SiteAttribution
+        origin={site.origin}
+        attribution={site.attribution}
+        forkedFrom={site.forked_from}
+      />
     </div>
     <div class="map dl-card">
       {#snippet globe()}
@@ -228,6 +226,8 @@
         {owner}
         defaultRef={site.default_map}
         routes={data.routes}
+        origin={site.origin}
+        attribution={site.attribution}
       />
     </section>
   {/if}

@@ -18,6 +18,8 @@
   import SiteMapView from '$lib/components/dive/SiteMapView.svelte';
   import SiteMapThumb from '$lib/components/dive/SiteMapThumb.svelte';
   import MapLegend from '$lib/components/dive/MapLegend.svelte';
+  import SiteAttribution from '$lib/components/dive/SiteAttribution.svelte';
+  import { mapFromCommons } from '$lib/core/dive/sharing';
   import DetailTop from '$lib/components/dive/DetailTop.svelte';
   import {
     defaultTitle,
@@ -365,6 +367,13 @@
         pins={routeAnnotation?.pins ?? []}
       />
       <MapLegend map={dive.map} />
+      {#if dive.site && mapFromCommons({ ref: dive.map.id, collection: 'drawn' }, dive.site.origin)}
+        <SiteAttribution
+          origin={dive.site.origin}
+          attribution={dive.site.attribution}
+          variant="map"
+        />
+      {/if}
       {#if routeAnnotation && (routeAnnotation.route.length || routeAnnotation.path.length)}
         <p class="way-key">
           <span class="in">way in</span><span class="out">way out</span><span class="both"

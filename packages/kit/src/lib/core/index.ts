@@ -10,6 +10,7 @@ export * from './dive/overlap';
 export * from './dive/people';
 export * from './dive/profile-view';
 export * from './dive/revision';
+export * from './dive/sharing';
 export * from './dive/sitemap';
 export * from './dive/sparkline';
 export * from './dive/stats-view';

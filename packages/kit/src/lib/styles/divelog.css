@@ -94,6 +94,30 @@
   border-radius: var(--dl-radius);
 }
 
+:where(.divelog) .dl-attribution {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dl-color-text-faint);
+}
+:where(.divelog) .dl-attribution a {
+  color: var(--dl-color-text-muted);
+}
+:where(.divelog) .dl-attribution-ref {
+  font-family: var(--dl-font-mono);
+  font-size: 11px;
+}
+
+:where(.divelog) .dl-tag[data-origin='commons'] {
+  --dl-tag-color: var(--dl-color-accent);
+}
+:where(.divelog) .dl-tag[data-origin='fork'] {
+  --dl-tag-color: var(--dl-color-warm);
+}
+:where(.divelog) .dl-tag[data-origin='log'] {
+  --dl-tag-color: var(--dl-color-text-faint);
+}
+
 :where(.divelog) .dl-tag {
   display: inline-flex;
   align-items: center;
