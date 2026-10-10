@@ -7,8 +7,7 @@ import { adminApi, adminJson, AdminApiError } from './client.js';
 import { SITE_ID, siteIdFor } from './slug.js';
 import { todayLocal } from '$lib/core/dive/format.js';
 import { DEFAULT_SITE_TYPE, waterDefault, type SiteWater } from '$lib/core/dive/site-types.js';
-import type { Site } from '$lib/core/dive/types.js';
-import type { NearbySitesOut } from './ux-api-sites.js';
+import type { NearbySitesOut, Site } from '$lib/core/dive/types.js';
 
 /** How a position got onto the form: a tap on the map, a paste, or the device. */
 export type GeoSource = 'pick' | 'paste' | 'geolocation';

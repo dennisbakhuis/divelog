@@ -4,7 +4,7 @@
  * per page load and shared; a failed fetch is retried on the next call.
  */
 import { adminApi, adminJson } from './client.js';
-import type { CountryOut, LicenceOut, SiteFieldsOut } from './ux-api-sites.js';
+import type { CountryOut, LicenceOut, SiteFieldsOut } from '$lib/core/dive/types.js';
 
 function once<T>(load: () => Promise<T>): { get: () => Promise<T>; reset: () => void } {
   let pending: Promise<T> | null = null;
