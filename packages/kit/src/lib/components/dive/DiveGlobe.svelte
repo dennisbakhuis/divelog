@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, type Snippet } from 'svelte';
+  import { onMount, tick, type Snippet } from 'svelte';
   import type { GeoJSONSource, Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl';
   import type { CountryStat, DiveListItem, MapSite } from '$lib/core/dive/types';
   import {
@@ -36,6 +36,7 @@
   import '$lib/styles/maplibre.css';
   import { mapWorkerUrl } from '$lib/components/map-worker';
   import { getDivelog } from '$lib/core/dive/context';
+  import Disclosure from '$lib/components/ui/Disclosure.svelte';
 
   const { urls } = getDivelog();
 
@@ -87,7 +88,12 @@
   let map: MapLibreMap | undefined;
   let ready = $state(false);
   let loaded = $state(false);
-  let spinning = false;
+  let spinning = $state(false);
+  /** False when the globe never spins: a fitted view or reduced motion. */
+  let canSpin = $state(false);
+  let popupEl = $state<HTMLElement>();
+  let popupOpener: HTMLElement | null = null;
+  let inView = $state<MapSite[]>([]);
   // Set by the home button: pick the spin back up once the fly-home has landed.
   let resumeSpin = false;
   let hovered = $state<SiteProperties | null>(null);
@@ -147,14 +153,49 @@
       : [],
   );
 
-  function closePopup() {
+  /** Close the site popup; with `restore`, focus returns to whatever opened it. */
+  function closePopup(restore = false) {
+    if (!selectedSlug) return;
     selectedSlug = null;
+    const target = popupOpener;
+    popupOpener = null;
+    if (restore && target?.isConnected) target.focus();
   }
 
   function openPopup(feature: SiteFeature) {
+    const active = document.activeElement;
+    if (!selectedSlug)
+      popupOpener = active instanceof HTMLElement && active !== document.body ? active : null;
     selectedSlug = feature.properties.slug;
     hovered = null;
     map?.easeTo({ center: feature.geometry.coordinates, duration: 700 });
+    void tick().then(() => popupEl?.focus());
+  }
+
+  /** Open a site's popup from the keyboard list of the sites in view. */
+  function openFromList(slug: string) {
+    const feature = data.features.find((f) => f.properties.slug === slug);
+    if (feature) {
+      stopSpin();
+      openPopup(feature);
+    }
+  }
+
+  function toggleSpin() {
+    if (spinning) {
+      stopSpin();
+      return;
+    }
+    spinning = true;
+    spin();
+  }
+
+  /** The sites inside the camera's bounds, most dived first: the keyboard path to the dots. */
+  function updateInView(instance: MapLibreMap) {
+    const bounds = instance.getBounds();
+    inView = sites
+      .filter((s) => bounds.contains([s.lon, s.lat]))
+      .sort((a, b) => b.dives - a.dives || a.name.localeCompare(b.name));
   }
 
   // The last camera the globe itself reported; any other `view` came from outside.
@@ -446,14 +487,23 @@
         });
         loaded = true;
         ready = true;
+        updateInView(instance);
+        const canvasEl = instance.getCanvas();
+        canvasEl.setAttribute('role', 'img');
+        canvasEl.setAttribute(
+          'aria-label',
+          `Globe of ${pluralize(sites.length, 'dive site')}; use the list of sites in view below to open one`,
+        );
 
-        if (!reducedMotion() && !view && !fit) {
+        canSpin = !reducedMotion() && !fit;
+        if (canSpin && !view) {
           spinning = true;
           spin();
         }
       });
 
       instance.on('moveend', () => {
+        updateInView(instance);
         emitted = currentView(instance);
         view = emitted;
         if (resumeSpin) {
@@ -535,13 +585,13 @@
 
 <svelte:window
   onkeydown={(e) => {
-    if (e.key === 'Escape' && selectedSlug) closePopup();
+    if (e.key === 'Escape' && selectedSlug) closePopup(true);
   }}
 />
 
 <div class="globe ml" class:ready>
   <div class="stage">
-    <div class="canvas" bind:this={container} role="region" aria-label="Globe of dive sites"></div>
+    <div class="canvas" bind:this={container}></div>
     {#if !ready}
       <div class="fallback">{@render children?.()}</div>
     {/if}
@@ -550,7 +600,7 @@
       class:visible={hovered}
       class:flip={pointer.flip}
       style="left: {pointer.x}px; top: {pointer.y}px"
-      aria-live="polite"
+      aria-hidden="true"
     >
       {#if hovered}
         <strong>{flagEmoji(hovered.country_code)} {hovered.name}</strong>
@@ -575,8 +625,10 @@
     {/if}
     {#if selected}
       {@const site = selected.properties}
-      <aside class="popup" aria-label={site.name}>
-        <button type="button" class="close" aria-label="Close" onclick={closePopup}>×</button>
+      <div class="popup" role="dialog" aria-label={site.name} tabindex="-1" bind:this={popupEl}>
+        <button type="button" class="close" aria-label="Close" onclick={() => closePopup(true)}
+          ><span aria-hidden="true">×</span></button
+        >
         <header>
           <strong
             >{flagEmoji(site.country_code)}
@@ -632,12 +684,21 @@
           {/if}
           <a class="chip" href={urls.site(site.slug)}>Site page →</a>
         </footer>
-      </aside>
+      </div>
     {/if}
   </div>
 
   {#if ready}
     <div class="chips">
+      {#if canSpin}
+        <button
+          type="button"
+          class="chip"
+          class:active={!spinning}
+          aria-pressed={!spinning}
+          onclick={toggleSpin}>Pause rotation</button
+        >
+      {/if}
       <button type="button" class="chip" onclick={flyHome}>{fit ? '↺ Trip' : '🌍 World'}</button>
       {#each targets as target (target.code)}
         <button type="button" class="chip" onclick={() => flyTo(target.bounds)}>
@@ -652,11 +713,30 @@
     <MapOptions {size} {colour} labels={ready ? labels : null} {onOptions} onLabels={setLabels} />
   {/if}
 
-  <ul class="dl-visually-hidden">
-    {#each sites as site (site.slug)}
-      <li><a href={urls.site(site.slug)}>{site.name}: {site.dives} dives</a></li>
-    {/each}
-  </ul>
+  {#if ready}
+    <Disclosure summary="Sites in view" count={inView.length} class="in-view">
+      {#if inView.length}
+        <ul class="in-view-list">
+          {#each inView as site (site.slug)}
+            <li>
+              <button
+                type="button"
+                class="in-view-site"
+                aria-pressed={selectedSlug === site.slug}
+                onclick={() => openFromList(site.slug)}
+              >
+                <span aria-hidden="true">{flagEmoji(site.country_code)}</span>
+                {site.name}
+                <span class="dl-num faint">{pluralize(site.dives, 'dive')}</span>
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="in-view-none">No dive sites in view; zoom out or pick a country above.</p>
+      {/if}
+    </Disclosure>
+  {/if}
 </div>
 
 <style>
@@ -807,6 +887,60 @@
     box-shadow: var(--dl-shadow-md);
     backdrop-filter: blur(6px);
     font-size: 13.5px;
+  }
+  .popup:focus {
+    outline: none;
+  }
+  .popup:focus-visible {
+    outline: var(--dl-focus-ring);
+    outline-offset: var(--dl-focus-offset);
+  }
+  .globe :global(.in-view) {
+    margin-top: 12px;
+  }
+  .globe :global(.in-view .dl-disclosure-summary) {
+    font-size: var(--dl-text-md);
+    min-height: 40px;
+  }
+  .in-view-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 4px 12px;
+    max-height: 320px;
+    overflow: auto;
+  }
+  .in-view-site {
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+    width: 100%;
+    min-height: 32px;
+    padding: 4px 8px;
+    font: inherit;
+    font-size: var(--dl-text-md);
+    text-align: left;
+    color: var(--dl-color-text);
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--dl-radius-sm);
+    cursor: pointer;
+  }
+  .in-view-site:hover,
+  .in-view-site[aria-pressed='true'] {
+    border-color: var(--dl-color-accent);
+  }
+  .in-view-site .faint {
+    margin-left: auto;
+    color: var(--dl-color-text-faint);
+    font-size: var(--dl-text-sm);
+  }
+  .in-view-none {
+    margin: 0;
+    color: var(--dl-color-text-muted);
+    font-size: var(--dl-text-md);
   }
   .popup header {
     display: flex;

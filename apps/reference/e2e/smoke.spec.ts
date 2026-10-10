@@ -108,8 +108,11 @@ test.describe('signed in', () => {
 
   test('the admin bar shows the commons, its notices and a commons pull', async ({ page }) => {
     await page.goto('/admin/sites/new');
-    await expect(page.locator('.heads')).toContainText('log 81b54bf');
-    await expect(page.locator('.heads')).toContainText('commons 3f0c1a2 · clean');
+    await page.getByRole('button', { name: 'Repository: clean' }).click();
+    const status = page.getByRole('dialog', { name: 'Repository status' });
+    await expect(status).toContainText('log 81b54bf');
+    await expect(status).toContainText('commons 3f0c1a2 · clean');
+    await page.keyboard.press('Escape');
     await page.getByRole('button', { name: '1 notice' }).click();
     const notices = page.getByRole('dialog', { name: 'Repo notices' });
     await expect(notices).toContainText('site fra-commons-cave: overlay written');

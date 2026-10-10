@@ -1,7 +1,9 @@
 <script lang="ts">
   import type { DiveEnvelope } from '$lib/core/dive/types';
+  import { announce } from '$lib/core/ui/announce';
   import {
     clearFilter,
+    filterToParams,
     gasOptions,
     hitsOf,
     isFilterActive,
@@ -22,11 +24,40 @@
     envelope,
     filter,
     onChange,
+    count = null,
   }: {
     envelope: DiveEnvelope;
     filter: DiveFilter;
     onChange: (next: DiveFilter) => void;
+    /** How many dives the filter keeps; announced to screen readers when the filter changes. */
+    count?: number | null;
   } = $props();
+
+  const ANNOUNCE_DELAY_MS = 500;
+  let announced: string | null = null;
+  let announceTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** Speak the result count after a filter change; the first render stays silent. */
+  $effect(() => {
+    if (count === null) return;
+    const total = envelope.total;
+    const neutral = { ...filter, sort: 'date' as const, desc: true };
+    const key = `${filterToParams({ ...neutral, mapSize: 'dives', mapColour: 'type' })}|${count}`;
+    if (announced === null) {
+      announced = key;
+      return;
+    }
+    if (key === announced) return;
+    announced = key;
+    const text =
+      count === total
+        ? `Showing all ${total} dives`
+        : `${count} of ${total} ${total === 1 ? 'dive' : 'dives'} match`;
+    clearTimeout(announceTimer);
+    announceTimer = setTimeout(() => announce(text), ANNOUNCE_DELAY_MS);
+  });
+
+  $effect(() => () => clearTimeout(announceTimer));
 
   let q = $derived(filter.q);
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -83,7 +114,7 @@
     </label>
     {#if active}
       <button type="button" class="clear" onclick={() => onChange(clearFilter(filter))}
-        >Clear all ×</button
+        >Clear all <span aria-hidden="true">×</span></button
       >
     {/if}
   </div>
@@ -271,14 +302,19 @@
     >
     {#if filter.site}
       <button type="button" class="dl-tag pinned" onclick={() => onChange({ ...filter, site: '' })}
-        >site: {siteName} ×</button
+        >site: {siteName} <span aria-hidden="true">×</span><span class="dl-visually-hidden"
+          >, remove filter</span
+        ></button
       >
     {/if}
     {#if filter.section}
       <button
         type="button"
         class="dl-tag pinned"
-        onclick={() => onChange({ ...filter, section: '' })}>line: {filter.section} ×</button
+        onclick={() => onChange({ ...filter, section: '' })}
+        >line: {filter.section} <span aria-hidden="true">×</span><span class="dl-visually-hidden"
+          >, remove filter</span
+        ></button
       >
     {/if}
     {#if filter.dateFrom !== null || filter.dateTo !== null}
@@ -288,7 +324,9 @@
         onclick={() => onChange({ ...filter, dateFrom: null, dateTo: null })}
         >{filter.dateFrom ? formatDate(filter.dateFrom) : 'start'} – {filter.dateTo
           ? formatDate(filter.dateTo)
-          : 'today'} ×</button
+          : 'today'} <span aria-hidden="true">×</span><span class="dl-visually-hidden"
+          >, remove filter</span
+        ></button
       >
     {/if}
   </div>

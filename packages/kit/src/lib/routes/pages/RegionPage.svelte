@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { PublicDataFor } from '../public';
-  import { goto } from '$app/navigation';
   import DetailTop from '$lib/components/dive/DetailTop.svelte';
   import WorldMap from '$lib/components/dive/WorldMap.svelte';
   import { flagEmoji, formatDepth, formatHours, pluralize } from '$lib/core/dive/format';
@@ -16,7 +15,13 @@
 <section class="region dl-container dl-detail">
   <DetailTop
     back={{ href: urls.sites(), label: 'Dive sites' }}
-    owner={data.owner ? { edit: { label: 'Edit region', href: data.editHref } } : null}
+    label="Region navigation"
+    owner={data.owner
+      ? {
+          edit: { label: 'Edit region', href: data.editHref },
+          actions: [{ label: '+ New dive', href: urls.admin.newDive() }],
+        }
+      : null}
   />
   <p class="dl-kicker">Region · {flagEmoji(region.country_code)} {region.country ?? ''}</p>
   <h1>{region.name}</h1>
@@ -73,7 +78,6 @@
         map={data.map}
         compact
         label="Map of {pluralize(data.map.dots.length, 'dive site')} in {region.name}"
-        onSelect={(slug) => slug && goto(urls.site(slug))}
       />
     </div>
   {/if}

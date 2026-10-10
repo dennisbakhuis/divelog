@@ -39,12 +39,23 @@
     display: flex;
     gap: 4px;
     padding-top: 20px;
-    margin-bottom: -28px;
+    padding-bottom: 4px;
+    margin-bottom: -32px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+  .dive-nav::-webkit-scrollbar {
+    display: none;
   }
   .dive-nav.detail {
     max-width: var(--dl-container-detail);
   }
   .dive-nav a {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
     padding: 6px 14px;
     border-radius: 999px;
     border: 1px solid var(--dl-color-border);
@@ -57,6 +68,11 @@
   .dive-nav a:hover {
     color: var(--dl-color-text);
     border-color: var(--dl-color-border-strong);
+  }
+  @media (max-width: 380px) {
+    .dive-nav a {
+      padding: 6px 11px;
+    }
   }
   .dive-nav a.active {
     background: var(--dl-color-text);
