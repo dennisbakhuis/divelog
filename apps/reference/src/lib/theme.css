@@ -1,0 +1,134 @@
+/*
+ * The reference app's theme: the consumer tokens the kit's `--dl-*` tokens
+ * fall back to (see @divelog/kit/styles/tokens.css). Dark by default, light
+ * when the visitor's system asks for it. Fonts fall back to system stacks.
+ */
+
+:root {
+  color-scheme: dark;
+
+  --c-abyss: #030912;
+
+  --color-bg: #071426;
+  --color-bg-elevated: #0d1f38;
+  --color-surface: #10243f;
+  --color-surface-2: #16304f;
+  --color-text: #e8eef6;
+  --color-text-muted: #94a3b8;
+  --color-text-faint: #64748b;
+  --color-border: rgba(148, 163, 184, 0.16);
+  --color-border-strong: rgba(148, 163, 184, 0.32);
+
+  --color-accent: #4cc9f0;
+  --color-accent-strong: #22b8e8;
+  --color-accent-soft: rgba(76, 201, 240, 0.14);
+  --color-warm: #f4a261;
+  --color-warm-soft: rgba(244, 162, 97, 0.16);
+  --color-success: #4ade80;
+  --color-error: #f87171;
+  --color-focus-ring: var(--color-warm);
+
+  --color-link: var(--color-accent);
+  --color-link-hover: #ffffff;
+  --color-button-bg: var(--color-accent);
+  --color-button-text: #06101f;
+  --color-button-hover: #7ad9f5;
+
+  --font-display:
+    'Space Grotesk Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-body:
+    'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --radius-sm: 6px;
+  --radius: 12px;
+  --radius-lg: 20px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35), 0 24px 64px rgba(0, 0, 0, 0.25);
+  --container-max: 1160px;
+  --container-narrow: 720px;
+  --container-detail: 960px;
+  --space-page-x: clamp(16px, 4vw, 32px);
+  --space-section: clamp(64px, 9vw, 120px);
+  --header-h: 64px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+
+    --c-abyss: #dbe7f0;
+
+    --color-bg: #f6f9fc;
+    --color-bg-elevated: #ffffff;
+    --color-surface: #ecf2f8;
+    --color-surface-2: #e1eaf3;
+    --color-text: #0b1b2e;
+    --color-text-muted: #475569;
+    --color-text-faint: #64748b;
+    --color-border: rgba(15, 23, 42, 0.12);
+    --color-border-strong: rgba(15, 23, 42, 0.24);
+
+    --color-accent: #0a7fa8;
+    --color-accent-strong: #08698c;
+    --color-accent-soft: rgba(10, 127, 168, 0.12);
+    --color-warm: #c2410c;
+    --color-warm-soft: rgba(194, 65, 12, 0.12);
+    --color-success: #15803d;
+    --color-error: #b91c1c;
+
+    --color-link-hover: #053d52;
+    --color-button-text: #ffffff;
+    --color-button-hover: #08698c;
+
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.08), 0 2px 8px rgba(15, 23, 42, 0.06);
+    --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.1), 0 24px 64px rgba(15, 23, 42, 0.08);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--color-link);
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  color: var(--color-link-hover);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.12;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}

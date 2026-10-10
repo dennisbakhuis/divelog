@@ -1,0 +1,45 @@
+{
+  "name": "reference",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Minimal SvelteKit app mounting @divelog/kit: dev playground, e2e target, standalone image",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint --max-warnings 0 .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "test": "echo 'reference: covered by pnpm e2e'",
+    "e2e": "vite build && playwright test"
+  },
+  "dependencies": {
+    "@divelog/kit": "workspace:*",
+    "@resvg/resvg-js": "^2.6.2",
+    "maplibre-gl": "^6.11.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.0",
+    "@sveltejs/adapter-node": "^5.5.7",
+    "@sveltejs/kit": "^2.70.3",
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "@types/node": "^22.20.2",
+    "eslint": "^10.10.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-svelte": "^3.17.1",
+    "globals": "^17.6.0",
+    "prettier": "^3.8.3",
+    "prettier-plugin-svelte": "^3.5.1",
+    "svelte": "^5.57.0",
+    "svelte-check": "^4.7.6",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.59.4",
+    "vite": "^8.3.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
