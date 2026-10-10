@@ -30,6 +30,7 @@ test.describe('logging a dive', () => {
     };
 
     await act(() => page.goto('/admin/dives/new'));
+    await page.waitForLoadState('networkidle');
     await act(() =>
       page.getByRole('button', { name: 'Same as previous dive', exact: true }).click(),
     );
@@ -58,6 +59,7 @@ test.describe('logging a dive', () => {
 
   test('a dive can be logged with the keyboard alone', async ({ page }) => {
     await page.goto('/admin/dives/new');
+    await page.waitForLoadState('networkidle');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('New dive');
 
     await tabTo(page, 'dl-dive-time_in');
@@ -102,6 +104,7 @@ test.describe('logging a dive', () => {
       if (isCreate(r)) posted = true;
     });
     await page.goto('/admin/dives/new');
+    await page.waitForLoadState('networkidle');
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     const duration = page.getByLabel('Duration (min)');
     await expect(duration).toHaveAttribute('aria-invalid', 'true');
@@ -112,6 +115,7 @@ test.describe('logging a dive', () => {
 
   test('the dive list filters by status through the URL', async ({ page }) => {
     await page.goto('/admin/dives?status=draft');
+    await page.waitForLoadState('networkidle');
     await expect(page.getByRole('button', { name: 'Drafts' })).toHaveAttribute(
       'aria-pressed',
       'true',
