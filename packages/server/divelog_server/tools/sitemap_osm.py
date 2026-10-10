@@ -122,10 +122,10 @@ class Frame:
         )
 
 
-def overpass(lat: float, lon: float, radius: int) -> dict[str, Any]:
-    """The OSM features around a point, with geometry, from the first Overpass that answers."""
+def overpass_query(lat: float, lon: float, radius: int, timeout_s: int = 90) -> str:
+    """The Overpass QL asking for the map-worthy features within ``radius`` metres of a point."""
     around = f"(around:{radius},{lat},{lon})"
-    query = f"""[out:json][timeout:90];
+    return f"""[out:json][timeout:{timeout_s}];
 (
   way{around}["natural"~"^(water|coastline|reef|beach|bay|rock|shoal|wetland|cliff|sand|shingle)$"];
   relation{around}["natural"~"^(water|reef|beach|bay|wetland)$"];
@@ -145,6 +145,11 @@ def overpass(lat: float, lon: float, radius: int) -> dict[str, Any]:
 );
 out body geom;
 """
+
+
+def overpass(lat: float, lon: float, radius: int) -> dict[str, Any]:
+    """The OSM features around a point, with geometry, from the first Overpass that answers."""
+    query = overpass_query(lat, lon, radius)
     last: Exception | None = None
     for attempt in range(6):
         endpoint = OVERPASS[attempt % len(OVERPASS)]

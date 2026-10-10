@@ -434,7 +434,10 @@ def _plan_photos(plan: ProposePlan, store: Store, record: SiteRecord) -> list[Me
             plan.skipped_photos.append((media.id, "not public"))
             continue
         repo_path = repo_photo_path(media.key)
-        extras = media.model_extra or {}
+        extras = {
+            **(media.model_extra or {}),
+            **media.model_dump(include={"licence", "author", "source"}, exclude_none=True),
+        }
         from_ref = {k: extras[k] for k in LICENCE_KEYS if extras.get(k)}
         entry = manifest.entries.get(repo_path) if repo_path else None
         if entry is not None and entry.get("public") is not True:

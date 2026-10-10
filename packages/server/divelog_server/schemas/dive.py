@@ -1,11 +1,13 @@
+from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Any, Literal
 
-from pydantic import Field, computed_field
+from pydantic import Field, computed_field, field_validator
 
 from divelog_server.schemas.base import ApiModel
 from divelog_server.schemas.sitemap import DiveMapAnnotation, SiteMap
 from divelog_server.services.markdown import render
+from divelog_server.store.manifest import normalise_licence
 from divelog_server.store.models import (
     AccessPoint,
     ChangeEntry,
@@ -86,14 +88,37 @@ class AttachmentOut(ApiModel):
     original_name: str
     url: str
     variants: dict[str, str]
+    licence: str | None = None
+    author: str | None = None
+    source: str | None = None
 
 
 class AttachmentPatch(ApiModel):
+    """The editable fields of an attachment; only those sent are written.
+
+    ``licence``, ``author`` and ``source`` credit someone else's photo: an empty string clears
+    one, and ``licence`` must spell an allowlisted licence (``GET /meta/licences``).
+    """
+
     kind: AttachmentKind | None = None
     caption: str | None = Field(default=None, max_length=500)
     credit: str | None = Field(default=None, max_length=300)
     sort: int | None = None
     public: bool | None = None
+    licence: str | None = Field(default=None, max_length=40)
+    author: str | None = Field(default=None, max_length=200)
+    source: str | None = Field(default=None, max_length=500)
+
+    @field_validator("licence")
+    @classmethod
+    def _allowlisted(cls, value: str | None) -> str | None:
+        """An allowlisted licence id, or ``""`` to clear it."""
+        if value is None or not value.strip():
+            return value
+        licence = normalise_licence(value)
+        if licence is None:
+            raise ValueError(f"{value!r} is not an allowlisted licence")
+        return licence
 
 
 class PersonPublic(ApiModel):
@@ -226,6 +251,12 @@ class SiteOut(ApiModel):
 
 
 class SiteIn(ApiModel):
+    """A site as the editor sends it.
+
+    ``note`` says what changed; it becomes the changelog entry when an objective field changes
+    (otherwise ``Update site <id>``) and is never stored on the site itself.
+    """
+
     site_id: str = Field(min_length=1, max_length=120)
     name: str = Field(min_length=1, max_length=200)
     full_name: str | None = None
@@ -237,8 +268,8 @@ class SiteIn(ApiModel):
     system: str | None = None
     type: str = "sea"
     section_vocabulary: list[str] = Field(default_factory=list)
-    lat: float | None = None
-    lon: float | None = None
+    lat: float | None = Field(default=None, ge=-90, le=90)
+    lon: float | None = Field(default=None, ge=-180, le=180)
     access: AccessPoint | None = None
     location_visibility: Literal["exact", "region_only"] = "exact"
     water: Literal["salt", "fresh", "brackish"] | None = None
@@ -252,6 +283,19 @@ class SiteIn(ApiModel):
     verified: str | None = None
     geo_source: str | None = None
     notes: str | None = None
+    note: str | None = Field(default=None, max_length=200)
+
+    @field_validator("access")
+    @classmethod
+    def _access_in_range(cls, value: AccessPoint | None) -> AccessPoint | None:
+        """The access point's coordinates within their ranges."""
+        if value is None:
+            return value
+        if value.lat is not None and not -90 <= value.lat <= 90:
+            raise ValueError("access lat must be between -90 and 90")
+        if value.lon is not None and not -180 <= value.lon <= 180:
+            raise ValueError("access lon must be between -180 and 180")
+        return value
 
 
 class SitePatch(ApiModel):
@@ -613,7 +657,7 @@ class DiveIn(ApiModel):
     cylinder: str | None = Field(default=None, max_length=120)
     pressure_in_bar: float | None = Field(default=None, ge=0, le=400)
     pressure_out_bar: float | None = Field(default=None, ge=0, le=400)
-    tanks: list[TankIn] = Field(default_factory=list, max_length=8)
+    tanks: Sequence[TankIn] = Field(default_factory=list, max_length=8)
     safety_stop_min: float | None = Field(default=None, ge=0, le=120)
     surface_interval: str | None = Field(default=None, max_length=40)
     conditions: str | None = Field(default=None, max_length=300)
@@ -761,6 +805,14 @@ class ImportSiteOut(ApiModel):
 
 
 class ImportResult(ApiModel):
+    """What an import did, or with ``dry_run`` what it would do; nothing is written then.
+
+    ``created`` lists the numbers of the new draft dives (on a dry run the numbers they would
+    get), ``updated`` the dives a profile was attached to, ``skipped`` the dives already
+    complete. ``dives_in_file`` counts the dives read, ``first_date``/``last_date`` span them.
+    On a dry run ``import_id`` is empty and ``sites`` lists the sites that would be created.
+    """
+
     import_id: str
     created: list[int]
     updated: list[int]
@@ -768,6 +820,10 @@ class ImportResult(ApiModel):
     sites_created: int
     sites_matched: int = 0
     sites: list[ImportSiteOut] = Field(default_factory=list)
+    dry_run: bool = False
+    dives_in_file: int = 0
+    first_date: date | None = None
+    last_date: date | None = None
 
 
 class ImportRecordOut(ApiModel):
