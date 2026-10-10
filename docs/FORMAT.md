@@ -197,7 +197,11 @@ depth, points [{x, y}]`, lines also `closed`), `notes` (where the drawing comes 
 `origin {lat, lon}` (where (0, 0) sits), `underlay` (tracing aid, never rendered), and the
 record fields `id, site_id, sort, revision, changelog, updated_at`. Node ids are stable
 because dives annotate routes by them: a removed id goes into `retired_nodes`, a rename into
-`renamed_nodes {old: new}`, with a revision bump.
+`renamed_nodes {old: new}`, with a revision bump. A copy names the map it started from in
+`copied_from: "<id>@<revision>"`: a commons map proposed from a personal one
+(`"fra-ressel-p1@3"`, written by `divelog sites propose`) starts at revision 1 with one
+changelog entry, and `divelog sites adopt` uses the field to find the personal maps the commons
+now holds.
 
 ```json
 {
@@ -220,7 +224,8 @@ because dives annotate routes by them: a removed id goes into `retired_nodes`, a
  "revision": 2,
  "changelog": [{"revision": 2, "date": "2026-09-30", "note": "Added the T"}],
  "retired_nodes": [],
- "renamed_nodes": {}
+ "renamed_nodes": {},
+ "copied_from": null
 }
 ```
 
