@@ -10,6 +10,8 @@ from typing import Any, TextIO
 
 from pydantic import BaseModel
 
+from divelog_server.cli import commons as commons_cli
+from divelog_server.cli import sites_propose
 from divelog_server.core.config import get_settings
 from divelog_server.store.manifest import (
     Manifest,
@@ -86,6 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
     status = site_commands.add_parser("status", help="origin, revision and pin of every site")
     status.add_argument("log_root", type=Path)
     access.register(site_commands)
+    sites_propose.register(site_commands)
 
     imports = commands.add_parser("import", help="convert dive computer exports")
     import_commands = imports.add_subparsers(dest="import_command", required=True)
@@ -95,6 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
     sitemap_osm.register(commands)
     stickmap.register(commands)
     media.register(commands)
+    commons_cli.register(commands)
     return parser
 
 
