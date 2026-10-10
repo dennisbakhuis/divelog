@@ -13,6 +13,7 @@ from divelog_server.api.v1.public import region_out
 from divelog_server.core.config import get_settings
 from divelog_server.core.deps import StoreDep, require_owner
 from divelog_server.importers.shearwater import gas_of, parse_shearwater
+from divelog_server.importers.site_match import match_site
 from divelog_server.importers.subsurface import gas_for, parse_subsurface
 from divelog_server.schemas.dive import (
     AdminDiveListItem,
@@ -22,6 +23,7 @@ from divelog_server.schemas.dive import (
     DiveIn,
     ImportRecordOut,
     ImportResult,
+    ImportSiteOut,
     NextDiveNumber,
     PersonIn,
     PersonPrivate,
@@ -956,24 +958,41 @@ async def admin_import_subsurface(store: StoreDep, file: UploadFile = File(...))
     number = store.next_dive_number()
 
     sites_by_uuid: dict[str, SiteRecord] = {}
-    sites_created = 0
+    site_report: list[ImportSiteOut] = []
     for uuid, draft_site in log.sites.items():
-        site = next((s for s in store.sites.values() if s.subsurface_uuid == uuid), None)
-        if site is None:
+        site_match = match_site(draft_site, store.sites)
+        if site_match is not None:
+            resolved = store.sites[site_match.site_id]
+            if uuid and site_match.matched_by != "uuid" and not resolved.subsurface_uuid:
+                adopted = resolved.model_copy(update={"subsurface_uuid": uuid})
+                resolved = await store.save_site(
+                    adopted, f"Link Subsurface site to {resolved.site_id}"
+                )
+        else:
             site_id = slugify(draft_site.name)
             while site_id in store.sites:
                 site_id = f"{slugify(draft_site.name)}-{uuid4().hex[:6]}"
-            site = SiteRecord(
+            resolved = SiteRecord(
                 site_id=site_id,
                 name=draft_site.name,
                 lat=draft_site.lat,
                 lon=draft_site.lon,
-                subsurface_uuid=uuid,
+                subsurface_uuid=uuid or None,
                 body_md=draft_site.description,
             )
-            await store.save_site(site, f"Import site {site_id}")
-            sites_created += 1
-        sites_by_uuid[uuid] = site
+            resolved = await store.save_site(resolved, f"Import site {site_id}")
+        sites_by_uuid[uuid] = resolved
+        site_report.append(
+            ImportSiteOut(
+                subsurface_uuid=uuid or None,
+                name=draft_site.name,
+                site_id=resolved.site_id,
+                outcome="created" if site_match is None else "matched",
+                matched_by=site_match.matched_by if site_match else None,
+                distance_m=site_match.distance_m if site_match else None,
+                origin=store.site_origin.get(resolved.site_id, "log"),
+            )
+        )
 
     created: list[int] = []
     updated: list[int] = []
@@ -1063,7 +1082,9 @@ async def admin_import_subsurface(store: StoreDep, file: UploadFile = File(...))
         created=created,
         updated=updated,
         skipped=skipped,
-        sites_created=sites_created,
+        sites_created=sum(1 for r in site_report if r.outcome == "created"),
+        sites_matched=sum(1 for r in site_report if r.outcome == "matched"),
+        sites=site_report,
     )
 
 

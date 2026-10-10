@@ -289,6 +289,27 @@ class Store(LogRepo):
         """Derived trips as the viewer sees them: over public dives, or all but drafts."""
         return self.trips_owner if owner else self.trips_public
 
+    def is_listed(self, site_id: str) -> bool:
+        """Whether a site shows in public lists: dived in this log, or not a plain commons record.
+
+        A commons checkout can carry thousands of sites the owner never dived; those keep their
+        own page but stay out of every public list.
+        """
+        return self.site_origin.get(site_id) != "commons" or bool(self.dives_by_site.get(site_id))
+
+    def listed_sites(self, owner: bool = False) -> dict[str, SiteRecord]:
+        """The sites a list shows: every merged site for the owner, else the listed ones."""
+        if owner:
+            return self.sites
+        return {sid: site for sid, site in self.sites.items() if self.is_listed(sid)}
+
+    def listed_regions(self, owner: bool = False) -> list[str]:
+        """Region ids a list shows, sorted: all for the owner, else log regions and listed ones."""
+        if owner:
+            return sorted(self.regions)
+        used = {s.region for s in self.listed_sites().values() if s.region}
+        return sorted(r for r in self.regions if r in used or r in self.log_sites.regions)
+
     def _index_media(self, media: MediaRef, owner: tuple[str, str | int]) -> None:
         self.media_owner[media.id] = owner
         base = media_base(media.key)

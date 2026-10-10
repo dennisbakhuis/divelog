@@ -56,14 +56,15 @@ def _by_date(dives: list[DiveRecord]) -> list[DiveRecord]:
 
 @router.get("/stats", response_model=DiveStats)
 async def dive_stats(store: StoreDep, owner: OptionalOwnerDep, response: Response) -> DiveStats:
-    _cache(response, owner is not None)
-    return stats_service.compute_stats(list(store.dives.values()), store.sites)
+    is_owner = owner is not None
+    _cache(response, is_owner)
+    return stats_service.compute_stats(list(store.dives.values()), store.listed_sites(is_owner))
 
 
 @router.get("/summary", response_model=DiveSummary)
 async def dive_summary(store: StoreDep, response: Response) -> DiveSummary:
     _cache(response, False)
-    return stats_service.compute_summary(list(store.dives.values()), store.sites)
+    return stats_service.compute_summary(list(store.dives.values()), store.listed_sites())
 
 
 @router.get("/timeline", response_model=DiveTimeline)
@@ -132,7 +133,7 @@ async def get_dive(
 async def list_sites(store: StoreDep, owner: OptionalOwnerDep, response: Response) -> list[SiteOut]:
     is_owner = owner is not None
     _cache(response, is_owner)
-    sites = sorted(store.sites.values(), key=lambda s: s.name.lower())
+    sites = sorted(store.listed_sites(is_owner).values(), key=lambda s: s.name.lower())
     return [dive_service.site_out(store, s, is_owner) for s in sites]
 
 
@@ -176,7 +177,9 @@ async def list_regions(
 ) -> list[RegionOut]:
     is_owner = owner is not None
     _cache(response, is_owner)
-    return [region_out(store, rid, is_owner, with_body=False) for rid in sorted(store.regions)]
+    return [
+        region_out(store, rid, is_owner, with_body=False) for rid in store.listed_regions(is_owner)
+    ]
 
 
 @router.get("/regions/{region_id}", response_model=RegionOut)
@@ -191,10 +194,11 @@ async def get_region(
 
 
 def region_out(store: Store, region_id: str, owner: bool, *, with_body: bool) -> RegionOut:
-    """A region with its sites; ``with_body`` adds the description, stats and map."""
+    """A region with its listed sites; ``with_body`` adds the description, stats and map."""
     region = store.regions[region_id]
+    listed = store.listed_sites(owner)
     sites = sorted(
-        (s for s in store.sites.values() if s.region == region_id), key=lambda s: s.name.lower()
+        (s for s in listed.values() if s.region == region_id), key=lambda s: s.name.lower()
     )
     visible = {d.number for d in _visible(store, owner)}
     numbers = [n for s in sites for n in store.dives_by_site.get(s.site_id, []) if n in visible]
@@ -208,10 +212,8 @@ def region_out(store: Store, region_id: str, owner: bool, *, with_body: bool) ->
         body_md=region.body_md if with_body else "",
         sites=[dive_service.site_summary(store, s) for s in sites],
         dives=len(numbers),
-        stats=stats_service.region_stats(region_dives, store.sites) if with_body else None,
-        map_sites=stats_service.compute_stats(region_dives, store.sites).map_sites
-        if with_body
-        else [],
+        stats=stats_service.region_stats(region_dives, listed) if with_body else None,
+        map_sites=stats_service.compute_stats(region_dives, listed).map_sites if with_body else [],
     )
 
 

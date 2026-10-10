@@ -737,12 +737,30 @@ class DiveSummary(ApiModel):
     scooter_dives: int
 
 
+class ImportSiteOut(ApiModel):
+    """How one imported site resolved: matched to an existing site, or created as personal.
+
+    ``matched_by`` is the rule that found the match; ``distance_m`` (whole metres) is set
+    whenever both the import and the matched site are placed.
+    """
+
+    subsurface_uuid: str | None
+    name: str
+    site_id: str
+    outcome: Literal["matched", "created"]
+    matched_by: Literal["uuid", "name", "alias", "distance"] | None = None
+    distance_m: float | None = None
+    origin: Literal["log", "commons", "fork"]
+
+
 class ImportResult(ApiModel):
     import_id: str
     created: list[int]
     updated: list[int]
     skipped: int
     sites_created: int
+    sites_matched: int = 0
+    sites: list[ImportSiteOut] = Field(default_factory=list)
 
 
 class ImportRecordOut(ApiModel):
