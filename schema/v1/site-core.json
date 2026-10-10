@@ -84,7 +84,7 @@
     },
     "MediaRef": {
       "additionalProperties": true,
-      "description": "A stored file attached to a dive, site, person or gear item.\n\n``key`` addresses the media storage; a ``repo:`` prefix points into the data repository\ninstead. ``variants`` names the rendered WebP sizes that exist for this file.",
+      "description": "A stored file attached to a dive, site, person or gear item.\n\n``key`` addresses the media storage; a ``repo:`` prefix points into the data repository\ninstead. ``variants`` names the rendered WebP sizes that exist for this file. ``licence``\n(an allowlisted id such as ``CC-BY-4.0``), ``author`` and ``source`` (a URL) credit a photo\ntaken by someone else; they stay unset on the owner's own files.",
       "properties": {
         "id": {
           "maxLength": 80,
@@ -181,6 +181,42 @@
           "default": "",
           "title": "Original Name",
           "type": "string"
+        },
+        "licence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Licence"
+        },
+        "author": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Author"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
         }
       },
       "required": [

@@ -4,17 +4,32 @@ import logging
 import re
 import unicodedata
 from datetime import UTC, date, datetime, timedelta
+from typing import Annotated, Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import FileResponse
 
 from divelog_server.api.v1.public import region_out
 from divelog_server.core.config import get_settings
 from divelog_server.core.deps import StoreDep, require_owner
 from divelog_server.importers.shearwater import gas_of, parse_shearwater
-from divelog_server.importers.site_match import match_site
+from divelog_server.importers.site_match import MATCH_RADIUS_M, match_site
 from divelog_server.importers.subsurface import gas_for, parse_subsurface
+from divelog_server.schemas.admin import (
+    AdminDivePage,
+    DiveSort,
+    DivesPublishIn,
+    DivesPublishOut,
+    DiveTemplateOut,
+    MarkdownPreviewIn,
+    MarkdownPreviewOut,
+    NearbySitesOut,
+    SiteFieldsOut,
+    SiteMapDraft,
+    SiteMapSeedIn,
+    SiteMapSeedOut,
+)
 from divelog_server.schemas.dive import (
     AdminDiveListItem,
     AttachmentOut,
@@ -40,8 +55,11 @@ from divelog_server.schemas.dive import (
     TripOut,
 )
 from divelog_server.schemas.gear import GearItemIn, GearItemOut, GearSetupIn, GearSetupOut
+from divelog_server.services import admin_views
 from divelog_server.services import dives as dive_service
 from divelog_server.services.images import IMAGE_MIMES, process_image
+from divelog_server.services.markdown import render
+from divelog_server.services.overpass import OverpassClient, OverpassError, get_overpass_client
 from divelog_server.services.storage import (
     COMMONS_PREFIX,
     Storage,
@@ -60,13 +78,21 @@ from divelog_server.store.models import (
     RegionRecord,
     SiteMapRecord,
     SiteRecord,
+    TankRecord,
     TripRecord,
     prepend_change,
+)
+from divelog_server.store.overlay import (
+    ADDITIVE_FIELDS,
+    OBJECTIVE_FIELDS,
+    PERSONAL_FIELDS,
+    PREFERENCE_FIELDS,
 )
 from divelog_server.store.slug import SITE_ID, site_id_for
 from divelog_server.store.sources import PERSONAL_MAP_ID
 from divelog_server.store.store import NothingToPinError, Store
 from divelog_server.store.trips import Trip
+from divelog_server.tools.sitemap_osm import RADIUS, starter_map
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +127,53 @@ async def admin_create_dive(body: DiveIn, store: StoreDep) -> DiveAdminOut:
     record = _apply_dive(store, None, body)
     await store.save_dive(record, f"Add dive #{record.number}")
     return dive_service.dive_admin_out(store, record)
+
+
+@router.get("/dives/template", response_model=DiveTemplateOut)
+async def admin_dive_template(
+    store: StoreDep, site: str | None = None, date: date | None = None
+) -> DiveTemplateOut:
+    """What the new-dive form starts from: previous dive, last dive at the site, recents.
+
+    ``date`` defaults to today; only dives on or before it count. An unknown ``site`` gives
+    no ``at_site``.
+    """
+    return admin_views.dive_template(store, site or None, date or datetime.now().date())
+
+
+@router.get("/dives/page", response_model=AdminDivePage)
+async def admin_dive_page(
+    store: StoreDep,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 100,
+    status: Literal["public", "private", "draft"] | None = None,
+    q: Annotated[str, Query(max_length=200)] = "",
+    sort: DiveSort = "date",
+    asc: bool = False,
+) -> AdminDivePage:
+    """One page of the dive list, filtered by publish state and search words, and sorted.
+
+    ``q`` matches a dive number (``650`` or ``#650``), or the title, the site's names or a
+    buddy's names; every word must match. Newest first unless ``sort``/``asc`` say otherwise.
+    """
+    return admin_views.dive_page(store, offset, limit, status, q, sort, asc)
+
+
+@router.post("/dives/publish", response_model=DivesPublishOut)
+async def admin_publish_dives(body: DivesPublishIn, store: StoreDep) -> DivesPublishOut:
+    """Make the listed drafts public in one commit; other dives are left as they are."""
+    published: list[DiveRecord] = []
+    unchanged: list[int] = []
+    for number in dict.fromkeys(body.numbers):
+        dive = store.dives.get(number)
+        if dive is None or dive.visibility != "draft":
+            unchanged.append(number)
+            continue
+        published.append(dive.model_copy(update={"visibility": "public"}, deep=True))
+    if published:
+        numbers = ", ".join(f"#{d.number}" for d in published)
+        await store.save_dives(published, f"Publish {_count(len(published), 'dive')}: {numbers}")
+    return DivesPublishOut(published=[d.number for d in published], unchanged=unchanged)
 
 
 @router.get("/dives/{number}", response_model=DiveAdminOut)
@@ -263,12 +336,18 @@ async def admin_order_attachments(
     return [dive_service.attachment_out(m) for m in ordered]
 
 
+CREDIT_FIELDS = ("licence", "author", "source")
+
+
 @router.patch("/attachments/{media_id}", response_model=AttachmentOut)
 async def admin_patch_attachment(
     media_id: str, body: AttachmentPatch, store: StoreDep
 ) -> AttachmentOut:
+    """Change caption, credit, kind, order, visibility or the licence, author and source."""
     owner, record, media = _media_or_404(store, media_id)
     for key, value in body.model_dump(exclude_none=True).items():
+        if key in CREDIT_FIELDS:
+            value = value.strip() or None
         setattr(media, key, value)
     await _save_owner(store, owner, record, f"Update attachment on {owner[0]} {owner[1]}")
     return dive_service.attachment_out(media)
@@ -404,6 +483,26 @@ async def admin_sites(store: StoreDep) -> list[SiteOut]:
     return [dive_service.site_out(store, s, True) for s in sites]
 
 
+@router.get("/sites/nearby", response_model=NearbySitesOut)
+async def admin_sites_nearby(
+    store: StoreDep,
+    lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
+    lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
+    name: Annotated[str | None, Query(max_length=200)] = None,
+    radius_m: Annotated[float, Query(gt=0, le=50_000)] = MATCH_RADIUS_M,
+    limit: Annotated[int, Query(ge=1, le=50)] = 8,
+) -> NearbySitesOut:
+    """Sites that may already be the one being created: same name or alias, or within reach.
+
+    Needs ``lat`` and ``lon`` together, ``name``, or both (422 otherwise).
+    """
+    if (lat is None) != (lon is None):
+        raise HTTPException(status_code=422, detail="lat and lon go together")
+    if lat is None and not (name or "").strip():
+        raise HTTPException(status_code=422, detail="Give lat and lon, a name, or both")
+    return admin_views.nearby_sites(store, lat, lon, name, radius_m, limit)
+
+
 @router.get("/sites/{site_id}", response_model=SiteOut)
 async def admin_get_site(site_id: str, store: StoreDep) -> SiteOut:
     return dive_service.site_out(store, _site_or_404(store, site_id), True)
@@ -436,14 +535,18 @@ async def admin_update_site(
     On a commons site only overlay material is accepted (422 otherwise); ``fork=true`` writes
     a personal copy that shadows the commons record instead. ``revision`` and ``changelog`` in
     the body are ignored and the stored ones kept, so a stale editor form cannot rewind a
-    revision; the server moves to the next revision when an objective field changes.
+    revision; the server moves to the next revision when an objective field changes, with
+    ``note`` as the changelog entry when one is given.
     """
     site = _site_or_404(store, site_id)
     if body.site_id != site_id:
         raise HTTPException(status_code=422, detail="A site keeps its id")
     record = _site_from(body, site)
     message = f"Fork site {site_id}" if fork else f"Update site {site_id}"
-    saved = await store.save_site(record, message, fork=fork)
+    note = (body.note or "").strip() or None
+    if note:
+        message = f"{message}: {note}"
+    saved = await store.save_site(record, message, fork=fork, note=note)
     return dive_service.site_out(store, saved, True)
 
 
@@ -486,7 +589,7 @@ async def admin_delete_site(site_id: str, store: StoreDep) -> None:
 
 def _site_from(body: SiteIn, existing: SiteRecord | None) -> SiteRecord:
     payload = existing.model_dump() if existing else {}
-    payload.update(body.model_dump(exclude={"description_md"}))
+    payload.update(body.model_dump(exclude={"description_md", "note"}))
     if existing:
         payload["media"] = existing.media
         payload["maps"] = existing.maps
@@ -531,6 +634,36 @@ async def admin_create_map(site_id: str, body: SiteMapIn, store: StoreDep) -> Si
     )
     await store.save_map(record, f"Add map {map_id}" + (f": {body.note}" if body.note else ""))
     return dive_service.site_map_out(record)
+
+
+@router.post("/sites/{site_id}/maps/seed", response_model=SiteMapSeedOut)
+async def admin_seed_map(
+    site_id: str,
+    body: SiteMapSeedIn,
+    store: StoreDep,
+    overpass: Annotated[OverpassClient, Depends(get_overpass_client)],
+) -> SiteMapSeedOut:
+    """A starter site map from OpenStreetMap around the site; nothing is saved.
+
+    The radius defaults to one per site type. 404 when the site is unknown or has no
+    coordinates, 503 when Overpass does not answer within its timeout.
+    """
+    site = _site_or_404(store, site_id)
+    if site.lat is None or site.lon is None:
+        raise HTTPException(status_code=404, detail="Site has no coordinates")
+    radius = body.radius_m or RADIUS.get(site.type, 700)
+    try:
+        osm = await overpass.fetch(site.lat, site.lon, radius)
+    except OverpassError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    origin = {"lat": site.lat, "lon": site.lon, "name": site.name, "short_name": site.short_name}
+    raw = starter_map(origin, osm, radius)
+    return SiteMapSeedOut(
+        source=body.source,
+        radius_m=radius,
+        elements=len(osm.get("elements", [])),
+        map=SiteMapDraft.model_validate(raw),
+    )
 
 
 @router.put("/maps/{map_id}", response_model=SiteMapOut)
@@ -832,6 +965,9 @@ def _gear_setup_out(store: Store, setup: GearSetupRecord) -> GearSetupOut:
         description_md=setup.description_md,
         sort=setup.sort,
         items=[_gear_item_out(store.gear_items[i]) for i in setup.items if i in store.gear_items],
+        tanks=[dive_service.tank_out(t) for t in setup.tanks],
+        suit=setup.suit,
+        weights_kg=setup.weights_kg,
     )
 
 
@@ -889,6 +1025,9 @@ async def admin_create_gear_setup(body: GearSetupIn, store: StoreDep) -> GearSet
         description_md=body.description_md,
         sort=body.sort,
         items=[i for i in body.item_ids if i in store.gear_items],
+        tanks=[TankRecord.model_validate(t.model_dump()) for t in body.tanks],
+        suit=body.suit or None,
+        weights_kg=body.weights_kg,
     )
     store.gear_setups[setup.id] = setup
     await store.save_gear(f"Add gear setup {setup.id}")
@@ -907,6 +1046,9 @@ async def admin_update_gear_setup(
         description_md=body.description_md,
         sort=body.sort,
         items=[i for i in body.item_ids if i in store.gear_items],
+        tanks=[TankRecord.model_validate(t.model_dump()) for t in body.tanks],
+        suit=body.suit or None,
+        weights_kg=body.weights_kg,
     )
     store.gear_setups[setup_id] = setup
     await store.save_gear(f"Update gear setup {setup_id}")
@@ -919,6 +1061,26 @@ async def admin_delete_gear_setup(setup_id: str, store: StoreDep) -> None:
         raise HTTPException(status_code=404, detail="Gear setup not found")
     del store.gear_setups[setup_id]
     await store.save_gear(f"Delete gear setup {setup_id}")
+
+
+# ── Editor helpers ──────────────────────────────────────────────────────────
+
+
+@router.post("/preview/markdown", response_model=MarkdownPreviewOut)
+async def admin_preview_markdown(body: MarkdownPreviewIn) -> MarkdownPreviewOut:
+    """Markdown rendered and sanitised exactly as the public pages show it."""
+    return MarkdownPreviewOut(html=render(body.md) or "")
+
+
+@router.get("/meta/site-fields", response_model=SiteFieldsOut)
+async def admin_site_fields() -> SiteFieldsOut:
+    """Which site fields are objective (fork to edit), personal, additive or a preference."""
+    return SiteFieldsOut(
+        objective=list(OBJECTIVE_FIELDS),
+        personal=list(PERSONAL_FIELDS),
+        additive=list(ADDITIVE_FIELDS),
+        preference=list(PREFERENCE_FIELDS),
+    )
 
 
 # ── Files that are never public ─────────────────────────────────────────────
@@ -983,8 +1145,14 @@ async def admin_repo_reload(store: StoreDep) -> RepoStatus:
 
 
 @router.post("/import/subsurface", response_model=ImportResult)
-async def admin_import_subsurface(store: StoreDep, file: UploadFile = File(...)) -> ImportResult:
-    """Create draft dives (or attach profiles to matching ones) from a Subsurface export."""
+async def admin_import_subsurface(
+    store: StoreDep, file: UploadFile = File(...), dry_run: bool = False
+) -> ImportResult:
+    """Create draft dives (or attach profiles to matching ones) from a Subsurface export.
+
+    With ``dry_run=true`` nothing is stored or written: the result says which dives would be
+    created (with the numbers they would get) or updated, and which sites would be created.
+    """
     data = await file.read()
     if len(data) > get_settings().MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File too large")
@@ -994,9 +1162,10 @@ async def admin_import_subsurface(store: StoreDep, file: UploadFile = File(...))
         raise HTTPException(status_code=400, detail=f"Could not parse export: {exc}") from exc
 
     storage = get_storage()
-    import_id = uuid4().hex
+    import_id = "" if dry_run else uuid4().hex
     key = f"imports/{datetime.now(UTC).strftime('%Y/%m')}/{import_id}.xml"
-    await storage.put(key, data, "application/xml")
+    if not dry_run:
+        await storage.put(key, data, "application/xml")
 
     by_start = {
         datetime.combine(d.date, datetime.strptime(d.time_in, "%H:%M").time()): d
@@ -1006,12 +1175,18 @@ async def admin_import_subsurface(store: StoreDep, file: UploadFile = File(...))
     number = store.next_dive_number()
 
     sites_by_uuid: dict[str, SiteRecord] = {}
+    planned_sites: set[str] = set()
     site_report: list[ImportSiteOut] = []
     for uuid, draft_site in log.sites.items():
         site_match = match_site(draft_site, store.sites)
         if site_match is not None:
             resolved = store.sites[site_match.site_id]
-            if uuid and site_match.matched_by != "uuid" and not resolved.subsurface_uuid:
+            if (
+                not dry_run
+                and uuid
+                and site_match.matched_by != "uuid"
+                and not resolved.subsurface_uuid
+            ):
                 adopted = resolved.model_copy(update={"subsurface_uuid": uuid})
                 resolved = await store.save_site(
                     adopted, f"Link Subsurface site to {resolved.site_id}"
@@ -1019,8 +1194,9 @@ async def admin_import_subsurface(store: StoreDep, file: UploadFile = File(...))
         else:
             base_id = site_id_for(None, draft_site.name)
             site_id = base_id
-            while site_id in store.sites:
+            while site_id in store.sites or site_id in planned_sites:
                 site_id = f"{base_id}-{uuid4().hex[:6]}"
+            planned_sites.add(site_id)
             resolved = SiteRecord(
                 site_id=site_id,
                 name=draft_site.name,
@@ -1029,7 +1205,8 @@ async def admin_import_subsurface(store: StoreDep, file: UploadFile = File(...))
                 subsurface_uuid=uuid or None,
                 body_md=draft_site.description,
             )
-            resolved = await store.save_site(resolved, f"Import site {site_id}")
+            if not dry_run:
+                resolved = await store.save_site(resolved, f"Import site {site_id}")
         sites_by_uuid[uuid] = resolved
         site_report.append(
             ImportSiteOut(
@@ -1045,6 +1222,7 @@ async def admin_import_subsurface(store: StoreDep, file: UploadFile = File(...))
 
     created: list[int] = []
     updated: list[int] = []
+    taken: set[int] = set()
     skipped = 0
     for draft in log.dives:
         match = by_start.get(draft.starts_at) if draft.time_in else None
@@ -1052,15 +1230,26 @@ async def admin_import_subsurface(store: StoreDep, file: UploadFile = File(...))
             match = store.dives[draft.number]
         if match is not None:
             if draft.samples and not match.profiles:
-                name = f"import_{match.number:05d}.json"
-                match.profiles = [
-                    store.save_profile(name, {"source": draft.computer, "samples": draft.samples})
-                ]
-                match.import_id = import_id
-                await store.save_dive(match, f"Attach imported profile to dive #{match.number}")
+                if not dry_run:
+                    name = f"import_{match.number:05d}.json"
+                    match.profiles = [
+                        store.save_profile(
+                            name, {"source": draft.computer, "samples": draft.samples}
+                        )
+                    ]
+                    match.import_id = import_id
+                    await store.save_dive(match, f"Attach imported profile to dive #{match.number}")
                 updated.append(match.number)
             else:
                 skipped += 1
+            continue
+
+        free = draft.number and draft.number not in store.dives and draft.number not in taken
+        dive_number = draft.number if free and draft.number else number
+        number = max(number, dive_number + 1)
+        taken.add(dive_number)
+        created.append(dive_number)
+        if dry_run:
             continue
 
         people: list[str] = []
@@ -1077,7 +1266,6 @@ async def admin_import_subsurface(store: StoreDep, file: UploadFile = File(...))
                 await store.save_person(person, f"Import person {person.id}")
             people.append(person.id)
 
-        dive_number = draft.number if draft.number and draft.number not in store.dives else number
         site = sites_by_uuid.get(draft.site_uuid or "")
         profiles: list[str] = []
         if draft.samples:
@@ -1110,9 +1298,23 @@ async def admin_import_subsurface(store: StoreDep, file: UploadFile = File(...))
             body_md=draft.notes,
         )
         await store.save_dive(dive, f"Import dive #{dive.number} as draft")
-        number = max(number, dive.number + 1)
-        created.append(dive.number)
 
+    dates = [d.date for d in log.dives]
+    report = ImportResult(
+        import_id=import_id,
+        created=created,
+        updated=updated,
+        skipped=skipped,
+        sites_created=sum(1 for r in site_report if r.outcome == "created"),
+        sites_matched=sum(1 for r in site_report if r.outcome == "matched"),
+        sites=site_report,
+        dry_run=dry_run,
+        dives_in_file=len(log.dives),
+        first_date=min(dates, default=None),
+        last_date=max(dates, default=None),
+    )
+    if dry_run:
+        return report
     record = ImportRecord(
         id=import_id,
         format="subsurface-xml",
@@ -1126,15 +1328,7 @@ async def admin_import_subsurface(store: StoreDep, file: UploadFile = File(...))
     logger.info(
         "subsurface import: %d created, %d updated, %d skipped", len(created), len(updated), skipped
     )
-    return ImportResult(
-        import_id=import_id,
-        created=created,
-        updated=updated,
-        skipped=skipped,
-        sites_created=sum(1 for r in site_report if r.outcome == "created"),
-        sites_matched=sum(1 for r in site_report if r.outcome == "matched"),
-        sites=site_report,
-    )
+    return report
 
 
 MATCH_WINDOW = timedelta(minutes=10)
@@ -1142,18 +1336,21 @@ MATCH_WINDOW = timedelta(minutes=10)
 
 @router.post("/import/shearwater", response_model=ImportResult)
 async def admin_import_shearwater(
-    store: StoreDep, files: list[UploadFile] = File(...)
+    store: StoreDep, files: list[UploadFile] = File(...), dry_run: bool = False
 ) -> ImportResult:
     """Attach Perdix profiles to the dives they belong to, or create drafts for new ones.
 
     A dive matches when it starts within ten minutes of the computer's start time, or already
-    lists the computer's dive number. Every file is kept as-is in storage.
+    lists the computer's dive number. Every file is kept as-is in storage. With
+    ``dry_run=true`` nothing is stored or written; the result says what would happen.
     """
     storage = get_storage()
-    import_id = uuid4().hex
+    import_id = "" if dry_run else uuid4().hex
     created: list[int] = []
     updated: list[int] = []
+    dates: list[date] = []
     skipped = 0
+    planned = store.next_dive_number()
     first_key: str | None = None
     for file in files:
         data = await file.read()
@@ -1165,17 +1362,28 @@ async def admin_import_shearwater(
             raise HTTPException(
                 status_code=400, detail=f"{file.filename}: could not parse export: {exc}"
             ) from exc
+        dates.append(computer.start.date())
+        match = _match_computer(store, computer.start, computer.number)
+        complete = match is not None and computer.number in match.computer and match.profiles
+        if dry_run:
+            if complete:
+                skipped += 1
+            elif match is not None:
+                updated.append(match.number)
+            else:
+                created.append(planned)
+                planned += 1
+            continue
+
         key = f"imports/{datetime.now(UTC).strftime('%Y/%m')}/{import_id}-{computer.number}.xml"
         first_key = first_key or key
         await storage.put(key, data, "application/xml")
-
-        match = _match_computer(store, computer.start, computer.number)
+        if complete:
+            skipped += 1
+            continue
         profile_name = f"perdix_{computer.serial}_{computer.number}.json"
         payload = computer.profile()
         if match is not None:
-            if computer.number in match.computer and match.profiles:
-                skipped += 1
-                continue
             payload["log_dive_no"] = match.number
             relative = store.save_profile(profile_name, payload)
             if relative not in match.profiles:
@@ -1212,6 +1420,19 @@ async def admin_import_shearwater(
         await store.save_dive(dive, f"Import Perdix #{computer.number} as draft dive #{number}")
         created.append(number)
 
+    report = ImportResult(
+        import_id=import_id,
+        created=created,
+        updated=updated,
+        skipped=skipped,
+        sites_created=0,
+        dry_run=dry_run,
+        dives_in_file=len(dates),
+        first_date=min(dates, default=None),
+        last_date=max(dates, default=None),
+    )
+    if dry_run:
+        return report
     record = ImportRecord(
         id=import_id,
         format="shearwater-xml",
@@ -1222,9 +1443,7 @@ async def admin_import_shearwater(
         updated=updated,
     )
     await store.save_import(record, f"Record Perdix import {import_id[:8]}")
-    return ImportResult(
-        import_id=import_id, created=created, updated=updated, skipped=skipped, sites_created=0
-    )
+    return report
 
 
 def _match_computer(store: Store, start: datetime, computer_number: int) -> DiveRecord | None:

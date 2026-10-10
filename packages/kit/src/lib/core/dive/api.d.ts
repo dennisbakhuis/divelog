@@ -334,6 +334,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/meta/countries': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Meta Countries
+     * @description Every country the log knows, by name, with its ISO alpha-3 and alpha-2 codes.
+     */
+    get: operations['meta_countries_api_v1_meta_countries_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/meta/licences': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Meta Licences
+     * @description The licences a photo by someone else may carry here, with name and deed URL.
+     */
+    get: operations['meta_licences_api_v1_meta_licences_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/admin/dives': {
     parameters: {
       query?: never;
@@ -366,6 +406,72 @@ export interface paths {
     get: operations['admin_next_number_api_v1_admin_dives_next_number_get'];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/dives/template': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Admin Dive Template
+     * @description What the new-dive form starts from: previous dive, last dive at the site, recents.
+     *
+     *     ``date`` defaults to today; only dives on or before it count. An unknown ``site`` gives
+     *     no ``at_site``.
+     */
+    get: operations['admin_dive_template_api_v1_admin_dives_template_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/dives/page': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Admin Dive Page
+     * @description One page of the dive list, filtered by publish state and search words, and sorted.
+     *
+     *     ``q`` matches a dive number (``650`` or ``#650``), or the title, the site's names or a
+     *     buddy's names; every word must match. Newest first unless ``sort``/``asc`` say otherwise.
+     */
+    get: operations['admin_dive_page_api_v1_admin_dives_page_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/dives/publish': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Admin Publish Dives
+     * @description Make the listed drafts public in one commit; other dives are left as they are.
+     */
+    post: operations['admin_publish_dives_api_v1_admin_dives_publish_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -503,7 +609,10 @@ export interface paths {
     delete: operations['admin_delete_attachment_api_v1_admin_attachments__media_id__delete'];
     options?: never;
     head?: never;
-    /** Admin Patch Attachment */
+    /**
+     * Admin Patch Attachment
+     * @description Change caption, credit, kind, order, visibility or the licence, author and source.
+     */
     patch: operations['admin_patch_attachment_api_v1_admin_attachments__media_id__patch'];
     trace?: never;
   };
@@ -531,6 +640,28 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/admin/sites/nearby': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Admin Sites Nearby
+     * @description Sites that may already be the one being created: same name or alias, or within reach.
+     *
+     *     Needs ``lat`` and ``lon`` together, ``name``, or both (422 otherwise).
+     */
+    get: operations['admin_sites_nearby_api_v1_admin_sites_nearby_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/admin/sites/{site_id}': {
     parameters: {
       query?: never;
@@ -547,7 +678,8 @@ export interface paths {
      *     On a commons site only overlay material is accepted (422 otherwise); ``fork=true`` writes
      *     a personal copy that shadows the commons record instead. ``revision`` and ``changelog`` in
      *     the body are ignored and the stored ones kept, so a stale editor form cannot rewind a
-     *     revision; the server moves to the next revision when an objective field changes.
+     *     revision; the server moves to the next revision when an objective field changes, with
+     *     ``note`` as the changelog entry when one is given.
      */
     put: operations['admin_update_site_api_v1_admin_sites__site_id__put'];
     post?: never;
@@ -599,6 +731,29 @@ export interface paths {
     put?: never;
     /** Admin Create Map */
     post: operations['admin_create_map_api_v1_admin_sites__site_id__maps_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/sites/{site_id}/maps/seed': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Admin Seed Map
+     * @description A starter site map from OpenStreetMap around the site; nothing is saved.
+     *
+     *     The radius defaults to one per site type. 404 when the site is unknown or has no
+     *     coordinates, 503 when Overpass does not answer within its timeout.
+     */
+    post: operations['admin_seed_map_api_v1_admin_sites__site_id__maps_seed_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -837,6 +992,46 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/admin/preview/markdown': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Admin Preview Markdown
+     * @description Markdown rendered and sanitised exactly as the public pages show it.
+     */
+    post: operations['admin_preview_markdown_api_v1_admin_preview_markdown_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/meta/site-fields': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Admin Site Fields
+     * @description Which site fields are objective (fork to edit), personal, additive or a preference.
+     */
+    get: operations['admin_site_fields_api_v1_admin_meta_site_fields_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/admin/repo/status': {
     parameters: {
       query?: never;
@@ -920,6 +1115,9 @@ export interface paths {
     /**
      * Admin Import Subsurface
      * @description Create draft dives (or attach profiles to matching ones) from a Subsurface export.
+     *
+     *     With ``dry_run=true`` nothing is stored or written: the result says which dives would be
+     *     created (with the numbers they would get) or updated, and which sites would be created.
      */
     post: operations['admin_import_subsurface_api_v1_admin_import_subsurface_post'];
     delete?: never;
@@ -942,7 +1140,8 @@ export interface paths {
      * @description Attach Perdix profiles to the dives they belong to, or create drafts for new ones.
      *
      *     A dive matches when it starts within ten minutes of the computer's start time, or already
-     *     lists the computer's dive number. Every file is kept as-is in storage.
+     *     lists the computer's dive number. Every file is kept as-is in storage. With
+     *     ``dry_run=true`` nothing is stored or written; the result says what would happen.
      */
     post: operations['admin_import_shearwater_api_v1_admin_import_shearwater_post'];
     delete?: never;
@@ -1080,6 +1279,52 @@ export interface components {
       /** Visibility */
       visibility: string;
     };
+    /**
+     * AdminDivePage
+     * @description One page of the editor's dive list; ``total`` counts every row the filter matches.
+     */
+    AdminDivePage: {
+      /** Items */
+      items: components['schemas']['AdminDiveRow'][];
+      /** Total */
+      total: number;
+      /** Offset */
+      offset: number;
+      /** Limit */
+      limit: number;
+    };
+    /**
+     * AdminDiveRow
+     * @description A row of the paged dive list: the list row plus what its secondary links need.
+     */
+    AdminDiveRow: {
+      /** Number */
+      number: number;
+      /**
+       * Date
+       * Format: date
+       */
+      date: string;
+      /** Title */
+      title: string;
+      /** Site Name */
+      site_name: string | null;
+      /** Max Depth M */
+      max_depth_m: number;
+      /** Duration Min */
+      duration_min: number;
+      /** Tags */
+      tags: string[];
+      /** Attachments */
+      attachments: number;
+      /** Visibility */
+      visibility: string;
+      /** Time In */
+      time_in: string | null;
+      /** Site Id */
+      site_id: string | null;
+      trip: components['schemas']['TripRef'] | null;
+    };
     /** AttachmentOut */
     AttachmentOut: {
       /** Id */
@@ -1118,8 +1363,20 @@ export interface components {
       variants: {
         [key: string]: string;
       };
+      /** Licence */
+      licence: string | null;
+      /** Author */
+      author: string | null;
+      /** Source */
+      source: string | null;
     };
-    /** AttachmentPatch */
+    /**
+     * AttachmentPatch
+     * @description The editable fields of an attachment; only those sent are written.
+     *
+     *     ``licence``, ``author`` and ``source`` credit someone else's photo: an empty string clears
+     *     one, and ``licence`` must spell an allowlisted licence (``GET /meta/licences``).
+     */
     AttachmentPatch: {
       /** Kind */
       kind?: ('photo' | 'scan' | 'map' | 'avatar' | 'video' | 'export') | null;
@@ -1131,6 +1388,12 @@ export interface components {
       sort?: number | null;
       /** Public */
       public?: boolean | null;
+      /** Licence */
+      licence?: string | null;
+      /** Author */
+      author?: string | null;
+      /** Source */
+      source?: string | null;
     };
     /**
      * Attribution
@@ -1291,6 +1554,18 @@ export interface components {
        * @default true
        */
       new: boolean;
+    };
+    /**
+     * CountryOut
+     * @description A country the log knows: ISO 3166 alpha-3 and alpha-2 codes and the English name.
+     */
+    CountryOut: {
+      /** Iso3 */
+      iso3: string;
+      /** Iso2 */
+      iso2: string;
+      /** Name */
+      name: string;
     };
     /** CountryStat */
     CountryStat: {
@@ -1973,6 +2248,157 @@ export interface components {
       scooter_dives: number;
     };
     /**
+     * DiveTemplateDive
+     * @description A stored dive as the form's input; the same fields as ``DiveIn``, sent back out.
+     */
+    DiveTemplateDive: {
+      /** Number */
+      number: number;
+      /**
+       * Title
+       * @default
+       */
+      title: string;
+      /**
+       * Date
+       * Format: date
+       */
+      date: string;
+      /** Time In */
+      time_in: string | null;
+      /** Time Out */
+      time_out: string | null;
+      /** Duration Min */
+      duration_min: number;
+      /** Max Depth M */
+      max_depth_m: number;
+      /** Avg Depth M */
+      avg_depth_m: number | null;
+      /** Water Temp C */
+      water_temp_c: number | null;
+      /** Surface Temp C */
+      surface_temp_c: number | null;
+      /** Air Temp C */
+      air_temp_c: number | null;
+      /** Thermocline M */
+      thermocline_m: number | null;
+      /** Visibility M */
+      visibility_m: number | null;
+      /** Visibility Raw */
+      visibility_raw: string | null;
+      /** Site Id */
+      site_id: string | null;
+      /** Section */
+      section: string | null;
+      /** Trip Id */
+      trip_id: string | null;
+      /** Tags */
+      tags: string[];
+      /** Types Raw */
+      types_raw: string | null;
+      /** Gas */
+      gas: ('air' | 'nitrox' | 'trimix') | null;
+      /** O2 Pct */
+      o2_pct: number | null;
+      /** O2 Measured Pct */
+      o2_measured_pct: number | null;
+      /** He Pct */
+      he_pct: number | null;
+      /** Gas Raw */
+      gas_raw: string | null;
+      /**
+       * Mode
+       * @default OC
+       * @enum {string}
+       */
+      mode: 'OC' | 'CCR' | 'sidemount';
+      /** Suit */
+      suit: string | null;
+      /** Weights Kg */
+      weights_kg: number | null;
+      /** Cylinder */
+      cylinder: string | null;
+      /** Pressure In Bar */
+      pressure_in_bar: number | null;
+      /** Pressure Out Bar */
+      pressure_out_bar: number | null;
+      /** Tanks */
+      tanks: components['schemas']['TankOut'][];
+      /** Safety Stop Min */
+      safety_stop_min: number | null;
+      /** Surface Interval */
+      surface_interval: string | null;
+      /** Conditions */
+      conditions: string | null;
+      /** Difficulty */
+      difficulty: string | null;
+      /** Course */
+      course: string | null;
+      /** Rating */
+      rating: number | null;
+      /** Gear Setup Id */
+      gear_setup_id: string | null;
+      /** Guide */
+      guide: string | null;
+      /** Operator */
+      operator: string | null;
+      /** Buddy Raw */
+      buddy_raw: string | null;
+      /** Buddy Role */
+      buddy_role: string | null;
+      /**
+       * Body Md
+       * @default
+       */
+      body_md: string;
+      /** Notes Nl */
+      notes_nl: string | null;
+      /**
+       * Visibility
+       * @default public
+       * @enum {string}
+       */
+      visibility: 'public' | 'private' | 'draft';
+      /** People Ids */
+      people_ids: string[];
+      /** Cover Attachment Id */
+      cover_attachment_id: string | null;
+      /** Computer */
+      computer: number[];
+      /** Flags */
+      flags: string[];
+      /** Sketch */
+      sketch: string | null;
+      /** Profile */
+      profile: components['schemas']['ProfileSample-Output'][] | null;
+      map_annotation: components['schemas']['DiveMapAnnotation-Output'] | null;
+    };
+    /**
+     * DiveTemplateOut
+     * @description Everything the new-dive form starts from, in one request.
+     *
+     *     ``previous`` is the latest dive on or before ``date`` as the form's input (its profile
+     *     left out), ``at_site`` the latest dive at the requested site, ``recent_sites`` up to 8
+     *     sites by last dive, ``frequent_people`` up to 12 people by dives together in the 24 months
+     *     before ``date`` (then by name), ``trip_for_date`` the trip whose dates hold ``date``.
+     */
+    DiveTemplateOut: {
+      /**
+       * Date
+       * Format: date
+       */
+      date: string;
+      /** Next Number */
+      next_number: number;
+      previous: components['schemas']['DiveTemplateDive'] | null;
+      at_site: components['schemas']['SiteLastDive'] | null;
+      /** Recent Sites */
+      recent_sites: components['schemas']['TemplateSite'][];
+      /** Frequent People */
+      frequent_people: components['schemas']['TemplatePerson'][];
+      trip_for_date: components['schemas']['TripOut'] | null;
+    };
+    /**
      * DiveTimeline
      * @description Front-page timeline: dives per year, gaps included, and the latest public dive.
      */
@@ -1980,6 +2406,24 @@ export interface components {
       /** Years */
       years: components['schemas']['TimelineYear'][];
       latest: components['schemas']['TimelineDive'] | null;
+    };
+    /**
+     * DivesPublishIn
+     * @description The dives to publish; numbers that are not drafts are left as they are.
+     */
+    DivesPublishIn: {
+      /** Numbers */
+      numbers: number[];
+    };
+    /**
+     * DivesPublishOut
+     * @description ``published`` were drafts and are public now; ``unchanged`` were not drafts or unknown.
+     */
+    DivesPublishOut: {
+      /** Published */
+      published: number[];
+      /** Unchanged */
+      unchanged: number[];
     };
     /** GearItemIn */
     GearItemIn: {
@@ -2086,6 +2530,12 @@ export interface components {
       sort?: number;
       /** Item Ids */
       item_ids?: string[];
+      /** Tanks */
+      tanks?: components['schemas']['TankIn'][];
+      /** Suit */
+      suit?: string | null;
+      /** Weights Kg */
+      weights_kg?: number | null;
     };
     /** GearSetupOut */
     GearSetupOut: {
@@ -2106,6 +2556,12 @@ export interface components {
        * @default 0
        */
       dive_count: number;
+      /** Tanks */
+      tanks: components['schemas']['TankOut'][];
+      /** Suit */
+      suit: string | null;
+      /** Weights Kg */
+      weights_kg: number | null;
       /**
        * Description Html
        * @description The description as sanitised HTML.
@@ -2144,7 +2600,15 @@ export interface components {
       /** Url */
       url: string;
     };
-    /** ImportResult */
+    /**
+     * ImportResult
+     * @description What an import did, or with ``dry_run`` what it would do; nothing is written then.
+     *
+     *     ``created`` lists the numbers of the new draft dives (on a dry run the numbers they would
+     *     get), ``updated`` the dives a profile was attached to, ``skipped`` the dives already
+     *     complete. ``dives_in_file`` counts the dives read, ``first_date``/``last_date`` span them.
+     *     On a dry run ``import_id`` is empty and ``sites`` lists the sites that would be created.
+     */
     ImportResult: {
       /** Import Id */
       import_id: string;
@@ -2163,6 +2627,20 @@ export interface components {
       sites_matched: number;
       /** Sites */
       sites: components['schemas']['ImportSiteOut'][];
+      /**
+       * Dry Run
+       * @default false
+       */
+      dry_run: boolean;
+      /**
+       * Dives In File
+       * @default 0
+       */
+      dives_in_file: number;
+      /** First Date */
+      first_date: string | null;
+      /** Last Date */
+      last_date: string | null;
     };
     /**
      * ImportSiteOut
@@ -2192,6 +2670,18 @@ export interface components {
        * @enum {string}
        */
       origin: 'log' | 'commons' | 'fork';
+    };
+    /**
+     * LicenceOut
+     * @description A licence a photo of someone else may carry: allowlisted id, name and deed URL.
+     */
+    LicenceOut: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Url */
+      url: string;
     };
     /** MagicLinkRequest */
     MagicLinkRequest: {
@@ -2653,12 +3143,93 @@ export interface components {
        */
       opacity: number;
     };
+    /**
+     * MarkdownPreviewIn
+     * @description Markdown to render.
+     */
+    MarkdownPreviewIn: {
+      /**
+       * Md
+       * @default
+       */
+      md?: string;
+    };
+    /**
+     * MarkdownPreviewOut
+     * @description The Markdown as the public pages render it: sanitised HTML.
+     */
+    MarkdownPreviewOut: {
+      /** Html */
+      html: string;
+    };
     /** Me */
     Me: {
       /** Email */
       email: string;
       /** Expires At */
       expires_at: string;
+    };
+    /**
+     * NearbyCommonsSite
+     * @description A commons site this log does not use yet that may be the one being created.
+     */
+    NearbyCommonsSite: {
+      /** Site Id */
+      site_id: string;
+      /** Name */
+      name: string;
+      /** Country */
+      country: string | null;
+      /** Type */
+      type: string;
+      /** Area */
+      area: string | null;
+      /** Lat */
+      lat: number | null;
+      /** Lon */
+      lon: number | null;
+      /**
+       * Matched By
+       * @enum {string}
+       */
+      matched_by: 'name' | 'alias' | 'distance';
+      /** Distance M */
+      distance_m: number | null;
+    };
+    /**
+     * NearbyLogSite
+     * @description A site of this log that may be the one being created.
+     *
+     *     ``matched_by`` is the rule that found it; ``distance_m`` (whole metres) is set when both
+     *     the site and the point are placed.
+     */
+    NearbyLogSite: {
+      /** Site Id */
+      site_id: string;
+      /** Name */
+      name: string;
+      /** Country */
+      country: string | null;
+      /** Type */
+      type: string;
+      /** Lat */
+      lat: number | null;
+      /** Lon */
+      lon: number | null;
+      /**
+       * Matched By
+       * @enum {string}
+       */
+      matched_by: 'name' | 'alias' | 'distance';
+      /** Distance M */
+      distance_m: number | null;
+      /**
+       * Origin
+       * @enum {string}
+       */
+      origin: 'log' | 'commons' | 'fork';
+      /** Dives */
+      dives: number;
     };
     /**
      * NearbySite
@@ -2681,6 +3252,16 @@ export interface components {
       distance_km: number;
       /** Dives */
       dives: number;
+    };
+    /**
+     * NearbySitesOut
+     * @description Possible duplicates of a site being created, nearest first, in the log and the commons.
+     */
+    NearbySitesOut: {
+      /** Log */
+      log: components['schemas']['NearbyLogSite'][];
+      /** Commons */
+      commons: components['schemas']['NearbyCommonsSite'][];
     };
     /** NextDiveNumber */
     NextDiveNumber: {
@@ -3090,7 +3671,30 @@ export interface components {
       title: string;
       annotation: components['schemas']['DiveMapAnnotation-Output'];
     };
-    /** SiteIn */
+    /**
+     * SiteFieldsOut
+     * @description How the fields of a commons site behave under a personal overlay.
+     *
+     *     ``objective`` fields need a fork to change, ``personal`` ones live in the overlay,
+     *     ``additive`` ones add to the commons lists, ``preference`` ones may differ per log.
+     */
+    SiteFieldsOut: {
+      /** Objective */
+      objective: string[];
+      /** Personal */
+      personal: string[];
+      /** Additive */
+      additive: string[];
+      /** Preference */
+      preference: string[];
+    };
+    /**
+     * SiteIn
+     * @description A site as the editor sends it.
+     *
+     *     ``note`` says what changed; it becomes the changelog entry when an objective field changes
+     *     (otherwise ``Update site <id>``) and is never stored on the site itself.
+     */
     SiteIn: {
       /** Site Id */
       site_id: string;
@@ -3156,6 +3760,33 @@ export interface components {
       geo_source?: string | null;
       /** Notes */
       notes?: string | null;
+      /** Note */
+      note?: string | null;
+    };
+    /**
+     * SiteLastDive
+     * @description The last dive at a site, for the values a new dive there starts from.
+     */
+    SiteLastDive: {
+      /** Number */
+      number: number;
+      /**
+       * Date
+       * Format: date
+       */
+      date: string;
+      /** Section */
+      section: string | null;
+      /** Map Id */
+      map_id: string | null;
+      /** Water Temp C */
+      water_temp_c: number | null;
+      /** Surface Temp C */
+      surface_temp_c: number | null;
+      /** Air Temp C */
+      air_temp_c: number | null;
+      /** Visibility M */
+      visibility_m: number | null;
     };
     /**
      * SiteMap
@@ -3203,6 +3834,53 @@ export interface components {
       notes?: string;
       origin?: components['schemas']['MapOrigin'] | null;
       underlay?: components['schemas']['MapUnderlay-Input'] | null;
+    };
+    /**
+     * SiteMapDraft
+     * @description A drawn-map payload that is not saved yet; the same fields as ``SiteMap``.
+     */
+    SiteMapDraft: {
+      /**
+       * Version
+       * @default 3
+       */
+      version: number;
+      /**
+       * Kind
+       * @default stickmap
+       * @enum {string}
+       */
+      kind: 'stickmap' | 'sitemap';
+      /**
+       * Title
+       * @default
+       */
+      title: string;
+      /**
+       * North
+       * @default 0
+       */
+      north: number;
+      /**
+       * To Scale
+       * @default true
+       */
+      to_scale: boolean;
+      /** Nodes */
+      nodes: components['schemas']['MapNode-Output'][];
+      /** Edges */
+      edges: components['schemas']['MapEdge-Output'][];
+      /** Areas */
+      areas: components['schemas']['MapArea-Output'][];
+      /** Lines */
+      lines: components['schemas']['MapLine-Output'][];
+      /**
+       * Notes
+       * @default
+       */
+      notes: string;
+      origin: components['schemas']['MapOrigin'] | null;
+      underlay: components['schemas']['MapUnderlay-Output'] | null;
     };
     /** SiteMapIn */
     SiteMapIn: {
@@ -3271,6 +3949,39 @@ export interface components {
       changelog: components['schemas']['ChangeEntry'][];
       /** Updated At */
       updated_at: string | null;
+    };
+    /**
+     * SiteMapSeedIn
+     * @description Where a starter map comes from; ``radius_m`` defaults to one per site type.
+     */
+    SiteMapSeedIn: {
+      /**
+       * Source
+       * @default osm
+       * @constant
+       */
+      source?: 'osm';
+      /** Radius M */
+      radius_m?: number | null;
+    };
+    /**
+     * SiteMapSeedOut
+     * @description A starter map for a site, not saved: ``map`` is the payload ``POST /maps`` takes.
+     *
+     *     ``origin`` is the site's position and ``north`` 0; ``elements`` counts the OSM features
+     *     the query returned, ``radius_m`` is the radius asked for.
+     */
+    SiteMapSeedOut: {
+      /**
+       * Source
+       * @constant
+       */
+      source: 'osm';
+      /** Radius M */
+      radius_m: number;
+      /** Elements */
+      elements: number;
+      map: components['schemas']['SiteMapDraft'];
     };
     /** SiteOut */
     SiteOut: {
@@ -3488,6 +4199,41 @@ export interface components {
        * @enum {string}
        */
       role: 'back' | 'stage' | 'deco' | 'bailout';
+    };
+    /**
+     * TemplatePerson
+     * @description Someone often dived with; ``dives`` counts the dives together in the last 24 months.
+     */
+    TemplatePerson: {
+      /** Id */
+      id: string;
+      /** Slug */
+      slug: string;
+      /** Name */
+      name: string;
+      /** Dives */
+      dives: number;
+    };
+    /**
+     * TemplateSite
+     * @description A site dived recently, for the top of the site picker.
+     */
+    TemplateSite: {
+      /** Site Id */
+      site_id: string;
+      /** Name */
+      name: string;
+      /** Country */
+      country: string | null;
+      /** Region */
+      region: string | null;
+      /**
+       * Last Dive
+       * Format: date
+       */
+      last_dive: string;
+      /** Dives */
+      dives: number;
     };
     /**
      * TimelineDive
@@ -4178,6 +4924,46 @@ export interface operations {
       };
     };
   };
+  meta_countries_api_v1_meta_countries_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CountryOut'][];
+        };
+      };
+    };
+  };
+  meta_licences_api_v1_meta_licences_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LicenceOut'][];
+        };
+      };
+    };
+  };
   admin_list_dives_api_v1_admin_dives_get: {
     parameters: {
       query?: never;
@@ -4247,6 +5033,107 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['NextDiveNumber'];
+        };
+      };
+    };
+  };
+  admin_dive_template_api_v1_admin_dives_template_get: {
+    parameters: {
+      query?: {
+        site?: string | null;
+        date?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DiveTemplateOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  admin_dive_page_api_v1_admin_dives_page_get: {
+    parameters: {
+      query?: {
+        offset?: number;
+        limit?: number;
+        status?: ('public' | 'private' | 'draft') | null;
+        q?: string;
+        sort?: 'date' | 'number' | 'depth' | 'duration';
+        asc?: boolean;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AdminDivePage'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  admin_publish_dives_api_v1_admin_dives_publish_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DivesPublishIn'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['DivesPublishOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
         };
       };
     };
@@ -4679,6 +5566,41 @@ export interface operations {
       };
     };
   };
+  admin_sites_nearby_api_v1_admin_sites_nearby_get: {
+    parameters: {
+      query?: {
+        lat?: number | null;
+        lon?: number | null;
+        name?: string | null;
+        radius_m?: number;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['NearbySitesOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
   admin_get_site_api_v1_admin_sites__site_id__get: {
     parameters: {
       query?: never;
@@ -4864,6 +5786,41 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['SiteMapOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  admin_seed_map_api_v1_admin_sites__site_id__maps_seed_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        site_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SiteMapSeedIn'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SiteMapSeedOut'];
         };
       };
       /** @description Validation Error */
@@ -5623,6 +6580,59 @@ export interface operations {
       };
     };
   };
+  admin_preview_markdown_api_v1_admin_preview_markdown_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['MarkdownPreviewIn'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['MarkdownPreviewOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  admin_site_fields_api_v1_admin_meta_site_fields_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SiteFieldsOut'];
+        };
+      };
+    };
+  };
   admin_repo_status_api_v1_admin_repo_status_get: {
     parameters: {
       query?: never;
@@ -5705,7 +6715,9 @@ export interface operations {
   };
   admin_import_subsurface_api_v1_admin_import_subsurface_post: {
     parameters: {
-      query?: never;
+      query?: {
+        dry_run?: boolean;
+      };
       header?: never;
       path?: never;
       cookie?: never;
@@ -5738,7 +6750,9 @@ export interface operations {
   };
   admin_import_shearwater_api_v1_admin_import_shearwater_post: {
     parameters: {
-      query?: never;
+      query?: {
+        dry_run?: boolean;
+      };
       header?: never;
       path?: never;
       cookie?: never;

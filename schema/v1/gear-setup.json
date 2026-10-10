@@ -1,5 +1,117 @@
 {
+  "$defs": {
+    "TankRecord": {
+      "description": "One cylinder (or twinset) carried on a dive, with the gas in it and the pressures read.",
+      "properties": {
+        "cylinder": {
+          "minLength": 1,
+          "title": "Cylinder",
+          "type": "string"
+        },
+        "volume_l": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Volume L"
+        },
+        "gas": {
+          "default": "air",
+          "enum": [
+            "air",
+            "nitrox",
+            "trimix",
+            "oxygen"
+          ],
+          "title": "Gas",
+          "type": "string"
+        },
+        "o2_pct": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "O2 Pct"
+        },
+        "o2_measured_pct": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "O2 Measured Pct"
+        },
+        "he_pct": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "He Pct"
+        },
+        "pressure_in_bar": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pressure In Bar"
+        },
+        "pressure_out_bar": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pressure Out Bar"
+        },
+        "role": {
+          "default": "back",
+          "enum": [
+            "back",
+            "stage",
+            "deco",
+            "bailout"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cylinder"
+      ],
+      "title": "TankRecord",
+      "type": "object"
+    }
+  },
   "additionalProperties": true,
+  "description": "A named combination of gear items, with the tanks, suit and weights it is dived with.\n\n``tanks``, ``suit`` and ``weights_kg`` are a template the dive editor copies into a dive.",
   "properties": {
     "id": {
       "minLength": 1,
@@ -26,6 +138,37 @@
       },
       "title": "Items",
       "type": "array"
+    },
+    "tanks": {
+      "items": {
+        "$ref": "#/$defs/TankRecord"
+      },
+      "title": "Tanks",
+      "type": "array"
+    },
+    "suit": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Suit"
+    },
+    "weights_kg": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Weights Kg"
     }
   },
   "required": [
