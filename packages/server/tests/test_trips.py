@@ -1,5 +1,6 @@
 from datetime import date
 
+import pytest
 from httpx import AsyncClient
 
 from divelog_server.store.models import DiveRecord, RegionRecord, SiteRecord, TripRecord
@@ -13,6 +14,7 @@ SITES = {
     "lake": SiteRecord(site_id="lake", name="Lake", country="NLD"),
     "cave": SiteRecord(site_id="cave", name="Cave", country="FRA", region="lot"),
 }
+HOME = frozenset({"NLD", "DEU", "BEL"})
 REGIONS = {
     "cenotes": RegionRecord(region="cenotes", name="The Quintana Roo cenotes", country="MEX"),
     "reef": RegionRecord(region="reef", name="The Playa del Carmen coast", country="MEX"),
@@ -48,7 +50,7 @@ def test_runs_abroad_split_on_gaps_and_home_dives() -> None:
         dive(8, "2026-03-01", "cave"),
         dive(9, "2026-03-01", "cave"),
     ]
-    index = derive_trips(dives, SITES, REGIONS)
+    index = derive_trips(dives, SITES, REGIONS, home_countries=HOME)
     assert list(index.trips) == ["quercy-causses-2026-03", "mexico-2026-02-2", "mexico-2026-02"]
     first = index.trips["mexico-2026-02"]
     assert first.numbers == [1, 2, 3]
@@ -79,7 +81,7 @@ def test_overrides_rename_merge_and_claim() -> None:
             {"id": "red-sea", "start": "2017-10-12", "end": "2017-10-20", "body_md": "Liveaboard."}
         ),
     ]
-    index = derive_trips(dives, SITES, REGIONS, overrides)
+    index = derive_trips(dives, SITES, REGIONS, overrides, HOME)
     assert set(index.trips) == {"yucatan", "red-sea"}
     assert index.trips["yucatan"].numbers == [1, 2, 3, 4]
     assert index.trips["yucatan"].name == "Yucatán"
@@ -129,7 +131,7 @@ async def test_trip_endpoints_respect_visibility(
 
 def test_home_countries_are_configurable() -> None:
     dives = [dive(1, "2026-02-06", "lake"), dive(2, "2026-02-07", "lake")]
-    assert derive_trips(dives, SITES, REGIONS).trips == {}
+    assert derive_trips(dives, SITES, REGIONS, home_countries=HOME).trips == {}
     index = derive_trips(dives, SITES, REGIONS, home_countries=frozenset({"BEL"}))
     assert [t.numbers for t in index.trips.values()] == [[1, 2]]
 
@@ -140,3 +142,28 @@ def test_settings_parse_home_countries() -> None:
     settings = Settings(HOME_COUNTRIES=" nld, fra ,,")
     assert settings.home_countries == frozenset({"NLD", "FRA"})
     assert Settings().SITE_NAME
+
+
+def test_no_home_countries_derives_no_trips() -> None:
+    dives = [
+        dive(1, "2026-02-06", "cenote"),
+        dive(2, "2026-02-07", "reef"),
+        dive(3, "2026-02-08", "lake"),
+    ]
+    assert derive_trips(dives, SITES, REGIONS).trips == {}
+    window = TripRecord.model_validate(
+        {"slug": "mexico", "name": "Mexico", "start_date": "2026-02-06", "end_date": "2026-02-07"}
+    )
+    index = derive_trips(dives, SITES, REGIONS, [window])
+    assert [t.numbers for t in index.trips.values()] == [[1, 2]]
+
+
+def test_generic_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    from divelog_server.core.config import Settings
+
+    for name in ("SITE_NAME", "OWNER_NAME", "HOME_COUNTRIES"):
+        monkeypatch.delenv(name, raising=False)
+    settings = Settings(_env_file=None)
+    assert settings.SITE_NAME == "divelog"
+    assert settings.OWNER_NAME == "Diver"
+    assert settings.home_countries == frozenset()

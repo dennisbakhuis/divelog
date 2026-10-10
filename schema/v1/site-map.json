@@ -1,0 +1,620 @@
+{
+  "$defs": {
+    "ChangeEntry": {
+      "additionalProperties": true,
+      "description": "One line of a record's changelog: the revision it produced, when, by whom and why.",
+      "properties": {
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "author": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Author"
+        },
+        "note": {
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision",
+        "date",
+        "note"
+      ],
+      "title": "ChangeEntry",
+      "type": "object"
+    },
+    "MapArea": {
+      "description": "A closed shape: the shore, a depth band, coral, sand or a wreck footprint.",
+      "properties": {
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "default": "outline",
+          "enum": [
+            "outline",
+            "depth",
+            "shallows",
+            "coral",
+            "sand",
+            "wall",
+            "wreck",
+            "reeds",
+            "other"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "default": "",
+          "maxLength": 80,
+          "title": "Label",
+          "type": "string"
+        },
+        "depth": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Depth"
+        },
+        "points": {
+          "items": {
+            "$ref": "#/$defs/MapPoint"
+          },
+          "maxItems": 500,
+          "title": "Points",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "MapArea",
+      "type": "object"
+    },
+    "MapEdge": {
+      "properties": {
+        "from": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "From",
+          "type": "string"
+        },
+        "to": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "To",
+          "type": "string"
+        },
+        "distance": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Distance"
+        },
+        "azimuth": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 360,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Azimuth"
+        },
+        "note": {
+          "default": "",
+          "maxLength": 120,
+          "title": "Note",
+          "type": "string"
+        },
+        "style": {
+          "default": "line",
+          "enum": [
+            "line",
+            "jump",
+            "unsurveyed",
+            "route"
+          ],
+          "title": "Style",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ],
+      "title": "MapEdge",
+      "type": "object"
+    },
+    "MapLine": {
+      "description": "An open or closed polyline: a shoreline, a depth contour, a dive path, a wall.",
+      "properties": {
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "default": "path",
+          "enum": [
+            "shoreline",
+            "depth",
+            "path",
+            "wall",
+            "pipe",
+            "line"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "label": {
+          "default": "",
+          "maxLength": 80,
+          "title": "Label",
+          "type": "string"
+        },
+        "depth": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Depth"
+        },
+        "closed": {
+          "default": false,
+          "title": "Closed",
+          "type": "boolean"
+        },
+        "points": {
+          "items": {
+            "$ref": "#/$defs/MapPoint"
+          },
+          "maxItems": 1000,
+          "title": "Points",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "title": "MapLine",
+      "type": "object"
+    },
+    "MapNode": {
+      "description": "A station or object on a site map.",
+      "properties": {
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        },
+        "type": {
+          "default": "station",
+          "enum": [
+            "entrance",
+            "station",
+            "t",
+            "jump",
+            "restriction",
+            "end",
+            "air",
+            "marker",
+            "entry",
+            "platform",
+            "wreck",
+            "object",
+            "buoy",
+            "hazard",
+            "poi"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "label": {
+          "default": "",
+          "maxLength": 80,
+          "title": "Label",
+          "type": "string"
+        },
+        "depth": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Depth"
+        },
+        "object_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "bus",
+                "car",
+                "plane",
+                "boat",
+                "wreck",
+                "platform",
+                "wipkip",
+                "statue",
+                "container",
+                "pipe",
+                "tree",
+                "ladder",
+                "cage",
+                "net",
+                "anchor",
+                "pinnacle",
+                "house",
+                "caravan",
+                "lighthouse",
+                "machine",
+                "ruin",
+                "gate",
+                "reel",
+                "postbox",
+                "bridge",
+                "shark",
+                "hopper",
+                "truck",
+                "turtle",
+                "other"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Object Kind"
+        },
+        "left": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Left"
+        },
+        "right": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Right"
+        },
+        "color": {
+          "anyOf": [
+            {
+              "pattern": "^#[0-9a-fA-F]{6}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color"
+        }
+      },
+      "required": [
+        "id",
+        "x",
+        "y"
+      ],
+      "title": "MapNode",
+      "type": "object"
+    },
+    "MapOrigin": {
+      "description": "Where (0, 0) of the drawing sits on the earth.",
+      "properties": {
+        "lat": {
+          "maximum": 90,
+          "minimum": -90,
+          "title": "Lat",
+          "type": "number"
+        },
+        "lon": {
+          "maximum": 180,
+          "minimum": -180,
+          "title": "Lon",
+          "type": "number"
+        }
+      },
+      "required": [
+        "lat",
+        "lon"
+      ],
+      "title": "MapOrigin",
+      "type": "object"
+    },
+    "MapPoint": {
+      "properties": {
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "title": "MapPoint",
+      "type": "object"
+    },
+    "MapUnderlay": {
+      "description": "A map shown beneath the canvas while drawing; never part of the rendered result.",
+      "properties": {
+        "ref": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        },
+        "scale": {
+          "default": 1,
+          "exclusiveMinimum": 0,
+          "title": "Scale",
+          "type": "number"
+        },
+        "dx": {
+          "default": 0,
+          "title": "Dx",
+          "type": "number"
+        },
+        "dy": {
+          "default": 0,
+          "title": "Dy",
+          "type": "number"
+        },
+        "rotation": {
+          "default": 0,
+          "maximum": 360,
+          "minimum": -360,
+          "title": "Rotation",
+          "type": "number"
+        },
+        "opacity": {
+          "default": 0.5,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Opacity",
+          "type": "number"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "title": "MapUnderlay",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "description": "A drawn map as stored in ``maps/drawn/<id>.json``, with its revision and changelog.",
+  "properties": {
+    "version": {
+      "default": 3,
+      "title": "Version",
+      "type": "integer"
+    },
+    "kind": {
+      "default": "stickmap",
+      "enum": [
+        "stickmap",
+        "sitemap"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "title": {
+      "default": "",
+      "maxLength": 120,
+      "title": "Title",
+      "type": "string"
+    },
+    "north": {
+      "default": 0,
+      "exclusiveMaximum": 360,
+      "minimum": 0,
+      "title": "North",
+      "type": "number"
+    },
+    "to_scale": {
+      "default": true,
+      "title": "To Scale",
+      "type": "boolean"
+    },
+    "nodes": {
+      "items": {
+        "$ref": "#/$defs/MapNode"
+      },
+      "maxItems": 2000,
+      "title": "Nodes",
+      "type": "array"
+    },
+    "edges": {
+      "items": {
+        "$ref": "#/$defs/MapEdge"
+      },
+      "maxItems": 4000,
+      "title": "Edges",
+      "type": "array"
+    },
+    "areas": {
+      "items": {
+        "$ref": "#/$defs/MapArea"
+      },
+      "maxItems": 200,
+      "title": "Areas",
+      "type": "array"
+    },
+    "lines": {
+      "items": {
+        "$ref": "#/$defs/MapLine"
+      },
+      "maxItems": 400,
+      "title": "Lines",
+      "type": "array"
+    },
+    "notes": {
+      "default": "",
+      "maxLength": 2000,
+      "title": "Notes",
+      "type": "string"
+    },
+    "origin": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MapOrigin"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "underlay": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MapUnderlay"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "id": {
+      "maxLength": 80,
+      "minLength": 1,
+      "title": "Id",
+      "type": "string"
+    },
+    "site_id": {
+      "minLength": 1,
+      "title": "Site Id",
+      "type": "string"
+    },
+    "sort": {
+      "default": 0,
+      "title": "Sort",
+      "type": "integer"
+    },
+    "revision": {
+      "default": 1,
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "changelog": {
+      "items": {
+        "$ref": "#/$defs/ChangeEntry"
+      },
+      "title": "Changelog",
+      "type": "array"
+    },
+    "updated_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Updated At"
+    },
+    "retired_nodes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Retired Nodes",
+      "type": "array"
+    },
+    "renamed_nodes": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Renamed Nodes",
+      "type": "object"
+    }
+  },
+  "required": [
+    "id",
+    "site_id"
+  ],
+  "title": "SiteMapRecord",
+  "type": "object"
+}

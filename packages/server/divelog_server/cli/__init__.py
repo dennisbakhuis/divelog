@@ -1,4 +1,4 @@
-"""The ``divelog`` command line: validate repositories, export schemas, split and inspect sites."""
+"""The ``divelog`` command line: validate repositories, export schemas, manage sites and tools."""
 
 import argparse
 import json
@@ -6,7 +6,7 @@ import sys
 from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 from pydantic import BaseModel
 
@@ -17,7 +17,18 @@ from divelog_server.store.manifest import (
     commons_root_for,
     read_manifest,
 )
-from divelog_server.store.models import RegionRecord, SiteCore, SiteMapRecord, SiteOverlayRecord
+from divelog_server.store.models import (
+    DiveRecord,
+    GearItemRecord,
+    GearSetupRecord,
+    PersonRecord,
+    RegionRecord,
+    SiteCore,
+    SiteMapRecord,
+    SiteOverlayRecord,
+    SiteRecord,
+    TripRecord,
+)
 from divelog_server.store.sources import CommonsSource
 from divelog_server.store.split import (
     MAP_RIGHTS,
@@ -28,6 +39,7 @@ from divelog_server.store.split import (
 )
 from divelog_server.store.store import Store
 from divelog_server.store.validate import Problem, validate_commons, validate_log
+from divelog_server.tools import access, media, shearwater_pnf, sitemap_osm, stickmap, tiles
 
 SCHEMAS: dict[str, type[BaseModel]] = {
     "site-core": SiteCore,
@@ -36,6 +48,12 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "region": RegionRecord,
     "media-manifest-entry": MediaManifestEntry,
     "divelog-manifest": Manifest,
+    "site": SiteRecord,
+    "dive": DiveRecord,
+    "person": PersonRecord,
+    "trip": TripRecord,
+    "gear-item": GearItemRecord,
+    "gear-setup": GearSetupRecord,
 }
 
 
@@ -48,10 +66,12 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--kind", choices=("log", "sites"), help="default: divelog.yaml kind")
     validate.add_argument("root", type=Path)
 
-    schema = commands.add_parser("schema", help="JSON Schema of the data files")
+    schema = commands.add_parser("schema", help="JSON Schema of the data files, OpenAPI document")
     schema_commands = schema.add_subparsers(dest="schema_command", required=True)
     export = schema_commands.add_parser("export", help="write <dir>/v1/*.json")
     export.add_argument("dir", type=Path)
+    openapi = schema_commands.add_parser("openapi", help="write the OpenAPI document (offline)")
+    openapi.add_argument("file", type=Path, help="target file, - for stdout")
 
     sites = commands.add_parser("sites", help="site commons tooling")
     site_commands = sites.add_subparsers(dest="sites_command", required=True)
@@ -65,6 +85,16 @@ def build_parser() -> argparse.ArgumentParser:
     split.add_argument("log_root", type=Path)
     status = site_commands.add_parser("status", help="origin, revision and pin of every site")
     status.add_argument("log_root", type=Path)
+    access.register(site_commands)
+
+    imports = commands.add_parser("import", help="convert dive computer exports")
+    import_commands = imports.add_subparsers(dest="import_command", required=True)
+    shearwater_pnf.register(import_commands)
+
+    tiles.register(commands)
+    sitemap_osm.register(commands)
+    stickmap.register(commands)
+    media.register(commands)
     return parser
 
 
@@ -72,8 +102,13 @@ def main(argv: Sequence[str] | None = None, out: TextIO | None = None) -> int:
     """Run one ``divelog`` command; returns the exit code."""
     args = build_parser().parse_args(argv)
     stream = out or sys.stdout
+    if hasattr(args, "run"):
+        code: int = args.run(args, stream)
+        return code
     if args.command == "validate":
         return cmd_validate(args.root, args.kind, stream)
+    if args.command == "schema" and args.schema_command == "openapi":
+        return cmd_schema_openapi(args.file, stream)
     if args.command == "schema":
         return cmd_schema_export(args.dir, stream)
     if args.sites_command == "split":
@@ -126,6 +161,26 @@ def cmd_schema_export(target: Path, out: TextIO) -> int:
         schema = model.model_json_schema()
         path.write_text(json.dumps(schema, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         print(path, file=out)
+    return 0
+
+
+def openapi_document() -> dict[str, Any]:
+    """The OpenAPI document of a freshly built app; no data repository is read."""
+    from divelog_server.main import create_app
+
+    document: dict[str, Any] = create_app().openapi()
+    return document
+
+
+def cmd_schema_openapi(target: Path, out: TextIO) -> int:
+    """``divelog schema openapi``: the API description for client type generation."""
+    text = json.dumps(openapi_document(), indent=2, ensure_ascii=False) + "\n"
+    if str(target) == "-":
+        out.write(text)
+        return 0
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(text, encoding="utf-8")
+    print(target, file=out)
     return 0
 
 

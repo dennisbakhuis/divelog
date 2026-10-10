@@ -318,7 +318,7 @@ def test_commons_manifest_and_fixed_files(result: SplitResult, to: Path) -> None
     )
     assert yaml.safe_load((to / "redirects.yaml").read_text()) == {}
     workflow = (to / ".github" / "workflows" / "validate.yml").read_text()
-    assert "uvx --from bakhuis-backend divelog validate --kind sites ." in workflow
+    assert "uvx --from divelog-server divelog validate --kind sites ." in workflow
 
 
 def test_commons_is_one_git_commit(result: SplitResult, to: Path) -> None:

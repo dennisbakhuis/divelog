@@ -1,0 +1,37 @@
+{
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "minLength": 1,
+      "title": "Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "description_md": {
+      "default": "",
+      "title": "Description Md",
+      "type": "string"
+    },
+    "sort": {
+      "default": 0,
+      "title": "Sort",
+      "type": "integer"
+    },
+    "items": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Items",
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "name"
+  ],
+  "title": "GearSetupRecord",
+  "type": "object"
+}

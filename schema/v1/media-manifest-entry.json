@@ -1,0 +1,33 @@
+{
+  "additionalProperties": true,
+  "description": "One photo in ``media/manifest.json``: origin, author, licence and whether it may be shown.",
+  "properties": {
+    "source": {
+      "default": "",
+      "title": "Source",
+      "type": "string"
+    },
+    "page": {
+      "default": "",
+      "title": "Page",
+      "type": "string"
+    },
+    "author": {
+      "default": "",
+      "title": "Author",
+      "type": "string"
+    },
+    "licence": {
+      "default": "",
+      "title": "Licence",
+      "type": "string"
+    },
+    "public": {
+      "default": false,
+      "title": "Public",
+      "type": "boolean"
+    }
+  },
+  "title": "MediaManifestEntry",
+  "type": "object"
+}

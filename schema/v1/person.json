@@ -1,0 +1,237 @@
+{
+  "$defs": {
+    "MediaRef": {
+      "additionalProperties": true,
+      "description": "A stored file attached to a dive, site, person or gear item.\n\n``key`` addresses the media storage; a ``repo:`` prefix points into the data repository\ninstead. ``variants`` names the rendered WebP sizes that exist for this file.",
+      "properties": {
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "key": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "default": "photo",
+          "title": "Kind",
+          "type": "string"
+        },
+        "mime": {
+          "default": "application/octet-stream",
+          "title": "Mime",
+          "type": "string"
+        },
+        "bytes": {
+          "default": 0,
+          "title": "Bytes",
+          "type": "integer"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Width"
+        },
+        "height": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Height"
+        },
+        "taken_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Taken At"
+        },
+        "caption": {
+          "default": "",
+          "title": "Caption",
+          "type": "string"
+        },
+        "credit": {
+          "default": "",
+          "title": "Credit",
+          "type": "string"
+        },
+        "sort": {
+          "default": 0,
+          "title": "Sort",
+          "type": "integer"
+        },
+        "public": {
+          "default": true,
+          "title": "Public",
+          "type": "boolean"
+        },
+        "variants": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Variants",
+          "type": "array"
+        },
+        "original_name": {
+          "default": "",
+          "title": "Original Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "key"
+      ],
+      "title": "MediaRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "minLength": 1,
+      "title": "Id",
+      "type": "string"
+    },
+    "slug": {
+      "minLength": 1,
+      "title": "Slug",
+      "type": "string"
+    },
+    "first_name": {
+      "title": "First Name",
+      "type": "string"
+    },
+    "last_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Name"
+    },
+    "alias": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Alias"
+    },
+    "aliases": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Aliases",
+      "type": "array"
+    },
+    "email": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Email"
+    },
+    "display": {
+      "default": "alias-or-first",
+      "enum": [
+        "alias-or-first",
+        "full",
+        "hidden"
+      ],
+      "title": "Display",
+      "type": "string"
+    },
+    "avatar": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Avatar"
+    },
+    "media": {
+      "items": {
+        "$ref": "#/$defs/MediaRef"
+      },
+      "title": "Media",
+      "type": "array"
+    },
+    "notes": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Notes"
+    },
+    "legacy_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Legacy Id"
+    },
+    "body_md": {
+      "default": "",
+      "title": "Body Md",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "slug",
+    "first_name"
+  ],
+  "title": "PersonRecord",
+  "type": "object"
+}

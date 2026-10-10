@@ -1,0 +1,90 @@
+{
+  "$defs": {
+    "ManifestSource": {
+      "additionalProperties": false,
+      "description": "A site source a log repository layers on; ``path`` is relative to the log root.",
+      "properties": {
+        "kind": {
+          "const": "commons",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Path"
+        },
+        "ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ref"
+        }
+      },
+      "required": [
+        "kind",
+        "name"
+      ],
+      "title": "ManifestSource",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "``divelog.yaml``: the data format version, what the repository is, and its sources.",
+  "properties": {
+    "format": {
+      "const": 1,
+      "default": 1,
+      "title": "Format",
+      "type": "integer"
+    },
+    "kind": {
+      "default": "log",
+      "enum": [
+        "log",
+        "sites"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Name"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/ManifestSource"
+      },
+      "title": "Sources",
+      "type": "array"
+    }
+  },
+  "title": "Manifest",
+  "type": "object"
+}

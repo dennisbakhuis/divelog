@@ -12,7 +12,7 @@ async def send_mail(to: str, subject: str, text: str) -> None:
     """Send a plain-text mail through the backend SMTP relay."""
     settings = get_settings()
     message = EmailMessage()
-    message["From"] = settings.BACKEND_SMTP_FROM
+    message["From"] = settings.BACKEND_SMTP_FROM or settings.OWNER_EMAIL
     message["To"] = to
     message["Subject"] = subject
     message.set_content(text)

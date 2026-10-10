@@ -38,7 +38,9 @@ def is_rate_limited(ip: str, now: datetime | None = None) -> bool:
 
 
 def is_owner(email: str) -> bool:
-    return email.strip().lower() == get_settings().OWNER_EMAIL.strip().lower()
+    """True for the configured owner address; nobody is the owner while it is unset."""
+    owner = get_settings().OWNER_EMAIL.strip().lower()
+    return bool(owner) and email.strip().lower() == owner
 
 
 async def create_magic_link(state: AuthState, email: str) -> str:

@@ -1,0 +1,188 @@
+{
+  "$defs": {
+    "MediaRef": {
+      "additionalProperties": true,
+      "description": "A stored file attached to a dive, site, person or gear item.\n\n``key`` addresses the media storage; a ``repo:`` prefix points into the data repository\ninstead. ``variants`` names the rendered WebP sizes that exist for this file.",
+      "properties": {
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "key": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "default": "photo",
+          "title": "Kind",
+          "type": "string"
+        },
+        "mime": {
+          "default": "application/octet-stream",
+          "title": "Mime",
+          "type": "string"
+        },
+        "bytes": {
+          "default": 0,
+          "title": "Bytes",
+          "type": "integer"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Width"
+        },
+        "height": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Height"
+        },
+        "taken_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Taken At"
+        },
+        "caption": {
+          "default": "",
+          "title": "Caption",
+          "type": "string"
+        },
+        "credit": {
+          "default": "",
+          "title": "Credit",
+          "type": "string"
+        },
+        "sort": {
+          "default": 0,
+          "title": "Sort",
+          "type": "integer"
+        },
+        "public": {
+          "default": true,
+          "title": "Public",
+          "type": "boolean"
+        },
+        "variants": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Variants",
+          "type": "array"
+        },
+        "original_name": {
+          "default": "",
+          "title": "Original Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "key"
+      ],
+      "title": "MediaRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "minLength": 1,
+      "title": "Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "category": {
+      "default": "other",
+      "title": "Category",
+      "type": "string"
+    },
+    "brand": {
+      "default": "",
+      "title": "Brand",
+      "type": "string"
+    },
+    "model": {
+      "default": "",
+      "title": "Model",
+      "type": "string"
+    },
+    "acquired": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Acquired"
+    },
+    "retired": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Retired"
+    },
+    "notes_md": {
+      "default": "",
+      "title": "Notes Md",
+      "type": "string"
+    },
+    "sort": {
+      "default": 0,
+      "title": "Sort",
+      "type": "integer"
+    },
+    "media": {
+      "items": {
+        "$ref": "#/$defs/MediaRef"
+      },
+      "title": "Media",
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "name"
+  ],
+  "title": "GearItemRecord",
+  "type": "object"
+}

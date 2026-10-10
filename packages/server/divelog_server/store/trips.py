@@ -14,7 +14,7 @@ from datetime import date
 from divelog_server.store.countries import country_name
 from divelog_server.store.models import DiveRecord, RegionRecord, SiteRecord, TripRecord
 
-DEFAULT_HOME_COUNTRIES = frozenset({"NLD", "DEU", "BEL"})
+DEFAULT_HOME_COUNTRIES: frozenset[str] = frozenset()
 MAX_GAP_DAYS = 4
 MIN_DIVES = 2
 DOMINANT_SHARE = 0.75
@@ -107,6 +107,9 @@ def trip_label(
 
 
 def _abroad(dive: DiveRecord, sites: dict[str, SiteRecord], home: frozenset[str]) -> bool:
+    """True when the dive's country is known and not a home country; never without a home."""
+    if not home:
+        return False
     code = dive_country(dive, sites)
     return code is not None and code.upper() not in home
 
@@ -159,7 +162,8 @@ def derive_trips(
         dive whose ``trip`` names it) before derivation; one without renames, describes or
         merges the derived trips its slug and ``merge`` list name.
     home_countries
-        ISO-3 codes of the countries that do not count as abroad.
+        ISO-3 codes of the countries that do not count as abroad. Empty means every dive is
+        at home: no trips are derived, only the ``trips/*.md`` records with dates group dives.
 
     Returns
     -------

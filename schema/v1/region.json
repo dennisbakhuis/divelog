@@ -1,0 +1,44 @@
+{
+  "additionalProperties": true,
+  "properties": {
+    "region": {
+      "minLength": 1,
+      "title": "Region",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "country": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Country"
+    },
+    "waters": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Waters",
+      "type": "array"
+    },
+    "body_md": {
+      "default": "",
+      "title": "Body Md",
+      "type": "string"
+    }
+  },
+  "required": [
+    "region",
+    "name"
+  ],
+  "title": "RegionRecord",
+  "type": "object"
+}

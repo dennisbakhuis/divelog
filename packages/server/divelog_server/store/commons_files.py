@@ -1,6 +1,6 @@
 """The fixed files of a new site commons: licence, readme, contribution guide, redirects, CI."""
 
-SERVER_PACKAGE = "bakhuis-backend"
+SERVER_PACKAGE = "divelog-server"
 
 LICENSE = """\
 # Licence

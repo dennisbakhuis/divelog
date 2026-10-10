@@ -549,6 +549,16 @@ async def test_health(client: AsyncClient) -> None:
     assert response.json()["repo"] == "disabled"
 
 
+async def test_version_publishes_the_compatibility_contract(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/version")
+    assert response.status_code == 200
+    assert response.json() == {
+        "version": get_settings().APP_VERSION,
+        "format": 1,
+        "api": 1,
+    }
+
+
 async def test_markdown_bodies_have_html_siblings(
     client: AsyncClient, owner_client: AsyncClient
 ) -> None:

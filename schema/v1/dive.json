@@ -1,0 +1,848 @@
+{
+  "$defs": {
+    "MediaRef": {
+      "additionalProperties": true,
+      "description": "A stored file attached to a dive, site, person or gear item.\n\n``key`` addresses the media storage; a ``repo:`` prefix points into the data repository\ninstead. ``variants`` names the rendered WebP sizes that exist for this file.",
+      "properties": {
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "key": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "default": "photo",
+          "title": "Kind",
+          "type": "string"
+        },
+        "mime": {
+          "default": "application/octet-stream",
+          "title": "Mime",
+          "type": "string"
+        },
+        "bytes": {
+          "default": 0,
+          "title": "Bytes",
+          "type": "integer"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Width"
+        },
+        "height": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Height"
+        },
+        "taken_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Taken At"
+        },
+        "caption": {
+          "default": "",
+          "title": "Caption",
+          "type": "string"
+        },
+        "credit": {
+          "default": "",
+          "title": "Credit",
+          "type": "string"
+        },
+        "sort": {
+          "default": 0,
+          "title": "Sort",
+          "type": "integer"
+        },
+        "public": {
+          "default": true,
+          "title": "Public",
+          "type": "boolean"
+        },
+        "variants": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Variants",
+          "type": "array"
+        },
+        "original_name": {
+          "default": "",
+          "title": "Original Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "key"
+      ],
+      "title": "MediaRef",
+      "type": "object"
+    },
+    "TankRecord": {
+      "description": "One cylinder (or twinset) carried on a dive, with the gas in it and the pressures read.",
+      "properties": {
+        "cylinder": {
+          "minLength": 1,
+          "title": "Cylinder",
+          "type": "string"
+        },
+        "volume_l": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Volume L"
+        },
+        "gas": {
+          "default": "air",
+          "enum": [
+            "air",
+            "nitrox",
+            "trimix",
+            "oxygen"
+          ],
+          "title": "Gas",
+          "type": "string"
+        },
+        "o2_pct": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "O2 Pct"
+        },
+        "o2_measured_pct": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "O2 Measured Pct"
+        },
+        "he_pct": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "He Pct"
+        },
+        "pressure_in_bar": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pressure In Bar"
+        },
+        "pressure_out_bar": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pressure Out Bar"
+        },
+        "role": {
+          "default": "back",
+          "enum": [
+            "back",
+            "stage",
+            "deco",
+            "bailout"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "cylinder"
+      ],
+      "title": "TankRecord",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "number": {
+      "minimum": 1,
+      "title": "Number",
+      "type": "integer"
+    },
+    "date": {
+      "format": "date",
+      "title": "Date",
+      "type": "string"
+    },
+    "time_in": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Time In"
+    },
+    "time_out": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Time Out"
+    },
+    "duration_min": {
+      "minimum": 0,
+      "title": "Duration Min",
+      "type": "number"
+    },
+    "max_depth_m": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Max Depth M",
+      "type": "number"
+    },
+    "avg_depth_m": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Avg Depth M"
+    },
+    "water_temp_c": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Water Temp C"
+    },
+    "surface_temp_c": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Surface Temp C"
+    },
+    "air_temp_c": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Air Temp C"
+    },
+    "thermocline_m": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Thermocline M"
+    },
+    "visibility_m": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Visibility M"
+    },
+    "visibility_raw": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Visibility Raw"
+    },
+    "title": {
+      "default": "",
+      "title": "Title",
+      "type": "string"
+    },
+    "site": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Site"
+    },
+    "site_name_raw": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Site Name Raw"
+    },
+    "area_raw": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Area Raw"
+    },
+    "country": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Country"
+    },
+    "section": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Section"
+    },
+    "people": {
+      "items": {
+        "type": "string"
+      },
+      "title": "People",
+      "type": "array"
+    },
+    "guide": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Guide"
+    },
+    "buddy_raw": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Buddy Raw"
+    },
+    "buddy_role": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Buddy Role"
+    },
+    "operator": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Operator"
+    },
+    "tags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Tags",
+      "type": "array"
+    },
+    "types_raw": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Types Raw"
+    },
+    "gas": {
+      "default": "air",
+      "title": "Gas",
+      "type": "string"
+    },
+    "o2_pct": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "O2 Pct"
+    },
+    "o2_measured_pct": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "O2 Measured Pct"
+    },
+    "he_pct": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "He Pct"
+    },
+    "gas_raw": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Gas Raw"
+    },
+    "mode": {
+      "default": "OC",
+      "title": "Mode",
+      "type": "string"
+    },
+    "suit": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Suit"
+    },
+    "weights_kg": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Weights Kg"
+    },
+    "cylinder": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cylinder"
+    },
+    "pressure_in_bar": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pressure In Bar"
+    },
+    "pressure_out_bar": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pressure Out Bar"
+    },
+    "tanks": {
+      "items": {
+        "$ref": "#/$defs/TankRecord"
+      },
+      "title": "Tanks",
+      "type": "array"
+    },
+    "safety_stop_min": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Safety Stop Min"
+    },
+    "pressure_group_in": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pressure Group In"
+    },
+    "pressure_group_out": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Pressure Group Out"
+    },
+    "surface_interval": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Surface Interval"
+    },
+    "conditions": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Conditions"
+    },
+    "difficulty": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Difficulty"
+    },
+    "course": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Course"
+    },
+    "rating": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Rating"
+    },
+    "gear_setup": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Gear Setup"
+    },
+    "trip": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Trip"
+    },
+    "computer": {
+      "items": {
+        "type": "integer"
+      },
+      "title": "Computer",
+      "type": "array"
+    },
+    "profiles": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Profiles",
+      "type": "array"
+    },
+    "media": {
+      "items": {
+        "$ref": "#/$defs/MediaRef"
+      },
+      "title": "Media",
+      "type": "array"
+    },
+    "cover": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cover"
+    },
+    "sketch": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Sketch"
+    },
+    "flags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Flags",
+      "type": "array"
+    },
+    "visibility": {
+      "default": "public",
+      "enum": [
+        "public",
+        "private",
+        "draft"
+      ],
+      "title": "Visibility",
+      "type": "string"
+    },
+    "notes_nl": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Notes Nl"
+    },
+    "map_annotation": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Map Annotation"
+    },
+    "import_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Import Id"
+    },
+    "body_md": {
+      "default": "",
+      "title": "Body Md",
+      "type": "string"
+    }
+  },
+  "required": [
+    "number",
+    "date",
+    "duration_min"
+  ],
+  "title": "DiveRecord",
+  "type": "object"
+}

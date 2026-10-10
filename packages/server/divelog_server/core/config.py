@@ -11,13 +11,13 @@ class Settings(BaseSettings):
     DATA_ROOT: str = "/data/repo"
     STATE_DIR: str = "/data/state"
     GIT_ENABLED: bool = True
-    GIT_AUTHOR_NAME: str = "Dennis Bakhuis"
+    GIT_AUTHOR_NAME: str = "divelog"
     GIT_AUTHOR_EMAIL: str = ""
     GIT_SSH_KEY_PATH: str = "/run/secrets/deploy_key"
 
-    SITE_NAME: str = "example.org"
-    OWNER_NAME: str = "Dennis"
-    HOME_COUNTRIES: str = "NLD,DEU,BEL"
+    SITE_NAME: str = "divelog"
+    OWNER_NAME: str = "Diver"
+    HOME_COUNTRIES: str = ""
     MAIL_SUBJECT: str = "Sign in to {site_name}"
     MAIL_GREETING: str = "Hi {owner_name},"
     COMMONS_ROOT: str = ""
@@ -25,10 +25,10 @@ class Settings(BaseSettings):
 
     APP_VERSION: str = "0.0.0-dev"
     DEBUG: bool = False
-    SITE_URL: str = "http://localhost:5373"
+    SITE_URL: str = "http://localhost:5173"
     TRUSTED_PROXY_IPS: str = ""
 
-    OWNER_EMAIL: str = "owner@example.org"
+    OWNER_EMAIL: str = ""
     SESSION_SECRET: str = "dev-only-session-secret-change-me-please"
     SESSION_COOKIE_NAME: str = "divelog_session"
     SESSION_DAYS: int = 30
@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     BACKEND_SMTP_USERNAME: str = ""
     BACKEND_SMTP_PASSWORD: str = ""
     BACKEND_SMTP_TLS: bool = False
-    BACKEND_SMTP_FROM: str = "login@example.org"
+    BACKEND_SMTP_FROM: str = ""
 
     @property
     def home_countries(self) -> frozenset[str]:

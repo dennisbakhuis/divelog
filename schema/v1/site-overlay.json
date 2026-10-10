@@ -1,0 +1,266 @@
+{
+  "$defs": {
+    "MediaRef": {
+      "additionalProperties": true,
+      "description": "A stored file attached to a dive, site, person or gear item.\n\n``key`` addresses the media storage; a ``repo:`` prefix points into the data repository\ninstead. ``variants`` names the rendered WebP sizes that exist for this file.",
+      "properties": {
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "key": {
+          "maxLength": 300,
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "kind": {
+          "default": "photo",
+          "title": "Kind",
+          "type": "string"
+        },
+        "mime": {
+          "default": "application/octet-stream",
+          "title": "Mime",
+          "type": "string"
+        },
+        "bytes": {
+          "default": 0,
+          "title": "Bytes",
+          "type": "integer"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Width"
+        },
+        "height": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Height"
+        },
+        "taken_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Taken At"
+        },
+        "caption": {
+          "default": "",
+          "title": "Caption",
+          "type": "string"
+        },
+        "credit": {
+          "default": "",
+          "title": "Credit",
+          "type": "string"
+        },
+        "sort": {
+          "default": 0,
+          "title": "Sort",
+          "type": "integer"
+        },
+        "public": {
+          "default": true,
+          "title": "Public",
+          "type": "boolean"
+        },
+        "variants": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Variants",
+          "type": "array"
+        },
+        "original_name": {
+          "default": "",
+          "title": "Original Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "key"
+      ],
+      "title": "MediaRef",
+      "type": "object"
+    },
+    "Price": {
+      "additionalProperties": true,
+      "properties": {
+        "date": {
+          "format": "date",
+          "title": "Date",
+          "type": "string"
+        },
+        "amount": {
+          "minimum": 0,
+          "title": "Amount",
+          "type": "number"
+        },
+        "currency": {
+          "default": "EUR",
+          "maxLength": 3,
+          "minLength": 3,
+          "title": "Currency",
+          "type": "string"
+        },
+        "note": {
+          "default": "",
+          "title": "Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "date",
+        "amount"
+      ],
+      "title": "Price",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "description": "A personal overlay on a commons site, ``sites/<id>.md`` with ``extends: commons``.\n\n``default_map`` is a preference among the merged maps; ``aliases``, ``maps`` and ``media``\nadd personal names, maps and photos to those of the commons record. ``base_revision`` is\nthe commons revision the overlay was written against; None in files from before revisions.",
+  "properties": {
+    "reference_maps": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Reference Maps",
+      "type": "array"
+    },
+    "prices": {
+      "items": {
+        "$ref": "#/$defs/Price"
+      },
+      "title": "Prices",
+      "type": "array"
+    },
+    "notes": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Notes"
+    },
+    "subsurface_uuid": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Subsurface Uuid"
+    },
+    "summary_override": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Summary Override"
+    },
+    "body_md": {
+      "default": "",
+      "title": "Body Md",
+      "type": "string"
+    },
+    "site_id": {
+      "minLength": 1,
+      "title": "Site Id",
+      "type": "string"
+    },
+    "extends": {
+      "const": "commons",
+      "title": "Extends",
+      "type": "string"
+    },
+    "base_revision": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Base Revision"
+    },
+    "default_map": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Default Map"
+    },
+    "aliases": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Aliases",
+      "type": "array"
+    },
+    "maps": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Maps",
+      "type": "array"
+    },
+    "media": {
+      "items": {
+        "$ref": "#/$defs/MediaRef"
+      },
+      "title": "Media",
+      "type": "array"
+    }
+  },
+  "required": [
+    "site_id",
+    "extends"
+  ],
+  "title": "SiteOverlayRecord",
+  "type": "object"
+}

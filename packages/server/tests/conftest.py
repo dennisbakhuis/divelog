@@ -7,6 +7,7 @@ os.environ["DEBUG"] = "true"
 os.environ["OWNER_EMAIL"] = "owner@example.com"
 os.environ["TRUSTED_PROXY_IPS"] = ""
 os.environ["GIT_ENABLED"] = "false"
+os.environ["HOME_COUNTRIES"] = "NLD,DEU,BEL"
 
 import pytest
 import pytest_asyncio

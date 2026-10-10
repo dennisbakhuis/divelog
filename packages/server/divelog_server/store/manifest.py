@@ -26,6 +26,9 @@ class ManifestSource(BaseModel):
     ref: str | None = None
 
 
+DATA_FORMAT = 1
+
+
 class Manifest(BaseModel):
     """``divelog.yaml``: the data format version, what the repository is, and its sources."""
 

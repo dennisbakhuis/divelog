@@ -1,0 +1,71 @@
+{
+  "additionalProperties": true,
+  "description": "A hand-written trip override in ``trips/<slug>.md``.\n\nWith both dates it claims every dive in that window; without, it renames, describes or\n(through ``merge``) joins derived trips whose slug it names. ``id``, ``start`` and ``end``\nare accepted as spellings of ``slug``, ``start_date`` and ``end_date``.",
+  "properties": {
+    "slug": {
+      "minLength": 1,
+      "title": "Slug",
+      "type": "string"
+    },
+    "name": {
+      "default": "",
+      "title": "Name",
+      "type": "string"
+    },
+    "start_date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Start Date"
+    },
+    "end_date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "End Date"
+    },
+    "cover": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cover"
+    },
+    "merge": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Merge",
+      "type": "array"
+    },
+    "body_md": {
+      "default": "",
+      "title": "Body Md",
+      "type": "string"
+    }
+  },
+  "required": [
+    "slug"
+  ],
+  "title": "TripRecord",
+  "type": "object"
+}

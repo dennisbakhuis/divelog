@@ -152,3 +152,48 @@ def test_commons_root_setting_wins_over_the_manifest(
 def test_no_manifest_no_commons(store: Store) -> None:
     assert store.commons is None
     assert deps.build_commons() is None
+
+
+SCHEMA_DIR = Path(__file__).resolve().parents[3] / "schema" / "v1"
+
+
+def test_help_lists_every_subcommand(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    usage = capsys.readouterr().out
+    for command in (
+        "validate",
+        "schema",
+        "sites",
+        "import",
+        "tiles",
+        "sitemap-osm",
+        "stickmap",
+        "media",
+    ):
+        assert command in usage
+
+
+def test_schema_openapi_writes_the_api_document(tmp_path: Path) -> None:
+    target = tmp_path / "out" / "openapi.json"
+    code, output = run("schema", "openapi", str(target))
+    assert code == 0
+    assert output.strip() == str(target)
+    document = json.loads(target.read_text(encoding="utf-8"))
+    assert document["openapi"].startswith("3.")
+    assert "/api/v1/version" in document["paths"]
+    assert "VersionOut" in document["components"]["schemas"]
+
+
+def test_schema_openapi_to_stdout() -> None:
+    code, output = run("schema", "openapi", "-")
+    assert code == 0
+    assert json.loads(output)["info"]["title"].endswith("API")
+
+
+@pytest.mark.skipif(not SCHEMA_DIR.is_dir(), reason="outside the monorepo checkout")
+def test_committed_schemas_match_a_fresh_export(tmp_path: Path) -> None:
+    run("schema", "export", str(tmp_path))
+    fresh = {p.name: p.read_text(encoding="utf-8") for p in (tmp_path / "v1").glob("*.json")}
+    committed = {p.name: p.read_text(encoding="utf-8") for p in SCHEMA_DIR.glob("*.json")}
+    assert committed == fresh, "schema/v1 is stale: run `divelog schema export schema`"
