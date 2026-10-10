@@ -27,7 +27,7 @@ directories, so a checkout owned by another user on the host still works.
 ```yaml
 services:
   divelog-server:
-    image: ghcr.io/<owner>/divelog-server:0.1.0
+    image: ghcr.io/<owner>/divelog-server:0.2.0
     restart: unless-stopped
     environment:
       SITE_NAME: Jane's dive log
@@ -57,7 +57,7 @@ services:
       - deploy_key
 
   web:
-    image: ghcr.io/<owner>/divelog-reference:0.1.0
+    image: ghcr.io/<owner>/divelog-reference:0.2.0
     restart: unless-stopped
     depends_on: [divelog-server]
     environment:
@@ -115,7 +115,10 @@ docker compose exec divelog-server divelog sites status /data/repo   # stale ove
 
 To pin what an instance was validated against, record the commons commit as `ref` in the
 log's `divelog.yaml`. Sites whose commons record moved past an overlay's `base_revision` or a
-fork's pin show as stale until you review them.
+fork's pin show as stale until you review them. `divelog commons pull --log /data/repo` does
+the pull, the pin and the log commit in one step and lists what became stale (a commons
+checkout without an upstream branch is not pulled; its local head is pinned). Review each stale
+site in its editor ("Mark as reviewed") or with `POST /api/v1/admin/sites/<id>/pin`.
 
 ## Basemap tiles and other tools
 
