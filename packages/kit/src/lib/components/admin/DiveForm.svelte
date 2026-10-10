@@ -12,7 +12,7 @@
     savePayload,
     type DiveTemplate,
   } from '$lib/core/admin/dive-input';
-  import { siteIdFor, slugify } from '$lib/core/admin/slug';
+  import { slugify } from '$lib/core/admin/slug';
   import type {
     DiveAdmin,
     CommonsSiteHit,
@@ -26,6 +26,7 @@
   import DiveRouteEditor from './DiveRouteEditor.svelte';
   import AnnotationStale from './AnnotationStale.svelte';
   import CommonsSearch from './CommonsSearch.svelte';
+  import SiteCreate from './SiteCreate.svelte';
   import { legLabel } from '$lib/core/dive/sharing';
   import type { DiveMapAnnotation, MapEdgeRef } from '$lib/core/dive/sitemap';
   import { getDivelog } from '$lib/core/dive/context';
@@ -34,8 +35,6 @@
   const presets = presetsFor(config);
 
   export type LastDive = { number: number; label: string; input: DiveTemplate };
-
-  const SITE_TYPES = ['sea', 'lake', 'quarry', 'cave', 'river', 'pool', 'wreck'];
 
   let {
     dive,
@@ -200,16 +199,7 @@
 
   let siteDialog = $state<HTMLDialogElement>();
   let newSite = $state({ name: '', country: '', type: 'sea', region: '' });
-  let siteError = $state('');
-  let siteBusy = $state(false);
-  const regionOptions = $derived(
-    [...regions].sort(
-      (a, b) =>
-        Number(b.country === newSite.country.toUpperCase()) -
-          Number(a.country === newSite.country.toUpperCase()) || a.name.localeCompare(b.name),
-    ),
-  );
-
+  let siteDialogOpen = $state(false);
   function openSiteDialog() {
     const like = site ?? recentSite;
     newSite = {
@@ -218,33 +208,15 @@
       type: 'sea',
       region: like?.region ?? '',
     };
-    siteError = '';
+    siteDialogOpen = true;
     siteDialog?.showModal();
   }
 
-  async function createSite(e: SubmitEvent) {
-    e.preventDefault();
-    const country = newSite.country.trim().toUpperCase();
-    siteBusy = true;
-    siteError = '';
-    try {
-      const created = await adminJson<Site>(adminApi('sites'), 'POST', {
-        site_id: siteIdFor(country, newSite.name),
-        name: newSite.name.trim(),
-        country,
-        type: newSite.type.trim() || 'sea',
-        region: newSite.region || null,
-      });
-      sites = [...sites.filter((s) => s.id !== created.id), created];
-      form.site_id = created.id;
-      siteQuery = '';
-      siteDialog?.close();
-      toast.show({ kind: 'success', message: `${created.name} created` });
-    } catch (err) {
-      siteError = err instanceof AdminApiError ? err.message : 'Could not create the site';
-    } finally {
-      siteBusy = false;
-    }
+  function useNewSite(created: Site) {
+    sites = [...sites.filter((s) => s.id !== created.id), created];
+    form.site_id = created.id;
+    siteQuery = '';
+    siteDialog?.close();
   }
 
   let adopting = $state(false);
@@ -840,48 +812,25 @@
   </div>
 </form>
 
-<dialog class="mini" bind:this={siteDialog} aria-labelledby="new-site-title">
-  <form onsubmit={createSite}>
-    <h2 id="new-site-title">New site</h2>
-    <label>Name<input type="text" bind:value={newSite.name} required maxlength="200" /></label>
-    <div class="field-row">
-      <label
-        >Country (ISO3)<input
-          type="text"
-          bind:value={newSite.country}
-          required
-          minlength="3"
-          maxlength="3"
-          placeholder="MEX"
-        /></label
-      >
-      <label>Type<input type="text" list="site-types" bind:value={newSite.type} required /></label>
-    </div>
-    <datalist id="site-types">
-      {#each SITE_TYPES as t (t)}<option value={t}></option>{/each}
-    </datalist>
-    <label>
-      Region
-      <select bind:value={newSite.region}>
-        <option value="">— none —</option>
-        {#each regionOptions as r (r.id)}<option value={r.id}>{r.name}</option>{/each}
-      </select>
-    </label>
-    {#if newSite.name.trim() && newSite.country.trim().length === 3}
-      <p class="muted">id <code>{siteIdFor(newSite.country, newSite.name)}</code></p>
-    {/if}
-    {#if siteError}<p class="error">{siteError}</p>{/if}
-    <div class="mini-actions">
-      <button type="submit" class="dl-btn dl-btn-solid dl-btn-sm" disabled={siteBusy}
-        >{siteBusy ? 'Creating…' : 'Create site'}</button
-      >
-      <button
-        type="button"
-        class="dl-btn dl-btn-ghost dl-btn-sm"
-        onclick={() => siteDialog?.close()}>Cancel</button
-      >
-    </div>
-  </form>
+<dialog
+  class="mini"
+  bind:this={siteDialog}
+  aria-labelledby="new-site-title"
+  style="width: min(880px, calc(100vw - 24px))"
+  onclose={() => (siteDialogOpen = false)}
+>
+  <h2 id="new-site-title">New site</h2>
+  {#if siteDialogOpen}
+    <SiteCreate
+      compact
+      {regions}
+      near={nearSite}
+      initial={{ name: newSite.name, country: newSite.country, region: newSite.region }}
+      onCreated={(created) => useNewSite(created)}
+      onUse={(chosen) => useNewSite(chosen)}
+      onCancel={() => siteDialog?.close()}
+    />
+  {/if}
 </dialog>
 
 <dialog class="mini" bind:this={tripDialog} aria-labelledby="new-trip-title">
