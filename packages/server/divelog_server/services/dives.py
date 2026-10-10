@@ -74,6 +74,9 @@ def attachment_out(media: MediaRef) -> AttachmentOut:
         original_name=media.original_name,
         url=media_url(media.key),
         variants={name: media_url(variant_key(media.key, name)) for name in media.variants},
+        licence=media.licence,
+        author=media.author,
+        source=media.source,
     )
 
 
