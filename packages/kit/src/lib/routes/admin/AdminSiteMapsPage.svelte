@@ -20,7 +20,14 @@
   import { announce } from '$lib/core/ui/announce.js';
   import ChangeList from '$lib/components/shell/ChangeList.svelte';
 
-  let { site }: { site: Site } = $props();
+  let {
+    site,
+    unsavedWork = $bindable(false),
+  }: {
+    site: Site;
+    /** Mirrors whether a map holds unsaved work, so the workspace can ask before a tab switch. */
+    unsavedWork?: boolean;
+  } = $props();
   const drawn = $derived(
     site.maps.flatMap((m: MapRef) => (m.collection === 'drawn' && m.drawn ? [m.drawn] : [])),
   );
@@ -71,6 +78,10 @@
   );
   /** A new draft holds unsaved work from the start: it exists nowhere else yet. */
   const unsaved = $derived(dirty || isNew);
+
+  $effect(() => {
+    unsavedWork = unsaved;
+  });
 
   async function mayDiscard(): Promise<boolean> {
     if (!unsaved) return true;

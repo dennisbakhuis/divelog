@@ -56,7 +56,28 @@
     return id === 'details' ? urls.admin.site(site.id) : `${urls.admin.site(site.id)}#${id}`;
   }
 
+  let mapsUnsaved = $state(false);
+
+  /** Leaving the Maps tab drops an unsaved map draft: ask first, and stay unless confirmed. */
   function onTab(id: string) {
+    if (mapsUnsaved && id !== 'maps') {
+      tab = 'maps';
+      void confirmDialog({
+        title: 'Leave the map with unsaved changes?',
+        confirmLabel: 'Leave',
+        cancelLabel: 'Stay',
+      }).then((ok) => {
+        if (!ok) return;
+        mapsUnsaved = false;
+        tab = id;
+        writeTabUrl(id);
+      });
+      return;
+    }
+    writeTabUrl(id);
+  }
+
+  function writeTabUrl(id: string) {
     try {
       replaceState(tabUrl(id), {});
     } catch {
@@ -161,7 +182,7 @@
         </section>
       {/if}
     {:else if id === 'maps'}
-      <AdminSiteMapsPage {site} />
+      <AdminSiteMapsPage {site} bind:unsavedWork={mapsUnsaved} />
     {:else if id === 'photos'}
       <Attachments {site} />
     {:else if id === 'dives'}

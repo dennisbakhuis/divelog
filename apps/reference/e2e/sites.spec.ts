@@ -27,7 +27,9 @@ test.describe('site creation and the site workspace', () => {
     await context.addCookies([{ name: OWNER_COOKIE, value: '1', url: baseURL! }]);
   });
 
-  test('a site from a tap on the map, to its maps, in three actions', async ({ page }) => {
+  test('a site with a map in five actions: name, tap, create, OpenStreetMap, save', async ({
+    page,
+  }) => {
     const errors = watchConsole(page);
     let actions = 0;
     await page.goto('/admin/sites/new');
@@ -63,7 +65,16 @@ test.describe('site creation and the site workspace', () => {
     await expect(page).toHaveURL(new RegExp(`/admin/sites/${iso3}-benchmark-quarry/maps$`));
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Benchmark Quarry');
     await expect(page.getByRole('tab', { name: /^Maps/ })).toHaveAttribute('aria-selected', 'true');
-    expect(actions).toBeLessThanOrEqual(3);
+    expect(actions).toBe(3);
+
+    await page.getByRole('button', { name: 'Start from OpenStreetMap' }).click();
+    actions += 1;
+    await expect(page.getByText('new · not saved yet')).toBeVisible();
+    await page.getByRole('button', { name: 'Save map', exact: true }).click();
+    actions += 1;
+    await expect(page.getByText('Map saved').first()).toBeVisible();
+    await expect(page.locator('.map-row').first()).toContainText('revision 1');
+    expect(actions).toBeLessThanOrEqual(5);
     expect(errors.filter((e) => !/404|Failed to load resource/.test(e))).toEqual([]);
   });
 

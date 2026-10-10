@@ -176,4 +176,33 @@ describe('AdminSiteEditPage workspace', () => {
     expect(tabNamed(tabs, 'Location').textContent).toBe('Location (not placed)');
     unmount(app);
   });
+
+  it('asks before leaving the Maps tab with an unsaved map', async () => {
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirm);
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const { target, app, tabs, selected } = render(fakeSite(), 'site-maps');
+    const blank = [...target.querySelectorAll('button')].find(
+      (b) => b.textContent?.trim() === 'Blank stick map',
+    )!;
+    blank.click();
+    await settle();
+    tabNamed(tabs, 'Details').click();
+    await settle();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(selected()?.textContent?.trim()).toBe('Maps');
+    confirm.mockReturnValue(true);
+    tabNamed(tabs, 'Details').click();
+    await settle();
+    expect(selected()?.textContent?.trim()).toBe('Details');
+    expect(navigation.replaceState).toHaveBeenLastCalledWith('/admin/sites/nld-example', {});
+    unmount(app);
+  });
 });

@@ -283,7 +283,7 @@ from `GET /meta/licences`, the author and a source URL) and **Dives** (the dives
 "Log a dive here"). Details and Location share one form, so switching between them keeps what
 was typed; the save bar carries a "What changed" note that becomes the revision's changelog
 entry (`SiteIn.note`). Tabs other than Details and Maps live in the URL hash (`#location`).
-Leaving with unsaved changes asks first.
+Leaving the page with unsaved changes, or the Maps tab with an unsaved map, asks first.
 
 ## Map editor
 
