@@ -58,6 +58,50 @@ one your change is in the pull request.
 - Keep commits focused and write messages that say why.
 - Sign off every commit (Developer Certificate of Origin, below): `git commit -s`.
 
+## Proposing a site
+
+A site from your own log (or a fork of a commons site) goes to the shared commons as a pull
+request from a branch of your commons checkout. `propose` never changes the log:
+
+```sh
+divelog sites propose fra-ressel --log ~/divelog-data --commons ~/divelog-sites --dry-run
+divelog sites propose fra-ressel --log ~/divelog-data --commons ~/divelog-sites \
+    --author "Ann Diver <ann@example.org>"
+```
+
+It refuses a dirty checkout, then creates `propose/<site-id>` from the current branch
+(`--branch` names another) and writes the objective record (notes, prices, reference maps and
+the Subsurface id stay home; a first-person body or summary is held back and reported, so write
+a neutral one on the branch), the site's drawn maps renumbered `<site>-<n>` with `copied_from`
+(underlays that do not resolve in the commons, such as `reference:` scans, are dropped;
+`--skip-map <id>` keeps a map out), and the public photos with an allowlisted licence, with
+their `media/manifest.json` entries. A fork lands as the next commons revision with an
+"Updated from <log>'s fork" changelog entry. The validator runs (`--no-validate` skips it); on
+a failure the branch stays checked out for fixing and the command exits 1. On success it
+commits "Propose <site-id>: <name>" with a sign-off, switches back and prints the next steps:
+
+```sh
+git -C ~/divelog-sites push -u origin propose/fra-ressel
+cd ~/divelog-sites; gh pr create --head propose/fra-ressel --title 'Propose fra-ressel: Ressel' \
+    --body-file ~/divelog-sites/.git/divelog-propose-fra-ressel.md
+```
+
+The body file carries the licence statement (ODbL for the data, CC BY-SA 4.0 for descriptions,
+maps and photos) and the DCO line. Once the pull request is merged, pull the commons, which
+pins the log's `divelog.yaml` and lists the overlays and forks that are now stale, and adopt the
+site, which turns the log's full record into an overlay pinned at the commons revision, removes
+the copied personal maps and points every dive annotation at the commons copy:
+
+```sh
+divelog commons pull --log ~/divelog-data            # --ref <sha> pins another commit
+divelog sites adopt fra-ressel --log ~/divelog-data   # --keep-maps keeps the personal maps
+divelog sites adopt --all --log ~/divelog-data        # every site this log proposed
+```
+
+Both commit the log ("Pin the commons at <sha>", "Adopt <site-id> from the commons"). A running
+server offers the pull as `POST /api/v1/admin/commons/pull` (with `COMMONS_GIT_ENABLED=true`)
+and the adopt-a-site search as `GET /api/v1/admin/commons/sites?q=&near=lat,lon&limit=`.
+
 ## Developer Certificate of Origin
 
 By signing off a commit (`Signed-off-by: Your Name <you@example.org>`) you certify the

@@ -460,7 +460,7 @@
     }
   },
   "additionalProperties": true,
-  "description": "A drawn map as stored in ``maps/drawn/<id>.json``, with its revision and changelog.",
+  "description": "A drawn map as stored in ``maps/drawn/<id>.json``, with its revision and changelog.\n\n``copied_from`` names the map a copy started from, ``<id>@<revision>``: a commons map\nproposed from a personal one, or a personal copy of a commons map.",
   "properties": {
     "version": {
       "default": 3,
@@ -582,6 +582,18 @@
       },
       "title": "Changelog",
       "type": "array"
+    },
+    "copied_from": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Copied From"
     },
     "updated_at": {
       "anyOf": [

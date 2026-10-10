@@ -932,6 +932,48 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/admin/commons/pull': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Admin Commons Pull
+     * @description Fast-forward the commons checkout, pin ``divelog.yaml`` to it, list the stale sites.
+     *
+     *     409 when there is no commons, ``COMMONS_GIT_ENABLED`` is off, or git refuses the pull.
+     */
+    post: operations['admin_commons_pull_api_v1_admin_commons_pull_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/commons/sites': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Admin Commons Sites
+     * @description Adopt-a-site search: commons sites by name, alias or area, or near a point.
+     */
+    get: operations['admin_commons_sites_api_v1_admin_commons_sites_get'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/health': {
     parameters: {
       query?: never;
@@ -1137,6 +1179,82 @@ export interface components {
       note: string;
     } & {
       [key: string]: unknown;
+    };
+    /**
+     * CommonsPullOut
+     * @description The result of a commons pull: heads before and after, the manifest pin, stale sites.
+     */
+    CommonsPullOut: {
+      /** Previous Head */
+      previous_head: string | null;
+      /** Head */
+      head: string | null;
+      /**
+       * Pinned
+       * @default false
+       */
+      pinned: boolean;
+      /** Stale */
+      stale: components['schemas']['CommonsStaleSite'][];
+    };
+    /**
+     * CommonsSiteHit
+     * @description A commons site offered for adoption, with what this log already has of it.
+     */
+    CommonsSiteHit: {
+      /** Id */
+      id: string;
+      /** Name */
+      name: string;
+      /** Country */
+      country: string | null;
+      /** Type */
+      type: string;
+      /** Lat */
+      lat: number | null;
+      /** Lon */
+      lon: number | null;
+      /** Area */
+      area: string | null;
+      /**
+       * Dives
+       * @default 0
+       */
+      dives: number;
+      /**
+       * Has Dives
+       * @default false
+       */
+      has_dives: boolean;
+      /**
+       * Origin
+       * @enum {string}
+       */
+      origin: 'log' | 'commons' | 'fork';
+      /** Distance Km */
+      distance_km: number | null;
+    };
+    /**
+     * CommonsStaleSite
+     * @description An overlay or fork the commons has moved past; ``new`` when this pull made it stale.
+     */
+    CommonsStaleSite: {
+      /** Site Id */
+      site_id: string;
+      /**
+       * Origin
+       * @enum {string}
+       */
+      origin: 'log' | 'commons' | 'fork';
+      /** Pinned Revision */
+      pinned_revision: number | null;
+      /** Current Revision */
+      current_revision: number;
+      /**
+       * New
+       * @default true
+       */
+      new: boolean;
     };
     /** CountryStat */
     CountryStat: {
@@ -5557,6 +5675,60 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['ImportRecordOut'][];
+        };
+      };
+    };
+  };
+  admin_commons_pull_api_v1_admin_commons_pull_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CommonsPullOut'];
+        };
+      };
+    };
+  };
+  admin_commons_sites_api_v1_admin_commons_sites_get: {
+    parameters: {
+      query?: {
+        q?: string;
+        /** @description lat,lon; sites within 25 km */
+        near?: string | null;
+        limit?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CommonsSiteHit'][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
         };
       };
     };

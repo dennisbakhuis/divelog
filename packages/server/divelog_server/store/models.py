@@ -405,7 +405,11 @@ class TripRecord(Record):
 
 
 class SiteMapRecord(SiteMap):
-    """A drawn map as stored in ``maps/drawn/<id>.json``, with its revision and changelog."""
+    """A drawn map as stored in ``maps/drawn/<id>.json``, with its revision and changelog.
+
+    ``copied_from`` names the map a copy started from, ``<id>@<revision>``: a commons map
+    proposed from a personal one, or a personal copy of a commons map.
+    """
 
     model_config = ConfigDict(extra="allow")
 
@@ -414,6 +418,7 @@ class SiteMapRecord(SiteMap):
     sort: int = 0
     revision: int = Field(default=1, ge=1)
     changelog: list[ChangeEntry] = Field(default_factory=list)
+    copied_from: str | None = None
     updated_at: datetime | None = None
     retired_nodes: list[str] = Field(default_factory=list)
     renamed_nodes: dict[str, str] = Field(default_factory=dict)

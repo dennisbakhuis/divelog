@@ -50,6 +50,7 @@ from divelog_server.store.validate import (
     SAFE_UNDERLAYS,
     SITE_ID,
     Problem,
+    errors,
     first_person,
     validate_commons,
 )
@@ -632,7 +633,7 @@ def commit_commons(root: Path, message: str, author: str, email: str) -> str | N
 def verify(plan: SplitPlan) -> list[Problem]:
     """Load the split result and compare it with the log before the split."""
     to = plan.options.to
-    problems = list(validate_commons(to))
+    problems = errors(validate_commons(to))
     store = Store(plan.options.log_root, commons=CommonsSource(to))
     store.load()
     if len(store.sites) != plan.site_count:
@@ -675,9 +676,9 @@ def run_split(options: SplitOptions, *, dry_run: bool = False) -> SplitResult:
         with tempfile.TemporaryDirectory() as tmp:
             staged = Path(tmp) / options.to.name
             write_commons(plan, staged)
-            return SplitResult(plan, validate_commons(staged), stage="dry-run")
+            return SplitResult(plan, errors(validate_commons(staged)), stage="dry-run")
     write_commons(plan, options.to)
-    problems = validate_commons(options.to)
+    problems = errors(validate_commons(options.to))
     if problems:
         return SplitResult(plan, problems, stage="commons")
     head = None
