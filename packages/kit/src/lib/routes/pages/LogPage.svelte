@@ -23,6 +23,7 @@
   import type { Snapshot } from '@sveltejs/kit';
   import { getDivelog } from '$lib/core/dive/context';
   import { copyFor } from '$lib/core/dive/config';
+  import OwnerBar from '$lib/components/shell/OwnerBar.svelte';
 
   const { urls, config } = getDivelog();
   const copy = copyFor(config);
@@ -76,6 +77,12 @@
   <p class="dl-kicker">Dive log</p>
   <h1>Every dive, <span class="accent">on the record</span></h1>
   <p class="lede">{copy.logLede}</p>
+  {#if data.owner}
+    <OwnerBar
+      edit={{ label: 'Edit dives', href: data.editHref }}
+      actions={[{ label: '+ New dive', href: urls.admin.newDive() }]}
+    />
+  {/if}
 </section>
 
 <StatsBand stats={data.stats} />
@@ -129,7 +136,7 @@
     />
   </div>
   <div class="what" data-reveal>
-    <DiveFilters envelope={data.envelope} {filter} onChange={update} />
+    <DiveFilters envelope={data.envelope} {filter} onChange={update} count={filtered.length} />
   </div>
 </section>
 

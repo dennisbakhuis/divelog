@@ -115,7 +115,10 @@
               aria-pressed={selected?.number === r.number}
               class:active={selected?.number === r.number}
               title={r.title}
-              onclick={() => (shown = r.number)}>{formatDate(r.date)} · #{r.number}</button
+              onclick={() => (shown = r.number)}
+              >{formatDate(r.date)} · #{r.number}{#if r.title}<span class="dl-visually-hidden"
+                  >, {r.title}</span
+                >{/if}</button
             >
           {/each}
           <button
