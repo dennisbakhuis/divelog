@@ -7,3 +7,5 @@ export const COMMONS_NAME: string;
 export const OWNER_COOKIE: string;
 export function ownerFixtures(): Record<string, unknown>;
 export function commonsSearch(q: string | null): Record<string, unknown>[];
+export function adminSite(id: string): Record<string, unknown> | null;
+export function mapSeed(id: string): Record<string, unknown> | null;

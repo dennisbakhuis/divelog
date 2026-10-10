@@ -778,29 +778,30 @@
       >
     {/if}
     <span class="spacer"></span>
-    <button
-      type="button"
-      class="dl-btn dl-btn-ghost dl-btn-sm"
-      onclick={undo}
-      disabled={!history.length}>Undo</button
-    >
-    <button
-      type="button"
-      class="dl-btn dl-btn-ghost dl-btn-sm"
-      onclick={deleteSelection}
-      disabled={!hasSelection}>Delete</button
-    >
-    <button type="button" class="dl-btn dl-btn-ghost dl-btn-sm" onclick={openJson}>JSON</button>
-    <button type="button" class="dl-btn dl-btn-ghost dl-btn-sm danger" onclick={clear}>Clear</button
-    >
-    <span class="help-wrap">
-      <Popover bind:open={helpOpen} label="Keyboard shortcuts" focus="first" class="help">
-        {#snippet trigger(props)}
-          <button {...props} class="dl-btn dl-btn-ghost dl-btn-sm" aria-label="Keyboard shortcuts"
-            >?</button
-          >
-        {/snippet}
-        {#snippet children()}
+    <span class="tool-actions">
+      <button
+        type="button"
+        class="dl-btn dl-btn-ghost dl-btn-sm"
+        onclick={undo}
+        disabled={!history.length}>Undo</button
+      >
+      <button
+        type="button"
+        class="dl-btn dl-btn-ghost dl-btn-sm"
+        onclick={deleteSelection}
+        disabled={!hasSelection}>Delete</button
+      >
+      <button type="button" class="dl-btn dl-btn-ghost dl-btn-sm" onclick={openJson}>JSON</button>
+      <button type="button" class="dl-btn dl-btn-ghost dl-btn-sm danger" onclick={clear}
+        >Clear</button
+      >
+      <span class="help-wrap">
+        <Popover bind:open={helpOpen} label="Keyboard shortcuts" focus="first" class="help">
+          {#snippet trigger(props)}
+            <button {...props} class="dl-btn dl-btn-ghost dl-btn-sm" aria-label="Keyboard shortcuts"
+              >?</button
+            >
+          {/snippet}
           <label class="switch">
             <input
               type="checkbox"
@@ -819,8 +820,8 @@
               <dd>{what}</dd>
             {/each}
           </dl>
-        {/snippet}
-      </Popover>
+        </Popover>
+      </span>
     </span>
   </div>
 
@@ -1327,9 +1328,9 @@
                 {#if locatorError}<p class="error" role="alert">{locatorError}</p>{/if}
                 <p class="muted">
                   The basemap is drawn at the map's origin, north-up and to scale, so it needs no
-                  aligning. It stays in this browser and is never saved.{#if locatorAttribution}
-                    Basemap {locatorAttribution}.{/if}
+                  aligning. It stays in this browser and is never saved.
                 </p>
+                {#if locatorAttribution}<p class="muted">Basemap {locatorAttribution}</p>{/if}
               </div>
             {/if}
             {#if underlays.length}
@@ -1528,7 +1529,7 @@
     gap: 8px;
     align-items: center;
   }
-  .inline {
+  .editor .inline {
     flex-direction: row;
     align-items: center;
     gap: 6px;
@@ -1542,7 +1543,7 @@
   .row input[type='checkbox'] {
     width: auto;
   }
-  .row {
+  .editor .row {
     flex-direction: row;
     align-items: center;
     gap: 8px;
@@ -1619,7 +1620,13 @@
     color: var(--dl-color-error);
     font-size: 13px;
   }
-  .help-wrap {
+  .tool-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .toolbar {
     position: relative;
   }
   .help-wrap :global(.help) {
@@ -1742,8 +1749,18 @@
       background: var(--dl-color-bg-elevated);
       border-top: 1px solid var(--dl-color-border);
     }
-    .toolbar :global(.tools) {
+    .toolbar :global(.tools),
+    .tool-actions {
       flex-wrap: nowrap;
+    }
+    .help-wrap :global(.help) {
+      position: fixed;
+      left: 16px;
+      right: 16px;
+      top: auto;
+      bottom: 72px;
+      min-width: 0;
+      max-width: none;
     }
     .toolbar :global(.dl-tool),
     .toolbar .dl-btn {

@@ -650,6 +650,68 @@ export function ownerFixtures() {
   };
 }
 
+/** `GET /admin/sites/{id}` of a log site: the site as the editor loads it, with no maps yet. */
+export function adminSite(id) {
+  const site = SITES.find((s) => s.slug === id);
+  return site ? siteFull(site) : null;
+}
+
+/**
+ * `POST /admin/sites/{id}/maps/seed`: a starter site map as the server builds it from
+ * OpenStreetMap (a closed shoreline round the lake, the entry at the origin), not saved.
+ */
+export function mapSeed(id) {
+  const site = SITES.find((s) => s.slug === id);
+  if (!site || site.lat == null || site.lon == null) return null;
+  return {
+    source: 'osm',
+    radius_m: 400,
+    elements: 2,
+    map: {
+      version: 3,
+      kind: 'sitemap',
+      title: site.name,
+      north: 0,
+      to_scale: true,
+      nodes: [
+        {
+          id: 'entry',
+          x: 0,
+          y: 0,
+          type: 'entry',
+          label: 'Entry',
+          depth: null,
+          object_kind: null,
+          left: null,
+          right: null,
+          color: null,
+        },
+      ],
+      edges: [],
+      areas: [],
+      lines: [
+        {
+          id: 'shore',
+          kind: 'shoreline',
+          label: '',
+          depth: null,
+          closed: true,
+          points: [
+            { x: -120, y: -60 },
+            { x: 90, y: -110 },
+            { x: 160, y: 40 },
+            { x: 20, y: 130 },
+            { x: -140, y: 70 },
+          ],
+        },
+      ],
+      notes: 'Starter map from OpenStreetMap data (ODbL).',
+      origin: { lat: site.lat, lon: site.lon },
+      underlay: null,
+    },
+  };
+}
+
 /** `GET /admin/commons/sites?q=`: the commons hits whose name contains `q`. */
 export function commonsSearch(q) {
   const needle = (q ?? '').trim().toLowerCase();
