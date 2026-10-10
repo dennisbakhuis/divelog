@@ -98,7 +98,7 @@
           // no list: nothing is locked and the server still refuses objective changes
         });
     fetchCountries()
-      .then((list) => (countries = list))
+      .then((list) => (countries = Array.isArray(list) ? list : []))
       .catch(() => {
         // the site's own code stays selectable
       });

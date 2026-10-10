@@ -132,7 +132,7 @@
   onMount(() => {
     if (autofocus) nameInput?.focus();
     fetchCountries()
-      .then((list) => (countries = list))
+      .then((list) => (countries = Array.isArray(list) ? list : []))
       .catch(() => {
         // no list: the pin and the site's own code still fill the select
       });

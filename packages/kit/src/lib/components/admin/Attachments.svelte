@@ -38,7 +38,7 @@
   onMount(() => {
     if (!site) return;
     fetchLicences()
-      .then((list) => (licences = list))
+      .then((list) => (licences = Array.isArray(list) ? list : []))
       .catch(() => {
         // no list: a set licence still shows by its id
       });
