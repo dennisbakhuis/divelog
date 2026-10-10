@@ -1,0 +1,282 @@
+/*
+ * Dive log utility classes, written against the `--dl-*` tokens.
+ *
+ * Scoped with `:where(.divelog)` so they only apply inside a DivelogProvider
+ * and carry the same specificity as the bare utility classes they replace;
+ * component styles that refine them keep winning exactly as before.
+ */
+
+:where(.divelog) .dl-container {
+  width: 100%;
+  max-width: var(--dl-container-max);
+  margin: 0 auto;
+  padding: 0 var(--dl-space-page-x);
+}
+:where(.divelog) .dl-container.dl-narrow {
+  max-width: var(--dl-container-narrow);
+}
+:where(.divelog) .dl-container.dl-detail {
+  max-width: var(--dl-container-detail);
+}
+
+:where(.divelog) .dl-kicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  font-family: var(--dl-font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dl-color-accent);
+}
+:where(.divelog) .dl-kicker::before {
+  content: '';
+  width: 22px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.7;
+}
+
+:where(.divelog) .dl-num {
+  font-family: var(--dl-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+:where(.divelog) .dl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.35rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-family: var(--dl-font-display);
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  text-decoration: none;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+:where(.divelog) .dl-btn:hover {
+  transform: translateY(-1px);
+}
+:where(.divelog) .dl-btn-solid {
+  background: var(--dl-color-button-bg);
+  color: var(--dl-color-button-text);
+}
+:where(.divelog) .dl-btn-solid:hover {
+  background: var(--dl-color-button-hover);
+  color: var(--dl-color-button-text);
+}
+:where(.divelog) .dl-btn-ghost {
+  background: transparent;
+  color: var(--dl-color-text);
+  border-color: var(--dl-color-border-strong);
+}
+:where(.divelog) .dl-btn-ghost:hover {
+  border-color: var(--dl-color-accent);
+  color: var(--dl-color-accent);
+}
+:where(.divelog) .dl-btn-sm {
+  padding: 0.45rem 0.9rem;
+  font-size: 0.85rem;
+}
+
+:where(.divelog) .dl-card {
+  background: var(--dl-color-surface);
+  border: 1px solid var(--dl-color-border);
+  border-radius: var(--dl-radius);
+}
+
+:where(.divelog) .dl-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-family: var(--dl-font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dl-color-text);
+  background: var(--dl-color-surface-2);
+  border: 1px solid var(--dl-color-border);
+  white-space: nowrap;
+}
+:where(.divelog) .dl-tag::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dl-tag-color, var(--dl-color-text-muted));
+}
+:where(.divelog) .dl-tag[data-tag='cave'] {
+  --dl-tag-color: var(--dl-tag-cave);
+}
+:where(.divelog) .dl-tag[data-tag='cavern'] {
+  --dl-tag-color: var(--dl-tag-cavern);
+}
+:where(.divelog) .dl-tag[data-tag='mine'] {
+  --dl-tag-color: var(--dl-tag-mine);
+}
+:where(.divelog) .dl-tag[data-tag='dpv'] {
+  --dl-tag-color: var(--dl-tag-dpv);
+}
+:where(.divelog) .dl-tag[data-tag='wreck'] {
+  --dl-tag-color: var(--dl-tag-wreck);
+}
+:where(.divelog) .dl-tag[data-tag='night'] {
+  --dl-tag-color: var(--dl-tag-night);
+}
+:where(.divelog) .dl-tag[data-tag='deco'] {
+  --dl-tag-color: var(--dl-tag-deco);
+}
+:where(.divelog) .dl-tag[data-tag='drift'] {
+  --dl-tag-color: var(--dl-tag-drift);
+}
+:where(.divelog) .dl-tag[data-tag='boat'] {
+  --dl-tag-color: var(--dl-tag-boat);
+}
+:where(.divelog) .dl-tag[data-tag='training'] {
+  --dl-tag-color: var(--dl-tag-training);
+}
+:where(.divelog) .dl-tag[data-tag='stage'] {
+  --dl-tag-color: var(--dl-tag-stage);
+}
+
+:where(.divelog) .dl-prose {
+  font-size: 1.06rem;
+  line-height: 1.75;
+}
+:where(.divelog) .dl-prose h2 {
+  font-size: 1.6rem;
+  margin-top: 2.2em;
+}
+:where(.divelog) .dl-prose h3 {
+  font-size: 1.25rem;
+  margin-top: 1.8em;
+}
+:where(.divelog) .dl-prose p,
+:where(.divelog) .dl-prose ul,
+:where(.divelog) .dl-prose ol {
+  margin: 0 0 1.2em;
+}
+:where(.divelog) .dl-prose li {
+  margin-bottom: 0.35em;
+}
+:where(.divelog) .dl-prose blockquote {
+  margin: 1.5em 0;
+  padding: 0.2em 0 0.2em 1.2em;
+  border-left: 3px solid var(--dl-color-accent);
+  color: var(--dl-color-text-muted);
+}
+:where(.divelog) .dl-prose pre {
+  margin: 1.5em 0;
+  padding: 1rem 1.2rem;
+  border-radius: var(--dl-radius);
+  border: 1px solid var(--dl-color-border);
+  overflow-x: auto;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  background: var(--dl-c-abyss) !important;
+}
+:where(.divelog) .dl-prose :not(pre) > code {
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+  background: var(--dl-color-surface-2);
+  font-size: 0.9em;
+}
+:where(.divelog) .dl-prose img {
+  border-radius: var(--dl-radius);
+  margin: 1.5em 0;
+}
+:where(.divelog) .dl-prose hr {
+  border: none;
+  border-top: 1px solid var(--dl-color-border);
+  margin: 2.5em 0;
+}
+:where(.divelog) .dl-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5em 0;
+  font-size: 0.95rem;
+}
+:where(.divelog) .dl-prose th,
+:where(.divelog) .dl-prose td {
+  padding: 0.5em 0.75em;
+  border-bottom: 1px solid var(--dl-color-border);
+  text-align: left;
+}
+
+:where(.divelog) .dl-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/*
+ * Admin editor forms and tables. Two classes plus the element match the
+ * specificity the admin layout's scoped `.admin-body :global(…)` rules had.
+ */
+
+.divelog .dl-admin-body h1 {
+  font-size: 26px;
+  margin-bottom: 18px;
+}
+.divelog .dl-admin-body input,
+.divelog .dl-admin-body select,
+.divelog .dl-admin-body textarea {
+  font: inherit;
+  font-size: 14.5px;
+  color: var(--dl-color-text);
+  background: var(--dl-color-surface);
+  border: 1px solid var(--dl-color-border-strong);
+  border-radius: var(--dl-radius-sm);
+  padding: 8px 10px;
+  width: 100%;
+}
+.divelog .dl-admin-body label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--dl-color-text-muted);
+}
+.divelog .dl-admin-body .field-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+.divelog .dl-admin-body .error {
+  color: var(--dl-color-error);
+  font-size: 14px;
+}
+.divelog .dl-admin-body table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.divelog .dl-admin-body th,
+.divelog .dl-admin-body td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--dl-color-border);
+  vertical-align: top;
+}
+.divelog .dl-admin-body th {
+  font-family: var(--dl-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dl-color-text-muted);
+  font-weight: 500;
+}

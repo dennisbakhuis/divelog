@@ -1,0 +1,41 @@
+/* MapLibre controls re-themed to the site palette; scoped to the `.ml` wrapper of each map. */
+.ml .maplibregl-ctrl-group {
+  background: var(--dl-color-bg-elevated);
+  border: 1px solid var(--dl-color-border-strong);
+  box-shadow: none;
+}
+.ml .maplibregl-ctrl-group button + button {
+  border-top-color: var(--dl-color-border);
+}
+.ml .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  filter: invert(0.85);
+}
+.ml .maplibregl-ctrl-scale {
+  background: transparent;
+  border-color: var(--dl-color-text-muted);
+  color: var(--dl-color-text-muted);
+  font-family: var(--dl-font-mono);
+  font-size: 10px;
+}
+.ml .maplibregl-ctrl-attrib {
+  background: color-mix(in srgb, var(--dl-color-bg) 75%, transparent);
+  color: var(--dl-color-text-faint);
+  font-size: 10px;
+}
+.ml .maplibregl-ctrl-attrib a {
+  color: var(--dl-color-text-muted);
+}
+.ml .maplibregl-ctrl-attrib-button {
+  filter: invert(0.85);
+}
+.ml .maplibregl-cooperative-gesture-screen {
+  background: color-mix(in srgb, var(--dl-color-bg) 80%, transparent);
+  color: var(--dl-color-text);
+  font-size: 14px;
+}
+.ml .maplibregl-ctrl-group button.globe-home {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dl-color-text);
+}

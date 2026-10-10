@@ -1,0 +1,98 @@
+/*
+ * Dive log theme contract.
+ *
+ * Every dive, map and admin component reads only these `--dl-*` tokens. Each
+ * one maps onto the host site's own token when it defines it and otherwise
+ * falls back to the default dark palette, so a consumer can re-theme the log by
+ * setting either its own names or the `--dl-*` names on `.divelog`.
+ * `:where()` keeps the specificity at zero so any consumer rule wins.
+ */
+
+:where(.divelog) {
+  /* Palette */
+  --dl-c-abyss: var(--c-abyss, #030912);
+
+  --dl-color-bg: var(--color-bg, #071426);
+  --dl-color-bg-elevated: var(--color-bg-elevated, #0d1f38);
+  --dl-color-surface: var(--color-surface, #10243f);
+  --dl-color-surface-2: var(--color-surface-2, #16304f);
+  --dl-color-text: var(--color-text, #e8eef6);
+  --dl-color-text-muted: var(--color-text-muted, #94a3b8);
+  --dl-color-text-faint: var(--color-text-faint, #64748b);
+  --dl-color-border: var(--color-border, rgba(148, 163, 184, 0.16));
+  --dl-color-border-strong: var(--color-border-strong, rgba(148, 163, 184, 0.32));
+
+  --dl-color-accent: var(--color-accent, #4cc9f0);
+  --dl-color-accent-strong: var(--color-accent-strong, #22b8e8);
+  --dl-color-accent-soft: var(--color-accent-soft, rgba(76, 201, 240, 0.14));
+  --dl-color-warm: var(--color-warm, #f4a261);
+  --dl-color-warm-soft: var(--color-warm-soft, rgba(244, 162, 97, 0.16));
+  --dl-color-success: var(--color-success, #4ade80);
+  --dl-color-error: var(--color-error, #f87171);
+  --dl-color-focus-ring: var(--color-focus-ring, #f4a261);
+
+  --dl-color-link: var(--color-link, #4cc9f0);
+  --dl-color-link-hover: var(--color-link-hover, #ffffff);
+  --dl-color-button-bg: var(--color-button-bg, #4cc9f0);
+  --dl-color-button-text: var(--color-button-text, #06101f);
+  --dl-color-button-hover: var(--color-button-hover, #7ad9f5);
+
+  /* Tag colours (dive types) */
+  --dl-tag-cave: var(--tag-cave, #f4a261);
+  --dl-tag-cavern: var(--tag-cavern, #fdba74);
+  --dl-tag-mine: var(--tag-mine, #d4a373);
+  --dl-tag-dpv: var(--tag-dpv, #c084fc);
+  --dl-tag-wreck: var(--tag-wreck, #fb7185);
+  --dl-tag-night: var(--tag-night, #818cf8);
+  --dl-tag-deco: var(--tag-deco, #fbbf24);
+  --dl-tag-deep: var(--tag-deep, #38bdf8);
+  --dl-tag-drift: var(--tag-drift, #34d399);
+  --dl-tag-boat: var(--tag-boat, #67e8f9);
+  --dl-tag-training: var(--tag-training, #a3a3a3);
+  --dl-tag-stage: var(--tag-stage, #5eead4);
+
+  /* Typography */
+  --dl-font-display: var(
+    --font-display,
+    'Space Grotesk Variable',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif
+  );
+  --dl-font-body: var(
+    --font-body,
+    'Inter Variable',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif
+  );
+  --dl-font-sans: var(--font-sans, var(--dl-font-body));
+  --dl-font-mono: var(
+    --font-mono,
+    'JetBrains Mono Variable',
+    ui-monospace,
+    'SF Mono',
+    Menlo,
+    Consolas,
+    monospace
+  );
+
+  /* Layout */
+  --dl-radius-sm: var(--radius-sm, 6px);
+  --dl-radius: var(--radius, 12px);
+  --dl-radius-md: var(--radius-md, var(--dl-radius));
+  --dl-radius-lg: var(--radius-lg, 20px);
+  --dl-shadow-sm: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.2));
+  --dl-shadow-md: var(--shadow-md, 0 8px 24px rgba(0, 0, 0, 0.35), 0 24px 64px rgba(0, 0, 0, 0.25));
+  --dl-container-max: var(--container-max, 1160px);
+  --dl-container-narrow: var(--container-narrow, 720px);
+  --dl-container-detail: var(--container-detail, 960px);
+  --dl-space-page-x: var(--space-page-x, clamp(16px, 4vw, 32px));
+  --dl-space-section: var(--space-section, clamp(64px, 9vw, 120px));
+  --dl-header-h: var(--header-h, 68px);
+}

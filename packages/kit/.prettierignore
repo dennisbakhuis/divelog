@@ -1,0 +1,7 @@
+node_modules
+.svelte-kit
+dist
+coverage
+pnpm-lock.yaml
+src/lib/core/dive/api.d.ts
+src/lib/og/font-data.ts
