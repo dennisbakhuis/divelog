@@ -6,18 +6,21 @@
 
   let {
     region = null,
+    initial = {},
     onSaved,
   }: {
     /** The region being edited; null creates a new one. */
     region?: Region | null;
+    /** Starting values for a new region (the country of the site being created). */
+    initial?: { name?: string; country?: string };
     onSaved: (region: Region) => void | Promise<void>;
   } = $props();
 
   /* svelte-ignore state_referenced_locally */
   let form = $state({
     id: region?.id ?? '',
-    name: region?.name ?? '',
-    country: region?.country ?? '',
+    name: region?.name ?? initial.name ?? '',
+    country: region?.country ?? initial.country ?? '',
     waters: region?.waters.join(', ') ?? '',
     body_md: region?.body_md ?? '',
   });
