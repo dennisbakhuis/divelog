@@ -4,10 +4,8 @@
  */
 import { error, type RequestEvent } from '@sveltejs/kit';
 import type {
-  AdminDiveListItem,
   DiveAdmin,
   GearItem,
-  GearSetup,
   ImportRecord,
   PersonPrivate,
   Region,
@@ -15,7 +13,14 @@ import type {
   Trip,
   TripAdmin,
 } from '$lib/core/dive/types.js';
-import { diveTemplate } from '$lib/core/admin/dive-input.js';
+import { shiftDate } from '$lib/core/admin/dive-input.js';
+import {
+  DEFAULT_LIST_QUERY,
+  pagePath,
+  parseListQuery,
+} from '$lib/core/admin/dive-list.js';
+import type { AdminDivePage, DiveTemplateOut, GearSetupTemplate } from '$lib/core/admin/ux-api.js';
+import type { NewDiveParams } from '$lib/core/dive/config.js';
 import type { Divelog } from '../server/divelog.js';
 import { defineRoute, type PageOwner } from './table.js';
 
@@ -29,10 +34,68 @@ async function diveFormData(divelog: Divelog, event: RequestEvent) {
     apiOrError<Site[]>(event, urls.api('/admin/sites')),
     apiOrError<Trip[]>(event, urls.api('/admin/trips')),
     apiOrError<PersonPrivate[]>(event, urls.api('/admin/people')),
-    apiOrError<GearSetup[]>(event, urls.api('/admin/gear/setups')),
+    apiOrError<GearSetupTemplate[]>(event, urls.api('/admin/gear/setups')),
     apiOrError<Region[]>(event, urls.api('/dive/regions')),
   ]);
   return { sites, trips, people, setups, regions };
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** `GET /admin/dives/template` for a site and a day (today on the server when not given). */
+function diveTemplateFor(
+  divelog: Divelog,
+  event: RequestEvent,
+  site: string | null,
+  date: string | null,
+): Promise<DiveTemplateOut> {
+  const params = new URLSearchParams();
+  if (site) params.set('site', site);
+  if (date) params.set('date', date);
+  const query = params.toString();
+  return divelog.apiOrError<DiveTemplateOut>(
+    event,
+    divelog.urls.api(`/admin/dives/template${query ? `?${query}` : ''}`),
+  );
+}
+
+/** The new-dive prefill from `?site=&trip=&person=&date=`; a malformed date is dropped. */
+export function newDivePrefill(params: URLSearchParams): Required<NewDiveParams> {
+  const value = (key: string) => params.get(key)?.trim() || null;
+  const date = value('date');
+  return {
+    site: value('site'),
+    trip: value('trip'),
+    person: value('person'),
+    date: date && ISO_DATE.test(date) ? date : null,
+  };
+}
+
+/**
+ * The template of an existing dive: the dives before it, never the dive itself. When the
+ * dive is the latest on its day, the previous one is looked up from the day before.
+ */
+async function templateOfDive(
+  divelog: Divelog,
+  event: RequestEvent,
+  dive: DiveAdmin,
+): Promise<DiveTemplateOut> {
+  const template = await diveTemplateFor(divelog, event, dive.site_id, dive.date);
+  const atSite = template.at_site?.number === dive.number ? null : (template.at_site ?? null);
+  if (template.previous?.number !== dive.number) return { ...template, at_site: atSite };
+  const before = await diveTemplateFor(divelog, event, null, shiftDate(dive.date, -1));
+  return { ...template, previous: before.previous ?? null, at_site: atSite };
+}
+
+/** Every draft's number in date order, for the editor's previous/next draft links. */
+async function draftNumbers(divelog: Divelog, event: RequestEvent): Promise<number[]> {
+  const page = await divelog.apiOrError<AdminDivePage>(
+    event,
+    divelog.urls.api(
+      pagePath({ ...DEFAULT_LIST_QUERY, status: 'draft', sort: 'date', asc: true }, 0, 1000),
+    ),
+  );
+  return page.items.map((d) => d.number);
 }
 
 function publicRegions(divelog: Divelog, event: RequestEvent): Promise<Region[]> {
@@ -41,42 +104,28 @@ function publicRegions(divelog: Divelog, event: RequestEvent): Promise<Region[]>
 
 export const divesRoute = defineRoute({
   page: 'dives',
-  pattern: /^$/,
-  load: async (divelog, _params, event) => ({
-    dives: await divelog.apiOrError<AdminDiveListItem[]>(event, divelog.urls.api('/admin/dives')),
-  }),
+  pattern: /^(?:dives)?$/,
+  load: async (divelog, _params, event) => {
+    const query = parseListQuery(event.url.searchParams);
+    const draftsOnly = { ...DEFAULT_LIST_QUERY, status: 'draft' as const };
+    const [page, drafts] = await Promise.all([
+      divelog.apiOrError<AdminDivePage>(event, divelog.urls.api(pagePath(query))),
+      divelog.apiOrError<AdminDivePage>(event, divelog.urls.api(pagePath(draftsOnly, 0, 1))),
+    ]);
+    return { query, rows: page.items, total: page.total, drafts: drafts.total };
+  },
 });
 
 export const diveNewRoute = defineRoute({
   page: 'dive-new',
   pattern: /^dives\/new$/,
   load: async (divelog, _params, event) => {
-    const [form, next, dives] = await Promise.all([
+    const prefill = newDivePrefill(event.url.searchParams);
+    const [form, template] = await Promise.all([
       diveFormData(divelog, event),
-      divelog.apiOrError<{ number: number }>(event, divelog.urls.api('/admin/dives/next-number')),
-      divelog.apiOrError<AdminDiveListItem[]>(event, divelog.urls.api('/admin/dives')),
+      diveTemplateFor(divelog, event, prefill.site, prefill.date),
     ]);
-    const latest = dives.reduce<AdminDiveListItem | null>(
-      (found, dive) => (!found || dive.number > found.number ? dive : found),
-      null,
-    );
-    const last = latest
-      ? await divelog.apiOrError<DiveAdmin>(
-          event,
-          divelog.urls.api(`/admin/dives/${latest.number}`),
-        )
-      : null;
-    return {
-      ...form,
-      nextNumber: next.number,
-      template: last
-        ? {
-            number: last.number,
-            label: last.title || last.site?.name || 'Untitled',
-            input: diveTemplate(last),
-          }
-        : null,
-    };
+    return { ...form, nextNumber: template.next_number, template, prefill };
   },
 });
 
@@ -90,7 +139,12 @@ export const diveEditRoute = defineRoute({
       diveFormData(divelog, event),
       divelog.apiOrError<DiveAdmin>(event, divelog.urls.api(`/admin/dives/${number}`)),
     ]);
-    return { ...form, dive };
+    const draft = dive.visibility === 'draft';
+    const [template, drafts] = await Promise.all([
+      templateOfDive(divelog, event, dive),
+      draft ? draftNumbers(divelog, event) : Promise.resolve([] as number[]),
+    ]);
+    return { ...form, dive, template, drafts };
   },
 });
 
@@ -216,7 +270,7 @@ export const gearRoute = defineRoute({
   load: async (divelog, _params, event) => {
     const [items, setups] = await Promise.all([
       divelog.apiOrError<GearItem[]>(event, divelog.urls.api('/admin/gear/items')),
-      divelog.apiOrError<GearSetup[]>(event, divelog.urls.api('/admin/gear/setups')),
+      divelog.apiOrError<GearSetupTemplate[]>(event, divelog.urls.api('/admin/gear/setups')),
     ]);
     return { items, setups };
   },

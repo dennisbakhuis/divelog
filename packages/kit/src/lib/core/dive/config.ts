@@ -88,6 +88,14 @@ export function titleSuffix(config: DivelogConfig): string {
 export type QueryParams =
   string | URLSearchParams | Record<string, string | number | null | undefined>;
 
+/** Prefill of the new-dive form: a site id, a trip slug, a person id, an ISO date. */
+export type NewDiveParams = {
+  site?: string | null;
+  trip?: string | null;
+  person?: string | null;
+  date?: string | null;
+};
+
 export type OgKind = 'dive' | 'site';
 
 /**
@@ -147,9 +155,11 @@ export function createUrls(config: DivelogConfig) {
     admin: {
       base: admin,
       root: (): string => admin || '/',
-      dives: (): string => `${admin}/dives`,
+      /** The dive list; `params` filter it (`{ status: 'draft' }`). */
+      dives: (params?: QueryParams): string => withQuery(`${admin}/dives`, params),
       dive: (n: number | string, hash?: string): string => withHash(`${admin}/dives/${n}`, hash),
-      newDive: (): string => `${admin}/dives/new`,
+      /** The new-dive form, prefilled from `site`, `trip`, `person` and `date` when given. */
+      newDive: (params?: NewDiveParams): string => withQuery(`${admin}/dives/new`, params),
       sites: (): string => `${admin}/sites`,
       site: (id: string): string => `${admin}/sites/${id}`,
       siteMaps: (id: string): string => `${admin}/sites/${id}/maps`,
