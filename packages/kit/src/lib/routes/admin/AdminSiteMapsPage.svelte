@@ -1,10 +1,9 @@
 <script lang="ts">
-  import type { AdminDataFor } from '../admin';
   import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
   import { adminJson, AdminApiError } from '$lib/core/admin/client';
   import { confirmDialog } from '$lib/core/ui/confirm.js';
   import SiteMapEditor, { type UnderlayOption } from '$lib/components/map/SiteMapEditor.svelte';
-  import type { MapRef } from '$lib/core/dive/types';
+  import type { MapRef, Site } from '$lib/core/dive/types';
   import {
     defaultTitle,
     emptySiteMap,
@@ -14,13 +13,9 @@
     type SiteMapOut,
   } from '$lib/core/dive/sitemap';
   import { toast } from '$lib/components/stores/toast.svelte';
-  import { getDivelog } from '$lib/core/dive/context';
   import ChangeList from '$lib/components/shell/ChangeList.svelte';
 
-  const { urls } = getDivelog();
-
-  let { data }: { data: AdminDataFor<'site-maps'> } = $props();
-  const site = $derived(data.site);
+  let { site }: { site: Site } = $props();
   const drawn = $derived(
     site.maps.flatMap((m: MapRef) => (m.collection === 'drawn' && m.drawn ? [m.drawn] : [])),
   );
@@ -191,20 +186,8 @@
 <svelte:window onbeforeunload={beforeUnload} />
 
 <section class="editor-page">
-  <nav class="crumbs" aria-label="Breadcrumb">
-    <a href={urls.admin.sites()}>Sites</a> › <a href={urls.admin.site(site.id)}>{site.name}</a> ›
-    <span>Maps</span>
-  </nav>
   <div class="head">
-    <div class="title">
-      <h1>Maps of {site.name}</h1>
-      <a
-        class="dl-btn dl-btn-ghost dl-btn-sm"
-        href={urls.site(site.slug)}
-        target="_blank"
-        rel="noopener">View ↗</a
-      >
-    </div>
+    <h2>Drawn maps</h2>
     <div class="actions">
       <button type="button" class="dl-btn dl-btn-ghost dl-btn-sm" onclick={() => create('stickmap')}
         >+ Stick map</button
@@ -309,20 +292,6 @@
 </section>
 
 <style>
-  .crumbs {
-    font-size: 13.5px;
-    color: var(--dl-color-text-faint);
-    margin-bottom: 6px;
-  }
-  .crumbs a {
-    color: var(--dl-color-text-muted);
-  }
-  .title {
-    display: flex;
-    align-items: baseline;
-    gap: 14px;
-    flex-wrap: wrap;
-  }
   .head {
     display: flex;
     justify-content: space-between;
@@ -331,8 +300,9 @@
     flex-wrap: wrap;
     margin-bottom: 20px;
   }
-  h1 {
-    margin-bottom: 0;
+  h2 {
+    font-size: var(--dl-text-lg);
+    margin: 0;
   }
   .actions {
     display: flex;
