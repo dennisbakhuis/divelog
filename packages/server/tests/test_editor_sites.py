@@ -303,6 +303,29 @@ async def test_attachment_credit_is_stored_and_normalised(
     assert public["site"]["attachments"][0]["licence"] == "CC-BY-SA-4.0"
 
 
+async def test_site_attachments_reorder_in_one_commit(
+    owner_client: AsyncClient, store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ids = [await site_photo(owner_client) for _ in range(3)]
+    messages: list[str] = []
+
+    async def commit(message: str) -> None:
+        messages.append(message)
+
+    monkeypatch.setattr(store.git, "commit", commit)
+    response = await owner_client.put(
+        f"{ADMIN}/sites/ressel/attachments/order", json=[ids[2], "nope", ids[0]]
+    )
+    assert response.status_code == 200, response.text
+    assert [a["id"] for a in response.json()] == [ids[2], ids[0], ids[1]]
+    assert [a["sort"] for a in response.json()] == [0, 1, 2]
+    assert messages == ["Reorder attachments of site ressel"]
+    site = (await owner_client.get(f"{ADMIN}/sites/ressel")).json()
+    assert [a["id"] for a in site["attachments"]] == [ids[2], ids[0], ids[1]]
+    missing = await owner_client.put(f"{ADMIN}/sites/nowhere/attachments/order", json=[])
+    assert missing.status_code == 404
+
+
 async def test_attachment_credit_rejects_other_licences(owner_client: AsyncClient) -> None:
     media_id = await site_photo(owner_client)
     response = await owner_client.patch(

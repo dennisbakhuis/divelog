@@ -131,14 +131,21 @@ async def admin_create_dive(body: DiveIn, store: StoreDep) -> DiveAdminOut:
 
 @router.get("/dives/template", response_model=DiveTemplateOut)
 async def admin_dive_template(
-    store: StoreDep, site: str | None = None, date: date | None = None
+    store: StoreDep,
+    site: str | None = None,
+    date: date | None = None,
+    before: Annotated[int | None, Query(ge=1)] = None,
 ) -> DiveTemplateOut:
     """What the new-dive form starts from: previous dive, last dive at the site, recents.
 
-    ``date`` defaults to today; only dives on or before it count. An unknown ``site`` gives
+    ``date`` defaults to today; only dives on or before it count. ``before`` (a dive number)
+    further limits the previous dive to dives logged before that one, so an existing dive
+    (a draft under review) gets an earlier dive of its own day. An unknown ``site`` gives
     no ``at_site``.
     """
-    return admin_views.dive_template(store, site or None, date or datetime.now().date())
+    return admin_views.dive_template(
+        store, site or None, date or datetime.now().date(), before=before
+    )
 
 
 @router.get("/dives/page", response_model=AdminDivePage)
@@ -150,13 +157,15 @@ async def admin_dive_page(
     q: Annotated[str, Query(max_length=200)] = "",
     sort: DiveSort = "date",
     asc: bool = False,
+    site: Annotated[str | None, Query(max_length=200)] = None,
 ) -> AdminDivePage:
-    """One page of the dive list, filtered by publish state and search words, and sorted.
+    """One page of the dive list, filtered by publish state, site and search words, and sorted.
 
     ``q`` matches a dive number (``650`` or ``#650``), or the title, the site's names or a
-    buddy's names; every word must match. Newest first unless ``sort``/``asc`` say otherwise.
+    buddy's names; every word must match. ``site`` keeps the dives at that site id. Newest
+    first unless ``sort``/``asc`` say otherwise.
     """
-    return admin_views.dive_page(store, offset, limit, status, q, sort, asc)
+    return admin_views.dive_page(store, offset, limit, status, q, sort, asc, site=site or None)
 
 
 @router.post("/dives/publish", response_model=DivesPublishOut)
@@ -276,6 +285,26 @@ async def admin_upload_site_attachment(
     site.media.append(media)
     await store.save_site(site, f"Attach {kind} to site {site_id}")
     return dive_service.attachment_out(media)
+
+
+@router.put("/sites/{site_id}/attachments/order", response_model=list[AttachmentOut])
+async def admin_order_site_attachments(
+    site_id: str, body: list[str], store: StoreDep
+) -> list[AttachmentOut]:
+    """Put a site's attachments in the order of the ids given, in one commit.
+
+    Unknown ids are ignored; attachments left out keep their relative order after the listed
+    ones.
+    """
+    site = _site_or_404(store, site_id).model_copy(deep=True)
+    position = {media_id: i for i, media_id in enumerate(body)}
+    current = sorted(site.media, key=lambda m: m.sort)
+    ordered = sorted(current, key=lambda m: position.get(m.id, len(body)))
+    for i, media in enumerate(ordered):
+        media.sort = i
+    site.media = ordered
+    await store.save_site(site, f"Reorder attachments of site {site_id}")
+    return [dive_service.attachment_out(m) for m in ordered]
 
 
 @router.post(

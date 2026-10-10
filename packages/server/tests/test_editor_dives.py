@@ -109,6 +109,39 @@ async def test_template_at_site_names_the_map_of_its_route(
     assert body["at_site"]["number"] == 2 and body["at_site"]["map_id"] == "ressel-1"
 
 
+async def test_template_before_a_dive_finds_the_earlier_dive_of_its_day(
+    owner_client: AsyncClient, store: Store
+) -> None:
+    day = store.dives[4].date
+    for number, time_in in ((3, "09:00"), (4, "14:00")):
+        dive = store.dives[number].model_copy(update={"date": day, "time_in": time_in})
+        await store.save_dive(dive, "same day")
+    assert (await template(owner_client, date=day.isoformat()))["previous"]["number"] == 4
+    body = await template(owner_client, date=day.isoformat(), before="4")
+    assert body["previous"]["number"] == 3
+    assert body["next_number"] == 5
+
+
+async def test_template_before_without_start_times_goes_by_number(
+    owner_client: AsyncClient, store: Store
+) -> None:
+    day = store.dives[4].date
+    for number in (3, 4):
+        dive = store.dives[number].model_copy(update={"date": day, "time_in": None})
+        await store.save_dive(dive, "same day")
+    body = await template(owner_client, date=day.isoformat(), before="4")
+    assert body["previous"]["number"] == 3
+
+
+async def test_template_before_an_unknown_number_counts_lower_numbers(
+    owner_client: AsyncClient,
+) -> None:
+    assert (await template(owner_client, before="3"))["previous"]["number"] == 2
+    assert (await template(owner_client, before="1"))["previous"] is None
+    response = await owner_client.get(f"{ADMIN}/dives/template", params={"before": 0})
+    assert response.status_code == 422
+
+
 async def test_template_unknown_site_has_no_at_site(owner_client: AsyncClient) -> None:
     assert (await template(owner_client, site="nowhere"))["at_site"] is None
 
@@ -243,6 +276,12 @@ async def test_page_filters_by_status(owner_client: AsyncClient) -> None:
     assert numbers(await page(owner_client, status="draft")) == [4]
     assert numbers(await page(owner_client, status="private")) == [3]
     assert (await page(owner_client, status="public"))["total"] == 2
+
+
+async def test_page_filters_by_site(owner_client: AsyncClient) -> None:
+    assert numbers(await page(owner_client, site="zeelandbrug")) == [4, 3, 1]
+    assert numbers(await page(owner_client, site="ressel", status="public")) == [2]
+    assert (await page(owner_client, site="nowhere"))["total"] == 0
 
 
 @pytest.mark.parametrize(

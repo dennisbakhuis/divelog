@@ -1185,3 +1185,20 @@ async def test_map_update_adds_a_changelog_entry(
     keys = list(payload)
     assert keys[keys.index("revision") + 1] == "changelog"
     assert payload["changelog"][0]["note"] == "Updated the drawing"
+
+
+async def test_site_photo_reorder_on_commons_site_needs_a_fork(
+    commons_store: Store, commons_owner_client: AsyncClient
+) -> None:
+    jpeg = (Path(__file__).parent / "fixtures" / "commons" / PHOTO).read_bytes()
+    response = await commons_owner_client.post(
+        f"{ADMIN}/sites/{SITE}/attachments",
+        files={"file": ("mine.jpg", jpeg, "image/jpeg")},
+    )
+    media_id = response.json()["id"]
+    reorder = await commons_owner_client.put(
+        f"{ADMIN}/sites/{SITE}/attachments/order", json=[media_id, "commons-photo-1"]
+    )
+    assert reorder.status_code == 422
+    site = await admin_site(commons_owner_client, SITE)
+    assert [a["id"] for a in site["attachments"]] == ["commons-photo-1", media_id]

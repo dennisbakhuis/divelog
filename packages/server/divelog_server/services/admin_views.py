@@ -45,6 +45,18 @@ def _when(dive: DiveRecord) -> tuple[date, str, int]:
     return (dive.date, dive.time_in or "", dive.number)
 
 
+def _logged_before(dive: DiveRecord, anchor: DiveRecord) -> bool:
+    """True when ``dive`` took place before ``anchor``: an earlier day, or the same day and an
+    earlier start (by number when either start time is missing)."""
+    if dive.number == anchor.number or dive.date > anchor.date:
+        return False
+    if dive.date < anchor.date:
+        return True
+    if dive.time_in and anchor.time_in and dive.time_in != anchor.time_in:
+        return dive.time_in < anchor.time_in
+    return dive.number < anchor.number
+
+
 def dive_input(dive: DiveRecord) -> DiveTemplateDive:
     """A stored dive as the form's input, without its profile.
 
@@ -170,21 +182,31 @@ def _frequent_people(store: Store, dives: list[DiveRecord], day: date) -> list[T
     ]
 
 
-def dive_template(store: Store, site_id: str | None, day: date) -> DiveTemplateOut:
+def dive_template(
+    store: Store, site_id: str | None, day: date, before: int | None = None
+) -> DiveTemplateOut:
     """What a new dive on ``day`` (at ``site_id``, when given) starts from.
 
     Only dives on or before ``day`` count, so back-filling an old dive gets the context of
-    its own time.
+    its own time. With ``before`` (a dive number), the previous dive is the latest one
+    logged before that dive: earlier on the same day or on an earlier day.
     """
-    before = [d for d in store.dives.values() if d.date <= day]
-    previous = max(before, key=_when) if before else None
+    earlier = [d for d in store.dives.values() if d.date <= day]
+    candidates = earlier
+    if before is not None:
+        anchor = store.dives.get(before)
+        if anchor is None:
+            candidates = [d for d in earlier if d.number < before]
+        else:
+            candidates = [d for d in earlier if _logged_before(d, anchor)]
+    previous = max(candidates, key=_when) if candidates else None
     return DiveTemplateOut(
         date=day,
         next_number=store.next_dive_number(),
         previous=dive_input(previous) if previous else None,
         at_site=_site_last_dive(store, site_id, day) if site_id else None,
-        recent_sites=_recent_sites(store, before),
-        frequent_people=_frequent_people(store, before, day),
+        recent_sites=_recent_sites(store, earlier),
+        frequent_people=_frequent_people(store, earlier, day),
         trip_for_date=_trip_containing(store, day),
     )
 
@@ -237,17 +259,21 @@ def dive_page(
     q: str,
     sort: DiveSort,
     asc: bool,
+    site: str | None = None,
 ) -> AdminDivePage:
     """A filtered, sorted slice of every dive as list rows.
 
     Every word of ``q`` must match: a number (``650`` or ``#650``) the dive number, anything
-    else a substring of the title, the site's names or a buddy's names.
+    else a substring of the title, the site's names or a buddy's names. ``site`` keeps only
+    the dives at that site id.
     """
     tokens = q.casefold().split()
     rows = [
         d
         for d in store.dives.values()
-        if (status is None or d.visibility == status) and (not tokens or _matches(store, d, tokens))
+        if (status is None or d.visibility == status)
+        and (site is None or d.site == site)
+        and (not tokens or _matches(store, d, tokens))
     ]
     rows.sort(key=SORT_KEYS[sort], reverse=not asc)
     return AdminDivePage(

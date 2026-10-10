@@ -423,7 +423,9 @@ export interface paths {
      * Admin Dive Template
      * @description What the new-dive form starts from: previous dive, last dive at the site, recents.
      *
-     *     ``date`` defaults to today; only dives on or before it count. An unknown ``site`` gives
+     *     ``date`` defaults to today; only dives on or before it count. ``before`` (a dive number)
+     *     further limits the previous dive to dives logged before that one, so an existing dive
+     *     (a draft under review) gets an earlier dive of its own day. An unknown ``site`` gives
      *     no ``at_site``.
      */
     get: operations['admin_dive_template_api_v1_admin_dives_template_get'];
@@ -444,10 +446,11 @@ export interface paths {
     };
     /**
      * Admin Dive Page
-     * @description One page of the dive list, filtered by publish state and search words, and sorted.
+     * @description One page of the dive list, filtered by publish state, site and search words, and sorted.
      *
      *     ``q`` matches a dive number (``650`` or ``#650``), or the title, the site's names or a
-     *     buddy's names; every word must match. Newest first unless ``sort``/``asc`` say otherwise.
+     *     buddy's names; every word must match. ``site`` keeps the dives at that site id. Newest
+     *     first unless ``sort``/``asc`` say otherwise.
      */
     get: operations['admin_dive_page_api_v1_admin_dives_page_get'];
     put?: never;
@@ -532,6 +535,29 @@ export interface paths {
     put?: never;
     /** Admin Upload Site Attachment */
     post: operations['admin_upload_site_attachment_api_v1_admin_sites__site_id__attachments_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/sites/{site_id}/attachments/order': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Admin Order Site Attachments
+     * @description Put a site's attachments in the order of the ids given, in one commit.
+     *
+     *     Unknown ids are ignored; attachments left out keep their relative order after the listed
+     *     ones.
+     */
+    put: operations['admin_order_site_attachments_api_v1_admin_sites__site_id__attachments_order_put'];
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -5042,6 +5068,7 @@ export interface operations {
       query?: {
         site?: string | null;
         date?: string | null;
+        before?: number | null;
       };
       header?: never;
       path?: never;
@@ -5078,6 +5105,7 @@ export interface operations {
         q?: string;
         sort?: 'date' | 'number' | 'depth' | 'duration';
         asc?: boolean;
+        site?: string | null;
       };
       header?: never;
       path?: never;
@@ -5331,6 +5359,41 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['AttachmentOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  admin_order_site_attachments_api_v1_admin_sites__site_id__attachments_order_put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        site_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': string[];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AttachmentOut'][];
         };
       };
       /** @description Validation Error */
