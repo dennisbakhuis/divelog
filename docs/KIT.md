@@ -203,11 +203,14 @@ site's `origin` (`log`, `commons` or `fork`); the kit shows what follows from it
   suffix) gets a short "Map © … CC BY-SA 4.0" line on the site and dive pages. The locator
   map credits OpenStreetMap through the tile index's own attribution. Restyle the line through
   `.dl-attribution`, but keep it visible: it is a licence obligation, not decoration.
-- **Origins and forks.** The admin site list has an origin badge and an origin filter (all,
-  personal = own sites and forks, commons, stale against the commons). The site editor shows
-  the pin against the commons revision with "Mark as reviewed", "Fork this site" on a commons
-  site (`PUT …?fork=true`: a full personal copy that shadows the commons record) and "Drop
-  fork, back to the commons record" on a fork (`DELETE`, the commons record returns).
+- **Origins and forks.** The admin site list has an origin badge (a fork's origin as visible
+  text), a stale chip and an origin filter (all, personal = own sites and forks, commons,
+  stale against the commons). In the site workspace a commons site's objective fields (the
+  list comes from `GET /admin/meta/site-fields`) are read-only with a lock chip and one
+  explanation at the top; "Fork to edit" unlocks them in place and the save then forks
+  (`PUT …?fork=true`: a full personal copy that shadows the commons record). The header shows
+  the pin against the commons revision with "Mark as reviewed", and on a fork "Drop fork, back
+  to the commons record" (`DELETE`, the commons record returns).
 - **Stale routes.** When a dive's route was drawn on an older revision of its map, or legs no
   longer resolve, the dive editor says so ("map revision X → Y; N legs no longer resolve"),
   lists the legs and offers "Re-pin route to the current map", which saves the route on the
@@ -215,12 +218,11 @@ site's `origin` (`log`, `commons` or `fork`); the kit shows what follows from it
 - **Repo notices.** The admin bar shows the log's and the commons' checked-out commits, the
   commons state and a badge with the load notices (shadowed records, stale overlays and forks),
   each site notice linking to its editor.
-- **Adopt a site.** The new-site page and the dive editor's site picker ("From the commons",
-  or "Search the commons for …" in the picker's list) search `GET /admin/commons/sites` by
-  name, alias or area, optionally within 25 km of the current site, and offer the commons
-  sites not in the log yet with their origin and distance. "Use this site" sets the dive's site
-  (dive editor) or opens the site editor on the commons record (new-site page): adopting needs
-  no file, the first save writes the overlay.
+- **Adopt a site.** The new-site form lists commons sites with the same name or near the pin
+  ("Adopt"), and its "Search the commons by name instead" section and the dive editor's site
+  picker ("From the commons") search `GET /admin/commons/sites` by name, alias or area,
+  optionally within 25 km of the current site. Adopting needs no file: the site editor opens
+  the commons record and the first save writes the overlay.
 - **Commons pull.** "pull commons" in the admin bar calls `POST /admin/commons/pull`, which
   fast-forwards the commons checkout and pins the log's `divelog.yaml`; the popover shows the
   old and new head and the sites that became stale, each linking to its editor. The button is
@@ -231,6 +233,57 @@ site's `origin` (`log`, `commons` or `fork`); the kit shows what follows from it
 `@divelog/kit/testing` has sample records for these: `fakeSite`, `commonsSite`,
 `stalePinSite`, `forkSite`, `fakeMap`, `staleAnnotation`, `fakeRepoStatus`, `fakeCommonsHits`
 and `fakeCommonsPull`.
+
+## Creating a site
+
+`/admin/sites/new` and the dive editor's "+ New site" dialog render the same `SiteCreate`
+component (exported, with `LocationPicker`); the dialog passes `compact`.
+
+1. **Name.** Focused on open. Below it the id the site will get, `{iso3}-{slug(name)}`, and
+   whether it is free (`GET /admin/sites/{id}`, a 404 means free).
+2. **Tap the map.** `LocationPicker` draws the self-hosted PMTiles basemap (the planet archive,
+   the regional ones from zoom 8) or, without tiles, the world-atlas country outlines, so a pin
+   can always be placed. Tap or click places the pin, dragging moves it; with the map focused
+   the arrow keys move the pin (Shift for larger steps), `+`/`-` zoom and Enter drops the pin at
+   the centre. The coordinates field takes a paste in either order, degrees-minutes-seconds,
+   hemisphere letters or a map link (`@lat,lon`, `mlat=…&mlon=…`, `#map=z/lat/lon`); "Use my
+   location" asks the device. `geo_source` records how the position came in ("map pick",
+   "pasted coordinates" or "device location", with the date). Without WebGL only the field shows.
+3. **Country and region follow the pin.** `countryAt(lat, lon)` finds the country in the 1:50m
+   world-atlas outlines (loaded on first use; a wreck off the coast gets the nearest coast within
+   60 km; Bonaire, Sint Eustatius and Saba become `BES`), and `regionNearest` picks the region of
+   that country with the closest site. Both are marked "from the pin" / "nearest" until changed
+   by hand; a hand-picked country is kept when the pin moves. The country list is
+   `GET /meta/countries` plus whatever code the pin found.
+4. **Already known?** While the name or pin changes, `GET /admin/sites/nearby` lists log sites
+   and commons sites with the same name, an alias, or within 300 m, nearest first: "Use this
+   site" (log) or "Adopt" (commons) instead of creating a duplicate. Nothing is blocked.
+5. **Type sets the water.** The type select is the one list in `core/dive/site-types.ts`
+   (`SITE_TYPES`, `waterDefault`): lake, quarry, cave, cenote… fresh; sea, reef, wreck salt. A
+   water picked by hand stays. "+ New region" opens `RegionForm` in a dialog with the country
+   filled in. "More details" (remembered open or closed) holds the other names, area, system,
+   summary, location visibility and halocline.
+6. **Create.** Page: **Create** (opens the site), **Create & log a dive here**
+   (`urls.admin.newDive({ site })`) or **Create & draw a map** (the Maps tab). Dialog: **Create &
+   use** sets the dive's site. Enter in a text field never creates a half-filled site; errors
+   from the server land on their fields.
+
+A site with a map is five actions: the name, a tap on the map, Create & draw a map, Start from
+OpenStreetMap, Save map.
+
+### The site workspace
+
+`/admin/sites/{id}` is one page with a header (name, origin badge, pin state, View ↗, and a
+"Revision" disclosure with the changelog) and tabs: **Details** (the record, grouped; commons
+fields locked as above, overlay fields marked "yours"), **Location** (`LocationPicker` for the
+site, a second compact one for the entry point with the site shown, location visibility),
+**Maps** (the map list and editor; `/admin/sites/{id}/maps` opens this tab), **Photos**
+(`Attachments` with `site`: kind photo or map, public, and for someone else's photo a licence
+from `GET /meta/licences`, the author and a source URL) and **Dives** (the dives at the site and
+"Log a dive here"). Details and Location share one form, so switching between them keeps what
+was typed; the save bar carries a "What changed" note that becomes the revision's changelog
+entry (`SiteIn.note`). Tabs other than Details and Maps live in the URL hash (`#location`).
+Leaving with unsaved changes asks first.
 
 ## Ejecting a page
 
