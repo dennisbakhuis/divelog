@@ -8,17 +8,23 @@
     defaultTitle,
     emptySiteMap,
     mapSummary,
+    seedDraft,
+    siteOrigin,
     type MapKind,
     type SiteMap,
     type SiteMapOut,
+    type SiteMapSeedIn,
+    type SiteMapSeedOut,
   } from '$lib/core/dive/sitemap';
   import { toast } from '$lib/components/stores/toast.svelte';
+  import { announce } from '$lib/core/ui/announce.js';
   import ChangeList from '$lib/components/shell/ChangeList.svelte';
 
   let { site }: { site: Site } = $props();
   const drawn = $derived(
     site.maps.flatMap((m: MapRef) => (m.collection === 'drawn' && m.drawn ? [m.drawn] : [])),
   );
+  const origin = $derived(siteOrigin(site));
   const underlays = $derived.by((): UnderlayOption[] => {
     const all = [...site.maps, ...(site.private?.reference_maps ?? [])];
     const fromMaps = all
@@ -34,77 +40,127 @@
     return [...fromMaps, ...uploads];
   });
 
+  /** Id of the stored map in the editor, or `NEW` for a draft that has never been saved. */
+  const NEW = '';
   let openId = $state<string | null>(null);
   let draft = $state<SiteMap | null>(null);
   let dirty = $state(false);
   let saving = $state(false);
+  let seeding = $state(false);
   let editorKey = $state(0);
   let note = $state('');
   let lastSaved = $state<SiteMapOut | null>(null);
 
-  const openMap = $derived(drawn.find((m) => m.id === openId));
+  const isNew = $derived(openId === NEW);
+  const openMap = $derived(
+    openId
+      ? (drawn.find((m) => m.id === openId) ?? (lastSaved?.id === openId ? lastSaved : undefined))
+      : undefined,
+  );
   const shownMap = $derived(
     lastSaved && openMap && lastSaved.id === openMap.id && lastSaved.revision > openMap.revision
       ? lastSaved
       : openMap,
   );
+  const shownFirst = $derived(
+    site.default_map
+      ? site.default_map.startsWith('drawn:')
+        ? site.default_map.slice(6)
+        : null
+      : (drawn[0]?.id ?? null),
+  );
+  /** A new draft holds unsaved work from the start: it exists nowhere else yet. */
+  const unsaved = $derived(dirty || isNew);
 
-  async function open(map: SiteMapOut) {
-    if (
-      dirty &&
-      !(await confirmDialog({
-        title: 'Discard unsaved changes to the open map?',
-        confirmLabel: 'Discard',
-      }))
-    )
-      return;
-    openId = map.id;
+  async function mayDiscard(): Promise<boolean> {
+    if (!unsaved) return true;
+    return confirmDialog({
+      title: isNew ? 'Discard the new map?' : 'Discard unsaved changes to the open map?',
+      body: isNew ? 'It has not been saved yet.' : undefined,
+      confirmLabel: 'Discard',
+    });
+  }
+
+  function show(id: string | null, map: SiteMap | null, changed: boolean) {
+    openId = id;
     draft = map;
-    dirty = false;
+    dirty = changed;
     note = '';
     lastSaved = null;
     editorKey += 1;
   }
 
-  async function close() {
-    if (
-      dirty &&
-      !(await confirmDialog({ title: 'Discard unsaved changes?', confirmLabel: 'Discard' }))
-    )
-      return;
-    openId = null;
-    draft = null;
-    dirty = false;
-    note = '';
-    lastSaved = null;
+  async function open(map: SiteMapOut) {
+    if (!(await mayDiscard())) return;
+    show(map.id, map, false);
   }
 
-  async function create(kind: MapKind) {
+  async function close() {
+    if (!(await mayDiscard())) return;
+    show(null, null, false);
+  }
+
+  /** Start a blank map in the editor; nothing is stored until "Save map". */
+  async function startBlank(kind: MapKind) {
+    if (!(await mayDiscard())) return;
+    show(NEW, emptySiteMap(kind, origin), false);
+    announce(`New ${defaultTitle(kind).toLowerCase()} open in the editor, not saved yet`);
+  }
+
+  /** Ask the server for a starter site map from OpenStreetMap and open it as an unsaved draft. */
+  async function startFromOsm() {
+    if (!(await mayDiscard())) return;
+    seeding = true;
     try {
-      const created = await adminJson<SiteMapOut>(`/admin/sites/${site.id}/maps`, 'POST', {
-        data: emptySiteMap(kind),
-        note: 'Created',
+      const body: SiteMapSeedIn = { source: 'osm' };
+      const seed = await adminJson<SiteMapSeedOut>(
+        `/admin/sites/${encodeURIComponent(site.id)}/maps/seed`,
+        'POST',
+        body,
+      );
+      show(NEW, seedDraft(seed.map, origin), true);
+      toast.show({
+        kind: 'info',
+        message: `${seed.elements} OpenStreetMap feature${seed.elements === 1 ? '' : 's'} within ${seed.radius_m} m. Check the draft, then Save map.`,
       });
-      await invalidateAll();
-      await open(created);
     } catch (err) {
-      toast.show({ kind: 'error', message: err instanceof AdminApiError ? err.message : 'Failed' });
+      toast.show({
+        kind: 'error',
+        message:
+          err instanceof AdminApiError
+            ? `OpenStreetMap starter map: ${err.message}`
+            : 'Could not reach the server for a starter map',
+      });
+    } finally {
+      seeding = false;
     }
   }
 
   async function save() {
-    if (!openMap || !draft) return;
+    if (!draft || openId === null) return;
     saving = true;
     try {
-      const saved = await adminJson<SiteMapOut>(`/admin/maps/${openMap.id}`, 'PUT', {
-        data: draft,
-        note: note.trim(),
-      });
-      toast.show({
-        kind: 'success',
-        message: saved.revision === openMap.revision ? 'Nothing changed' : 'Map saved',
-      });
-      lastSaved = saved;
+      if (isNew) {
+        const created = await adminJson<SiteMapOut>(
+          `/admin/sites/${encodeURIComponent(site.id)}/maps`,
+          'POST',
+          { data: draft, note: note.trim() || 'Created' },
+        );
+        openId = created.id;
+        lastSaved = created;
+        toast.show({ kind: 'success', message: 'Map saved' });
+      } else {
+        const before = openMap?.revision;
+        const saved = await adminJson<SiteMapOut>(`/admin/maps/${openId}`, 'PUT', {
+          data: draft,
+          note: note.trim(),
+        });
+        toast.show({
+          kind: 'success',
+          message: saved.revision === before ? 'Nothing changed' : 'Map saved',
+        });
+        lastSaved = saved;
+      }
       dirty = false;
       note = '';
       await invalidateAll();
@@ -127,12 +183,16 @@
       }))
     )
       return;
-    await adminJson(`/admin/maps/${map.id}`, 'DELETE');
-    if (openId === map.id) {
-      openId = null;
-      draft = null;
-      dirty = false;
+    try {
+      await adminJson(`/admin/maps/${map.id}`, 'DELETE');
+    } catch (err) {
+      toast.show({
+        kind: 'error',
+        message: err instanceof AdminApiError ? err.message : 'Could not delete the map',
+      });
+      return;
     }
+    if (openId === map.id) show(null, null, false);
     await invalidateAll();
   }
 
@@ -141,30 +201,50 @@
     if (j < 0 || j >= drawn.length) return;
     const order = drawn.map((m) => m.id);
     [order[i], order[j]] = [order[j], order[i]];
-    await adminJson(`/admin/sites/${site.id}/maps/order`, 'PUT', order);
+    try {
+      await adminJson(`/admin/sites/${encodeURIComponent(site.id)}/maps/order`, 'PUT', order);
+      announce(`Moved ${delta < 0 ? 'up' : 'down'}`);
+    } catch (err) {
+      toast.show({
+        kind: 'error',
+        message: err instanceof AdminApiError ? err.message : 'Could not reorder',
+      });
+    }
     await invalidateAll();
   }
 
-  async function star(map: SiteMapOut) {
-    await adminJson(`/admin/sites/${site.id}`, 'PATCH', { default_map: `drawn:${map.id}` });
-    toast.show({ kind: 'success', message: 'Shown first on the site page' });
+  async function makeFirst(map: SiteMapOut) {
+    try {
+      await adminJson(`/admin/sites/${encodeURIComponent(site.id)}`, 'PATCH', {
+        default_map: `drawn:${map.id}`,
+      });
+      toast.show({
+        kind: 'success',
+        message: `${map.title || defaultTitle(map.kind)} is shown first on the site page`,
+      });
+    } catch (err) {
+      toast.show({
+        kind: 'error',
+        message: err instanceof AdminApiError ? err.message : 'Could not change the first map',
+      });
+    }
     await invalidateAll();
   }
 
   function noteKeydown(e: KeyboardEvent) {
     if (e.key !== 'Enter' || e.isComposing) return;
     e.preventDefault();
-    if (dirty && !saving) save();
+    if (unsaved && !saving) save();
   }
 
   function beforeUnload(e: BeforeUnloadEvent) {
-    if (dirty) e.preventDefault();
+    if (unsaved) e.preventDefault();
   }
 
   let leaving = false;
 
   beforeNavigate((nav) => {
-    if (!dirty || leaving || nav.type === 'leave') return;
+    if (!unsaved || leaving || nav.type === 'leave') return;
     nav.cancel();
     const to = nav.to?.url;
     confirmDialog({
@@ -189,65 +269,109 @@
   <div class="head">
     <h2>Drawn maps</h2>
     <div class="actions">
-      <button type="button" class="dl-btn dl-btn-ghost dl-btn-sm" onclick={() => create('stickmap')}
-        >+ Stick map</button
+      <button
+        type="button"
+        class="dl-btn dl-btn-solid dl-btn-sm"
+        onclick={startFromOsm}
+        disabled={seeding || !origin}
+        aria-busy={seeding}
+        aria-describedby={origin ? undefined : 'dl-maps-no-origin'}
+        >{seeding ? 'Fetching from OpenStreetMap…' : 'Start from OpenStreetMap'}</button
       >
-      <button type="button" class="dl-btn dl-btn-ghost dl-btn-sm" onclick={() => create('sitemap')}
-        >+ Site map</button
+      <button
+        type="button"
+        class="dl-btn dl-btn-ghost dl-btn-sm"
+        onclick={() => startBlank('sitemap')}>Blank site map</button
+      >
+      <button
+        type="button"
+        class="dl-btn dl-btn-ghost dl-btn-sm"
+        onclick={() => startBlank('stickmap')}>Blank stick map</button
       >
     </div>
   </div>
+  {#if !origin}
+    <p class="muted" id="dl-maps-no-origin">
+      This site has no coordinates yet: set them under Details to start from OpenStreetMap and place
+      new maps on the globe.
+    </p>
+  {/if}
 
-  {#if drawn.length}
+  {#if drawn.length || isNew}
     <ul class="map-list">
       {#each drawn as m, i (m.id)}
+        {@const title = m.title || defaultTitle(m.kind)}
         <li class="map-row" class:open={openId === m.id}>
           <span class="badge">{defaultTitle(m.kind)}</span>
-          <span class="map-title">{m.title || defaultTitle(m.kind)}</span>
+          <span class="map-title">{title}</span>
           <span class="muted dl-num">{mapSummary(m)} · revision {m.revision}</span>
-          {#if site.default_map === `drawn:${m.id}`}<span class="star">★ first</span>{/if}
+          {#if drawn.length > 1}
+            <label class="first">
+              <input
+                type="radio"
+                name="dl-first-map-{site.id}"
+                checked={shownFirst === m.id}
+                onchange={() => makeFirst(m)}
+              />
+              Shown first
+            </label>
+          {/if}
           <span class="row-actions">
-            <button
-              type="button"
-              class="dl-btn dl-btn-ghost dl-btn-sm"
-              onclick={() => move(i, -1)}
-              aria-label="Move up">↑</button
-            >
-            <button
-              type="button"
-              class="dl-btn dl-btn-ghost dl-btn-sm"
-              onclick={() => move(i, 1)}
-              aria-label="Move down">↓</button
-            >
-            {#if site.default_map !== `drawn:${m.id}`}
-              <button type="button" class="dl-btn dl-btn-ghost dl-btn-sm" onclick={() => star(m)}
-                >☆ first</button
+            {#if drawn.length > 1}
+              <button
+                type="button"
+                class="dl-btn dl-btn-ghost dl-btn-sm"
+                onclick={() => move(i, -1)}
+                disabled={i === 0}
+                aria-label="Move {title} up">↑</button
+              >
+              <button
+                type="button"
+                class="dl-btn dl-btn-ghost dl-btn-sm"
+                onclick={() => move(i, 1)}
+                disabled={i === drawn.length - 1}
+                aria-label="Move {title} down">↓</button
               >
             {/if}
             <button
               type="button"
               class="dl-btn dl-btn-ghost dl-btn-sm"
+              aria-label="{openId === m.id ? 'Close' : 'Edit'} {title}"
               onclick={() => (openId === m.id ? close() : open(m))}
               >{openId === m.id ? 'Close' : 'Edit'}</button
             >
             <button
               type="button"
               class="dl-btn dl-btn-ghost dl-btn-sm danger"
+              aria-label="Delete {title}"
               onclick={() => remove(m)}>Delete</button
             >
           </span>
         </li>
       {/each}
+      {#if isNew && draft}
+        <li class="map-row open">
+          <span class="badge">{defaultTitle(draft.kind)}</span>
+          <span class="map-title">{draft.title || defaultTitle(draft.kind)}</span>
+          <span class="unsaved">new · not saved yet</span>
+          <span class="row-actions">
+            <button type="button" class="dl-btn dl-btn-ghost dl-btn-sm" onclick={close}
+              >Discard</button
+            >
+          </span>
+        </li>
+      {/if}
     </ul>
   {:else}
     <p class="muted">
-      No drawn maps yet. A <strong>stick map</strong> is a cave line survey — stations, distances,
-      bearings; a <strong>site map</strong> is a lake, quarry or reef with a shoreline, depth contours,
-      dive paths and objects. Both can be traced over the locator map or a reference map.
+      No drawn maps yet. A <strong>site map</strong> is a lake, quarry or reef with a shoreline,
+      depth contours, dive paths and objects — start it from OpenStreetMap to get the shore for
+      free. A <strong>stick map</strong> is a cave line survey: stations, distances, bearings. Both can
+      be traced over the locator map or a reference map.
     </p>
   {/if}
 
-  {#if openMap && draft}
+  {#if draft && openId !== null}
     <div class="editor dl-card">
       {#key editorKey}
         <SiteMapEditor
@@ -260,15 +384,18 @@
         />
       {/key}
       <div class="save-row">
-        <span class="muted"
-          >{dirty ? 'Unsaved changes' : 'Saved'} · every save is one git commit</span
+        <span class="muted" role="status"
+          >{isNew ? 'New map, not saved yet' : dirty ? 'Unsaved changes' : 'Saved'} · every save is one
+          git commit</span
         >
         <span class="save-controls">
           <input
             type="text"
-            class="note"
+            class="note dl-input"
             aria-label="What changed"
-            placeholder="What changed, e.g. Added the second sump"
+            placeholder={isNew
+              ? 'What this map is, e.g. Shore and contours from OSM'
+              : 'What changed, e.g. Added the second sump'}
             maxlength="200"
             bind:value={note}
             onkeydown={noteKeydown}
@@ -276,7 +403,7 @@
           <button
             type="button"
             class="dl-btn dl-btn-solid dl-btn-sm"
-            disabled={!dirty || saving}
+            disabled={!unsaved || saving}
             onclick={save}>{saving ? 'Saving…' : 'Save map'}</button
           >
         </span>
@@ -298,7 +425,7 @@
     align-items: flex-end;
     gap: 12px;
     flex-wrap: wrap;
-    margin-bottom: 20px;
+    margin-bottom: 12px;
   }
   h2 {
     font-size: var(--dl-text-lg);
@@ -306,12 +433,13 @@
   }
   .actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
   }
   .map-list {
     list-style: none;
     padding: 0;
-    margin: 0 0 16px;
+    margin: 8px 0 16px;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -339,7 +467,7 @@
   }
   .badge {
     font-family: var(--dl-font-mono);
-    font-size: 10.5px;
+    font-size: var(--dl-text-xs);
     letter-spacing: 0.1em;
     text-transform: uppercase;
     padding: 2px 8px;
@@ -347,13 +475,21 @@
     background: var(--dl-color-accent-soft);
     color: var(--dl-color-accent);
   }
-  .star {
+  .first {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--dl-text-sm);
+    color: var(--dl-color-text-muted);
+    cursor: pointer;
+  }
+  .unsaved {
     color: var(--dl-color-warm);
-    font-size: 13px;
+    font-size: var(--dl-text-sm);
   }
   .muted {
     color: var(--dl-color-text-muted);
-    font-size: 13.5px;
+    font-size: var(--dl-text-sm);
   }
   .editor {
     padding: 14px;
@@ -390,10 +526,19 @@
   }
   .history p {
     margin: 0;
-    font-size: 14px;
+    font-size: var(--dl-text-md);
   }
   .danger:hover {
     border-color: var(--dl-color-error);
     color: var(--dl-color-error);
+  }
+  @media (max-width: 700px) {
+    .editor {
+      padding: 8px;
+    }
+    .actions .dl-btn,
+    .save-controls .dl-btn {
+      min-height: 44px;
+    }
   }
 </style>

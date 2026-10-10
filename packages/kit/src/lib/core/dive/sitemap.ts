@@ -17,6 +17,12 @@ import type { components } from './api';
 /** One line of a drawn map's changelog: the revision it produced, when, by whom and why. */
 export type ChangeEntry = components['schemas']['ChangeEntry'];
 
+/** What `POST /admin/sites/{id}/maps/seed` takes: the source and an optional radius in metres. */
+export type SiteMapSeedIn = components['schemas']['SiteMapSeedIn'];
+
+/** A starter map, not saved; its `map` is what `POST /admin/sites/{id}/maps` takes as `data`. */
+export type SiteMapSeedOut = components['schemas']['SiteMapSeedOut'];
+
 export type MapKind = 'stickmap' | 'sitemap';
 
 export type NodeType =
