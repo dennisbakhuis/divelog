@@ -11,6 +11,17 @@ function watchConsole(page: Page): string[] {
   return errors;
 }
 
+/**
+ * Software WebGL is heavy when several workers draw maps at once; tests that do not tap the
+ * map run the picker in its no-WebGL mode (the coordinates field only).
+ */
+async function withoutWebGL(page: Page) {
+  await page.addInitScript(() => {
+    Reflect.deleteProperty(window, 'WebGLRenderingContext');
+    Reflect.deleteProperty(window, 'WebGL2RenderingContext');
+  });
+}
+
 test.describe('site creation and the site workspace', () => {
   test.beforeEach(async ({ context, baseURL }) => {
     await context.addCookies([{ name: OWNER_COOKIE, value: '1', url: baseURL! }]);
@@ -44,7 +55,7 @@ test.describe('site creation and the site workspace', () => {
     await expect(country).not.toHaveValue('');
     const iso3 = (await country.inputValue()).toLowerCase();
     await expect(page.locator('.id-line')).toContainText(`${iso3}-benchmark-quarry`);
-    await expect(page.locator('.id-line')).toContainText('available');
+    await expect(page.locator('.id-line')).toContainText('available', { timeout: 15_000 });
 
     await page.getByRole('button', { name: 'Create & draw a map' }).click();
     actions += 1;
@@ -57,11 +68,12 @@ test.describe('site creation and the site workspace', () => {
   });
 
   test('the nearby check offers an existing site instead of a duplicate', async ({ page }) => {
+    await withoutWebGL(page);
     await page.goto('/admin/sites/new');
     await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeFocused();
     await page.getByRole('textbox', { name: 'Name', exact: true }).fill(SITE_NAME);
     const nearby = page.locator('.nearby');
-    await expect(nearby.locator('.hit')).toHaveCount(1);
+    await expect(nearby.locator('.hit')).toHaveCount(1, { timeout: 15_000 });
     await expect(nearby).toContainText('same name');
     await nearby.getByRole('button', { name: `Use ${SITE_NAME} instead` }).click();
     await expect(page).toHaveURL(new RegExp(`/admin/sites/${SITE_SLUG}$`));
@@ -69,6 +81,7 @@ test.describe('site creation and the site workspace', () => {
   });
 
   test('a pasted position fills the country and the id', async ({ page }) => {
+    await withoutWebGL(page);
     await page.goto('/admin/sites/new');
     await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeFocused();
     await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Pasted Pit');
@@ -78,10 +91,11 @@ test.describe('site creation and the site workspace', () => {
     await expect(coords).toHaveValue('44.600000, 1.700000');
     await expect(page.getByRole('combobox', { name: 'Country', exact: true })).toHaveValue('FRA');
     await expect(page.locator('.id-line')).toContainText('fra-pasted-pit');
-    await expect(page.locator('.nearby')).toContainText('Fontaine de Truffe');
+    await expect(page.locator('.nearby')).toContainText('Fontaine de Truffe', { timeout: 15_000 });
   });
 
   test('the workspace switches tabs and keeps the maps deep link', async ({ page }) => {
+    await withoutWebGL(page);
     await page.goto(`/admin/sites/${SITE_SLUG}/maps`);
     await page.waitForLoadState('networkidle');
     await expect(page.getByRole('tab', { name: /^Maps/ })).toHaveAttribute('aria-selected', 'true');
@@ -111,10 +125,11 @@ test.describe('site creation and the site workspace', () => {
     }
 
     test('the new-site form and every workspace tab pass axe', async ({ page }) => {
+      await withoutWebGL(page);
       await page.goto('/admin/sites/new');
       await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeFocused();
       await page.getByRole('textbox', { name: 'Name', exact: true }).fill(SITE_NAME);
-      await expect(page.locator('.nearby .hit')).toHaveCount(1);
+      await expect(page.locator('.nearby .hit')).toHaveCount(1, { timeout: 15_000 });
       expect(await blocking(page)).toEqual([]);
 
       await page.goto(`/admin/sites/${SITE_SLUG}`);
@@ -127,6 +142,7 @@ test.describe('site creation and the site workspace', () => {
     });
 
     test('the new-site form fits a phone', async ({ page }) => {
+      await withoutWebGL(page);
       await page.setViewportSize({ width: 390, height: 844 });
       await page.goto('/admin/sites/new');
       await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeFocused();

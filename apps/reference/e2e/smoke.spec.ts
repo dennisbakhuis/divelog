@@ -93,7 +93,9 @@ test.describe('signed in', () => {
 
   test('the new-site page adopts a site from the commons search', async ({ page }) => {
     const errors = watchConsole(page);
+    await page.addInitScript(() => Reflect.deleteProperty(window, 'WebGLRenderingContext'));
     await page.goto('/admin/sites/new');
+    await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeFocused();
     await page.getByText('Search the commons by name instead').click();
     await page.getByRole('searchbox', { name: 'Search the commons' }).fill('fontaine');
     const hits = page.locator('.commons-search .hits li');
