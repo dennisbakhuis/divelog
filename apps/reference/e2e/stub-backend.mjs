@@ -3,15 +3,18 @@
  * A stand-in for the divelog server for the E2E smoke: serves the fixture
  * log under `/api/v1`, answers `/api/v1/auth/me` with 401 (nobody signed in),
  * an empty tile index and one small PNG for anything else under `/media`.
+ * A request carrying the `OWNER_COOKIE` is the signed-in owner: it also gets the owner
+ * endpoints the sharing features call (repo status, commons search and pull).
  * Usage: node e2e/stub-backend.mjs [port]   (default 8399, or STUB_PORT)
  */
 import { createServer } from 'node:http';
 import { crc32, deflateSync } from 'node:zlib';
-import { fixtures } from './fixtures.mjs';
+import { commonsSearch, fixtures, OWNER_COOKIE, ownerFixtures } from './fixtures.mjs';
 
 const port = Number(process.argv[2] ?? process.env.STUB_PORT ?? 8399);
 const API = '/api/v1';
 const data = fixtures();
+const owned = ownerFixtures();
 
 /** A solid 8×8 PNG in the accent colour, standing in for every photo. */
 function png(size = 8, rgb = [76, 201, 240]) {
@@ -46,9 +49,19 @@ function send(res, status, body, type = 'application/json') {
 }
 
 const server = createServer((req, res) => {
-  const { pathname } = new URL(req.url ?? '/', 'http://stub');
+  const { pathname, searchParams } = new URL(req.url ?? '/', 'http://stub');
+  const owner = (req.headers.cookie ?? '').includes(`${OWNER_COOKIE}=`);
   if (pathname === '/health') return send(res, 200, { status: 'ok' });
-  if (pathname === `${API}/auth/me`) return send(res, 401, { detail: 'Not signed in' });
+  if (pathname === `${API}/auth/me`)
+    return owner ? send(res, 200, owned['/auth/me']) : send(res, 401, { detail: 'Not signed in' });
+  if (pathname.startsWith(`${API}/admin/`)) {
+    if (!owner) return send(res, 401, { detail: 'Not signed in' });
+    const path = pathname.slice(API.length);
+    if (path === '/admin/commons/sites')
+      return send(res, 200, commonsSearch(searchParams.get('q')));
+    const body = owned[req.method === 'GET' ? path : `${req.method} ${path}`];
+    return body === undefined ? send(res, 404, { detail: 'Not found' }) : send(res, 200, body);
+  }
   if (pathname.startsWith(`${API}/`)) {
     const body = data[pathname.slice(API.length)];
     return body === undefined ? send(res, 404, { detail: 'Not found' }) : send(res, 200, body);

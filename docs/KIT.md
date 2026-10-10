@@ -211,11 +211,22 @@ site's `origin` (`log`, `commons` or `fork`); the kit shows what follows from it
 - **Repo notices.** The admin bar shows the log's and the commons' checked-out commits, the
   commons state and a badge with the load notices (shadowed records, stale overlays and forks),
   each site notice linking to its editor.
+- **Adopt a site.** The new-site page and the dive editor's site picker ("From the commons",
+  or "Search the commons for …" in the picker's list) search `GET /admin/commons/sites` by
+  name, alias or area, optionally within 25 km of the current site, and offer the commons
+  sites not in the log yet with their origin and distance. "Use this site" sets the dive's site
+  (dive editor) or opens the site editor on the commons record (new-site page): adopting needs
+  no file, the first save writes the overlay.
+- **Commons pull.** "pull commons" in the admin bar calls `POST /admin/commons/pull`, which
+  fast-forwards the commons checkout and pins the log's `divelog.yaml`; the popover shows the
+  old and new head and the sites that became stale, each linking to its editor. The button is
+  disabled with a reason when the server has git off for the commons.
 - **Imports.** The Subsurface import report lists every imported site with the site it
   matched (by Subsurface id, name, alias or distance, in metres) or created, and its origin.
 
 `@divelog/kit/testing` has sample records for these: `fakeSite`, `commonsSite`,
-`stalePinSite`, `forkSite`, `fakeMap`, `staleAnnotation` and `fakeRepoStatus`.
+`stalePinSite`, `forkSite`, `fakeMap`, `staleAnnotation`, `fakeRepoStatus`, `fakeCommonsHits`
+and `fakeCommonsPull`.
 
 ## Ejecting a page
 

@@ -561,3 +561,97 @@ export const DIVE_NUMBERS = DIVES.map((d) => d.number);
 /** A commons site: not on the public lists, its page carries the attribution line. */
 export const COMMONS_SLUG = COMMONS_SITE.slug;
 export const COMMONS_NAME = COMMONS_SITE.name;
+
+/** The cookie the stub takes for a signed-in owner; any value of it signs in. */
+export const OWNER_COOKIE = 'divelog_e2e_owner';
+
+const COMMONS_HITS = [
+  {
+    id: 'fra-fontaine-de-truffe',
+    name: 'Fontaine de Truffe',
+    country: 'FRA',
+    type: 'cave',
+    lat: 44.6,
+    lon: 1.7,
+    area: 'Lot',
+    dives: 0,
+    has_dives: false,
+    origin: 'commons',
+    distance_km: null,
+  },
+  {
+    id: 'fra-fontaine-saint-george',
+    name: 'Fontaine Saint-George',
+    country: 'FRA',
+    type: 'cave',
+    lat: 44.5,
+    lon: 1.6,
+    area: 'Lot',
+    dives: 3,
+    has_dives: true,
+    origin: 'commons',
+    distance_km: null,
+  },
+  {
+    ...COMMONS_SITE,
+    id: COMMONS_SITE.slug,
+    type: COMMONS_SITE.site_type,
+    dives: 0,
+    has_dives: false,
+    distance_km: null,
+  },
+].map(({ id, name, country, type, lat, lon, area, dives, has_dives, origin, distance_km }) => ({
+  id,
+  name,
+  country,
+  type,
+  lat,
+  lon,
+  area,
+  dives,
+  has_dives,
+  origin,
+  distance_km,
+}));
+
+/** Owner endpoints for the sharing features, by path (without `/api/v1`). */
+export function ownerFixtures() {
+  return {
+    '/auth/me': { email: 'sam@example.com' },
+    '/admin/repo/status': {
+      state: 'clean',
+      ahead: 0,
+      behind: 0,
+      head: '81b54bf0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6',
+      dirty: false,
+      last_push_at: null,
+      last_error: null,
+      load_errors: [],
+      notices: [
+        'site fra-commons-cave: overlay written against commons revision 2, commons is at 3',
+      ],
+      commons_head: '3f0c1a2b9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a',
+      commons_state: 'clean',
+    },
+    'POST /admin/commons/pull': {
+      previous_head: '3f0c1a2b9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a',
+      head: '9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b',
+      pinned: true,
+      stale: [
+        {
+          site_id: COMMONS_SITE.slug,
+          origin: 'commons',
+          pinned_revision: 2,
+          current_revision: 4,
+          new: true,
+        },
+      ],
+    },
+  };
+}
+
+/** `GET /admin/commons/sites?q=`: the commons hits whose name contains `q`. */
+export function commonsSearch(q) {
+  const needle = (q ?? '').trim().toLowerCase();
+  return COMMONS_HITS.filter((hit) => !needle || hit.name.toLowerCase().includes(needle));
+}

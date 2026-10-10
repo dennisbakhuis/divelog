@@ -1,5 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
-import { COMMONS_NAME, COMMONS_SLUG, DIVE_NUMBERS, SITE_NAME, SITE_SLUG } from './fixtures.mjs';
+import {
+  COMMONS_NAME,
+  COMMONS_SLUG,
+  DIVE_NUMBERS,
+  OWNER_COOKIE,
+  SITE_NAME,
+  SITE_SLUG,
+} from './fixtures.mjs';
 
 function watchConsole(page: Page): string[] {
   const errors: string[] = [];
@@ -77,4 +84,49 @@ test('the app proxies the API and media to the server', async ({ request }) => {
   expect((await request.get('/api/v1/dive/summary')).status()).toBe(200);
   const media = await request.get('/media/photos/x.png');
   expect(media.headers()['content-type']).toBe('image/png');
+});
+
+test.describe('signed in', () => {
+  test.beforeEach(async ({ context, baseURL }) => {
+    await context.addCookies([{ name: OWNER_COOKIE, value: '1', url: baseURL! }]);
+  });
+
+  test('the new-site page adopts a site from the commons search', async ({ page }) => {
+    const errors = watchConsole(page);
+    await page.goto('/admin/sites/new');
+    await expect(
+      page.getByRole('heading', { name: 'Adopt a site from the commons' }),
+    ).toBeVisible();
+    await page.getByRole('searchbox', { name: 'Search the commons' }).fill('fontaine');
+    const hits = page.locator('.commons-search .hits li');
+    await expect(hits).toHaveCount(1);
+    await expect(hits.first()).toContainText('Fontaine de Truffe');
+    await expect(hits.first()).toContainText('commons');
+    await expect(page.locator('.commons-search .known')).toContainText('Fontaine Saint-George');
+    await hits.first().getByRole('button', { name: 'Use this site' }).click();
+    await expect(page).toHaveURL(/\/admin\/sites\/fra-fontaine-de-truffe$/);
+    expect(errors.filter((e) => !e.includes('404'))).toEqual([]);
+  });
+
+  test('the admin bar shows the commons, its notices and a commons pull', async ({ page }) => {
+    await page.goto('/admin/sites/new');
+    await expect(page.locator('.heads')).toContainText('log 81b54bf');
+    await expect(page.locator('.heads')).toContainText('commons 3f0c1a2 · clean');
+    await page.getByRole('button', { name: '1 notice' }).click();
+    const notices = page.getByRole('dialog', { name: 'Repo notices' });
+    await expect(notices).toContainText('site fra-commons-cave: overlay written');
+    await expect(notices.getByRole('link', { name: 'edit' })).toHaveAttribute(
+      'href',
+      `/admin/sites/${COMMONS_SLUG}`,
+    );
+    await page.getByRole('button', { name: 'pull commons' }).click();
+    const pull = page.getByRole('dialog', { name: 'Commons pull' });
+    await expect(pull).toContainText('Commons 3f0c1a2 → 9a8b7c6');
+    await expect(pull).toContainText('log pinned');
+    await expect(pull.getByRole('link', { name: COMMONS_SLUG })).toHaveAttribute(
+      'href',
+      `/admin/sites/${COMMONS_SLUG}`,
+    );
+    await expect(pull).toContainText('r2 → r4');
+  });
 });
