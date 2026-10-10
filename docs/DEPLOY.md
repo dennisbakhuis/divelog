@@ -127,9 +127,9 @@ docker compose run --rm divelog-server divelog tiles --dry-run
 divelog tiles --log ./divelog-data --media ./media --upload   # needs pmtiles on PATH
 ```
 
-`divelog --help` lists the other tools: `validate`, `schema export|openapi`, `sites
-split|status|access`, `import shearwater-pnf`, `sitemap-osm`, `stickmap`, `media
-fetch|upload`.
+`divelog --help` lists the other tools: `validate [--base <ref>] [--strict]`, `schema
+export|openapi`, `sites split|status|access`, `import shearwater-pnf`, `sitemap-osm`,
+`stickmap`, `media fetch|upload`, `maps render|changed`.
 
 ## Upgrading
 

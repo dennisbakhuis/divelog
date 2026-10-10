@@ -14,14 +14,21 @@ from divelog_server.store.validate import (
     check_editorial,
     check_licences,
     check_map_ids,
+    check_map_nodes,
     check_provenance,
+    check_redirects,
     check_references,
     check_revisions,
     check_site_ids,
+    check_visibility,
+    decimals,
+    errors,
     first_person,
     first_person_lines,
     load_commons_tree,
+    owner_voice,
     validate_commons,
+    warnings,
 )
 from tests.logbuilder import build_commons
 
@@ -277,3 +284,142 @@ def test_media_manifest_reads_both_shapes() -> None:
     assert set(flat.entries) == set(nested.entries) == {"media/sites/a.jpg"}
     nested.remove("media/sites/a.jpg")
     assert nested.payload == {"sites": {}}
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Andrea I is a wreck", False),
+        ("The Malek II lies upright", False),
+        ("When I dived it", True),
+        ("I'd go back", True),
+        ("I’m sure", True),
+        ("Section I.", False),
+    ],
+)
+def test_roman_numeral_after_a_name_is_not_first_person(text: str, expected: bool) -> None:
+    assert first_person(text) is expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Most dives here start at the pool.", True),
+        ("Listed in the log as a training site.", True),
+        ("Site notes in the workbook.", True),
+        ("A favourite with photographers.", True),
+        ("The owner's boat leaves at nine.", True),
+        ("Divers enter from the quay.", False),
+    ],
+)
+def test_owner_voice_phrases(text: str, expected: bool) -> None:
+    assert owner_voice(text) is expected
+
+
+def test_warning_prints_its_level() -> None:
+    problem = Problem("sites/x.md", "owner voice", "warning")
+    assert str(problem) == "sites/x.md: warning: owner voice"
+    assert errors([problem]) == [] and warnings([problem]) == [problem]
+
+
+def test_owner_voice_body_is_a_warning(commons: Path) -> None:
+    edit_site(commons, body="A neutral line.\nMost dives here start at the pool.\nWe dive here.")
+    tree, _ = load_commons_tree(commons)
+    assert check_editorial(tree) == [
+        Problem(f"sites/{SITE}.md", "first person in body line 3: We dive here."),
+        Problem(
+            f"sites/{SITE}.md",
+            "owner voice in body line 2: Most dives here start at the pool.",
+            "warning",
+        ),
+    ]
+
+
+def test_drawn_map_texts_are_linted(commons: Path) -> None:
+    path = commons / "maps" / "drawn" / f"{SITE}-1.json"
+    payload = read_json(path)
+    payload["title"] = "My line"
+    payload["notes"] = "A favourite traverse."
+    payload["nodes"][1]["label"] = "Where we turned"
+    payload["lines"] = [{"id": "l1", "label": "Our path", "points": []}]
+    payload["areas"] = [{"id": "a1", "label": "Sand", "points": []}]
+    write_json(path, payload)
+    where = f"maps/drawn/{SITE}-1.json"
+    assert rule(check_editorial, commons) == [
+        f"{where}: first person in title: My line",
+        f"{where}: warning: owner voice in notes: A favourite traverse.",
+        f"{where}: first person in node 'b' label: Where we turned",
+        f"{where}: first person in line 'l1' label: Our path",
+    ]
+
+
+def test_region_body_is_linted(commons: Path) -> None:
+    write_markdown(
+        commons / "regions" / "fra-causses.md",
+        {"region": "fra-causses", "name": "Les Causses"},
+        "Our favourite plateau.\nDives here are cold.",
+    )
+    assert rule(check_editorial, commons) == [
+        "regions/fra-causses.md: first person in body line 1: Our favourite plateau.",
+        "regions/fra-causses.md: warning: owner voice in body line 2: Dives here are cold.",
+    ]
+
+
+def test_region_only_site_with_a_precise_point_warns(commons: Path) -> None:
+    edit_site(commons, location_visibility="region_only", lat=44.6123, lon=1.7)
+    tree, _ = load_commons_tree(commons)
+    assert check_visibility(tree) == [
+        Problem(
+            f"sites/{SITE}.md",
+            "region_only site with a precise point: round lat/lon to two decimals",
+            "warning",
+        )
+    ]
+    edit_site(commons, lat=44.61, lon=1.7)
+    assert rule(check_visibility, commons) == []
+
+
+def test_exact_site_may_be_precise(commons: Path) -> None:
+    edit_site(commons, lat=44.612345)
+    assert rule(check_visibility, commons) == []
+
+
+@pytest.mark.parametrize(("value", "expected"), [(44.6, 1), (44.61, 2), (1.0, 1), (5, 0)])
+def test_decimals(value: float, expected: int) -> None:
+    assert decimals(value) == expected
+
+
+def test_redirects_must_point_at_existing_sites(commons: Path) -> None:
+    (commons / "redirects.yaml").write_text(
+        f"fra-old: {SITE}\nfra-older: fra-old\nfra-gone: fra-nowhere\n{SITE}: fra-old\n",
+        encoding="utf-8",
+    )
+    assert rule(check_redirects, commons) == [
+        "redirects.yaml: fra-commons-only: still an existing site, not a redirect",
+        "redirects.yaml: fra-commons-only: chains through fra-old; point at the end",
+        "redirects.yaml: fra-gone: target site 'fra-nowhere' does not exist",
+        "redirects.yaml: fra-old: chains through fra-commons-only; point at the end",
+        "redirects.yaml: fra-older: chains through fra-old; point at the end",
+    ]
+
+
+def test_redirects_must_be_a_mapping(commons: Path) -> None:
+    (commons / "redirects.yaml").write_text("- a\n- b\n", encoding="utf-8")
+    assert "redirects.yaml: not a mapping of old id: new id" in messages(validate_commons(commons))
+
+
+def test_retired_ids_are_not_reused_and_renames_resolve(commons: Path) -> None:
+    path = commons / "maps" / "drawn" / f"{SITE}-1.json"
+    payload = read_json(path)
+    renamed = {"old-b": "b", "x": "y"}
+    write_json(path, {**payload, "retired_nodes": ["c"], "renamed_nodes": renamed})
+    assert rule(check_map_nodes, commons) == [
+        f"maps/drawn/{SITE}-1.json: retired node id 'c' is used again",
+        f"maps/drawn/{SITE}-1.json: renamed node 'x' -> 'y': 'y' is not a node",
+    ]
+
+
+def test_rename_chains_resolve_to_the_last_name(commons: Path) -> None:
+    path = commons / "maps" / "drawn" / f"{SITE}-1.json"
+    write_json(path, {**read_json(path), "renamed_nodes": {"old-b": "mid-b", "mid-b": "b"}})
+    assert rule(check_map_nodes, commons) == []
