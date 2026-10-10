@@ -126,7 +126,7 @@
 
 <section class="attachments">
   <h2>
-    {site ? 'Photos & uploaded maps' : 'Photos, scans & files'}
+    {site ? 'Photos & uploaded maps' : 'Photos & files'}
     <span class="dl-num muted">{items.length}</span>
   </h2>
 

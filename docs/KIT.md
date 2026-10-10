@@ -379,3 +379,57 @@ Field errors from the API: a 422 throws `AdminApiError` with `fieldErrors`
 Toasts: `toast.show({ kind: 'success' | 'info' | 'error', message, sticky?, duration? })`.
 Errors stay until dismissed; others leave after 5 s, paused while hovered or focused. Every
 toast is announced through the live regions (errors assertively).
+
+## Logging a dive
+
+The editor's new-dive page is `urls.admin.newDive(params)`; `params` prefill the form:
+`site` (site id), `trip` (trip slug), `person` (person id), `date` (ISO). Public pages pass a
+prefilled link to `OwnerBar` as `newDiveHref` ("Log a dive here" on a site page, "Log a dive
+with X" on a person page). The list is `urls.admin.dives({ status: 'draft' })`, also served at
+the editor root.
+
+**What the page loads.** One `GET /admin/dives/template?site=&date=` replaces the old list and
+last-dive fetches: `previous` (the latest dive on or before the date, in the input shape),
+`at_site` (the last dive at the site), `recent_sites`, `frequent_people`, `next_number` and
+`trip_for_date`. On a draft the loader asks again for the day before when the draft itself is
+the latest dive, so a draft never copies itself; it also loads every draft's number for
+"Save & next draft". The form asks for a new template when the site or date changes (new dives
+and drafts only).
+
+**The form** (`DiveForm`), in sections that remember their open state per browser:
+
+1. *Essentials* (open): number, date, time in/out, duration, depths, site, section, buddies,
+   trip. Site, buddies and trip are `Combobox`es: recent sites and frequent buddies first, then
+   all; the site list's footer has "+ New site" and "From the commons", the buddy list's "Add
+   person" for a name not yet in the log, the trip list's "+ New trip".
+2. *Gas & kit* (open): gear setup with "Use gear setup" (tanks, suit and weights from the
+   setup; edit them on the gear page), tank cards, mode, suit, weights, surface interval,
+   safety stop.
+3. *Conditions*, 4. *On the map* (the only drawn map of a site is picked by itself),
+   5. *Story* with a server-rendered preview (`POST /admin/preview/markdown`) and the
+   *Transcription* of the paper log inside it, 6. *Private*, 7. *Publishing* ("Published as",
+   "Save as draft"). Then *Photos & files*: on a new dive the chosen files are queued and
+   uploaded right after the first save.
+
+**Derived values** carry a "from …" hint and stop following their source once typed over
+(emptying the field hands it back): duration from time in and out, surface interval from the
+previous dive's time out, water temperature from the last dive at the site, trip from the
+date. **Same as previous dive** fills blank fields only, all at once or per group (site &
+buddies, tanks & kit, trip); it is offered on new dives and drafts. The pure helpers are
+exported from `@divelog/kit/core`: `durationFromTimes`, `surfaceIntervalFrom`,
+`templateFills`, `applyTemplate`, `applyGearSetup`, `validateEssentials`.
+
+**Saving.** Save, Save & new (same date), Save & next draft (drafts), Ctrl/⌘-S. Missing
+essentials or a 422 mark the fields (`aria-invalid`, message linked by `aria-describedby`),
+open their section and move focus to the first one; nothing half-filled is sent. Status goes
+to the live region ("Dive #651 created") and shows as "Saved 12:03". Leaving with unsaved
+changes asks through `confirmDialog`; the form is also backed up in `sessionStorage` per dive
+(`dl-dive-backup:<number|new>`) and restored after a reload with a notice that can discard it.
+
+A repeat dive at the same site with the same buddies is six actions: open the page, "Same as
+previous dive", depth, duration, time in, Save (the reference app's e2e counts them).
+
+**Dive list and import.** The list pages through `GET /admin/dives/page` (100 rows, "Show
+more"); search, status and column sort live in the URL; drafts can be published together
+(`POST /admin/dives/publish`). An import first runs as a dry run (`?dry_run=true`) and shows
+what would happen; "Import" sends the same files, and the new drafts are listed as links.

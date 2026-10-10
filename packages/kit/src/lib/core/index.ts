@@ -27,6 +27,7 @@ export * from './map/viewport.js';
 export * from './map/world.js';
 export * from './admin/client.js';
 export * from './admin/dive-input.js';
+export * from './admin/dive-list.js';
 export * from './admin/lookups.js';
 export * from './admin/site-create.js';
 export * from './admin/site-form.js';

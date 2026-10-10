@@ -131,6 +131,36 @@ export type AdminDiveListItem = Narrow<
   { visibility: DiveNarrowing['visibility'] }
 >;
 
+/** A row of `GET /admin/dives/page`: the list row plus its start time, site id and trip. */
+export type AdminDiveRow = Narrow<
+  Schemas['AdminDiveRow'],
+  { visibility: DiveNarrowing['visibility'] }
+>;
+
+/** `GET /admin/dives/page`: one page of the editor's list; `total` counts every match. */
+export type AdminDivePage = Narrow<Schemas['AdminDivePage'], { items: AdminDiveRow[] }>;
+
+/** `GET /admin/dives/template`: what a new dive starts from, in one request. */
+export type DiveTemplateOut = Schemas['DiveTemplateOut'];
+
+/** The template's previous dive, in the shape `POST /admin/dives` takes. */
+export type DiveTemplateDive = Schemas['DiveTemplateDive'];
+
+/** The last dive at a site, for the values a new dive there starts from. */
+export type SiteLastDive = Schemas['SiteLastDive'];
+
+/** A recently dived site, for the top of the site picker. */
+export type TemplateSite = Schemas['TemplateSite'];
+
+/** Someone often dived with, for the top of the buddy picker. */
+export type TemplatePerson = Schemas['TemplatePerson'];
+
+/** `POST /admin/preview/markdown`: the Markdown as sanitised HTML. */
+export type MarkdownPreviewOut = Schemas['MarkdownPreviewOut'];
+
+/** `POST /admin/dives/publish`: drafts made public, and the numbers left as they were. */
+export type DivesPublishOut = Schemas['DivesPublishOut'];
+
 export type CountryStat = Schemas['CountryStat'];
 
 export type DiveEnvelope = Narrow<Schemas['DiveEnvelope'], { dives: DiveListItem[] }>;
@@ -162,7 +192,7 @@ export type GearPage = Schemas['GearPage'];
 
 export type RepoStatus = Schemas['RepoStatus'];
 
-/** What an import did: dives created or updated, and how each imported site resolved. */
+/** What an import did (or, as a dry run, would do): dives created or updated, sites resolved. */
 export type ImportResult = Schemas['ImportResult'];
 
 /** One imported site: matched to a site in the log or the commons, or created as personal. */

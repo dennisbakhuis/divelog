@@ -4,12 +4,14 @@
  * log under `/api/v1`, answers `/api/v1/auth/me` with 401 (nobody signed in),
  * an empty tile index and one small PNG for anything else under `/media`.
  * A request carrying the `OWNER_COOKIE` is the signed-in owner: it also gets the owner
- * endpoints the sharing features call (repo status, commons search and pull).
+ * endpoints the sharing features call (repo status, commons search and pull) and the dive
+ * editor's (form data, template, list pages, create and update, kept in memory) and the site
+ * workspace's (countries, licences, field classes, nearby sites, created sites).
  * Usage: node e2e/stub-backend.mjs [port]   (default 8399, or STUB_PORT)
  */
 import { createServer } from 'node:http';
 import { crc32, deflateSync } from 'node:zlib';
-import { commonsSearch, fixtures, OWNER_COOKIE, ownerFixtures } from './fixtures.mjs';
+import { commonsSearch, fixtures, OWNER_COOKIE, ownerEditor, ownerFixtures } from './fixtures.mjs';
 import { COUNTRIES, createdSite, LICENCES, nearbySites, SITE_FIELDS } from './site-fixtures.mjs';
 
 const port = Number(process.argv[2] ?? process.env.STUB_PORT ?? 8399);
@@ -20,28 +22,14 @@ const owned = ownerFixtures();
 const created = new Map();
 const logSites = () => [...data['/dive/sites'], ...created.values()];
 
-/** The JSON body of a request. */
-function readJson(req) {
-  return new Promise((resolve) => {
-    let raw = '';
-    req.on('data', (chunk) => (raw += chunk));
-    req.on('end', () => {
-      try {
-        resolve(JSON.parse(raw || '{}'));
-      } catch {
-        resolve({});
-      }
-    });
-  });
-}
-
 /** The site workspace and new-site endpoints; undefined when the path is not one of them. */
-async function siteEndpoint(req, path, searchParams) {
-  if (path === '/admin/sites/nearby' && req.method === 'GET')
+function siteEndpoint(method, path, searchParams, body) {
+  if (path === '/admin/sites/nearby' && method === 'GET')
     return [200, nearbySites(logSites(), searchParams)];
   if (path === '/admin/meta/site-fields') return [200, SITE_FIELDS];
-  if (path === '/admin/sites' && req.method === 'POST') {
-    const body = await readJson(req);
+  if (path === '/admin/sites' && method === 'POST') {
+    if (!body?.site_id)
+      return [422, { detail: [{ loc: ['body', 'site_id'], msg: 'Field required' }] }];
     if (logSites().some((s) => s.id === body.site_id))
       return [409, { detail: 'Site id already in use' }];
     const site = createdSite(body);
@@ -49,11 +37,24 @@ async function siteEndpoint(req, path, searchParams) {
     return [201, site];
   }
   const one = /^\/admin\/sites\/([^/]+)$/.exec(path);
-  if (one && req.method === 'GET') {
-    const site = logSites().find((s) => s.id === decodeURIComponent(one[1]));
-    return site ? [200, site] : [404, { detail: 'Site not found' }];
-  }
+  if (one && method === 'GET' && created.has(decodeURIComponent(one[1])))
+    return [200, created.get(decodeURIComponent(one[1]))];
   return undefined;
+}
+
+const editor = ownerEditor();
+
+/** The request's JSON body, or undefined for none or anything else. */
+async function readJson(req) {
+  if (req.method === 'GET' || req.method === 'HEAD') return undefined;
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  if (!(req.headers['content-type'] ?? '').includes('application/json')) return undefined;
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    return undefined;
+  }
 }
 
 /** A solid 8×8 PNG in the accent colour, standing in for every photo. */
@@ -99,8 +100,11 @@ const server = createServer(async (req, res) => {
     const path = pathname.slice(API.length);
     if (path === '/admin/commons/sites')
       return send(res, 200, commonsSearch(searchParams.get('q')));
-    const site = await siteEndpoint(req, path, searchParams);
+    const json = await readJson(req);
+    const site = siteEndpoint(req.method ?? 'GET', path, searchParams, json);
     if (site) return send(res, site[0], site[1]);
+    const answer = editor.handle(req.method ?? 'GET', path, searchParams, json);
+    if (answer) return send(res, answer.status, answer.body);
     const body = owned[req.method === 'GET' ? path : `${req.method} ${path}`];
     return body === undefined ? send(res, 404, { detail: 'Not found' }) : send(res, 200, body);
   }

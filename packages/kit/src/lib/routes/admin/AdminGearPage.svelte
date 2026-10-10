@@ -3,11 +3,14 @@
   import { invalidateAll } from '$app/navigation';
   import { adminJson, adminUpload, AdminApiError } from '$lib/core/admin/client';
   import { confirmDialog } from '$lib/core/ui/confirm.js';
-  import type { GearItem, GearSetup } from '$lib/core/dive/types';
+  import type { GearItem, GearSetup, Tank } from '$lib/core/dive/types';
+  import { emptyTank, presetsFor } from '$lib/core/admin/dive-input';
+  import Field from '$lib/components/ui/Field.svelte';
   import { toast } from '$lib/components/stores/toast.svelte';
   import { getDivelog } from '$lib/core/dive/context';
 
-  const { urls } = getDivelog();
+  const { config, urls } = getDivelog();
+  const presets = presetsFor(config);
 
   let { data }: { data: AdminDataFor<'gear'> } = $props();
 
@@ -45,6 +48,9 @@
     description_md: '',
     sort: 0,
     item_ids: [] as string[],
+    tanks: [] as Tank[],
+    suit: '',
+    weights_kg: null as number | null,
   });
   let item = $state(emptyItem());
   let setup = $state(emptySetup());
@@ -81,6 +87,9 @@
       description_md: s.description_md,
       sort: s.sort,
       item_ids: s.items.map((i) => i.id),
+      tanks: (s.tanks ?? []).map((t) => ({ ...t })),
+      suit: s.suit ?? '',
+      weights_kg: s.weights_kg ?? null,
     };
   }
 
@@ -104,6 +113,12 @@
     error = '';
     const body = {
       ...setup,
+      suit: setup.suit.trim() || null,
+      weights_kg:
+        setup.weights_kg === null || String(setup.weights_kg) === ''
+          ? null
+          : Number(setup.weights_kg),
+      tanks: setup.tanks.filter((t) => t.cylinder.trim()),
       slug:
         setup.slug ||
         setup.name
@@ -137,6 +152,12 @@
     await adminUpload(`/admin/gear/items/${i.id}/photo`, files[0]);
     await invalidateAll();
   }
+  function mixLabel(t: Tank): string {
+    if (t.gas === 'air') return 'air';
+    if (t.gas === 'oxygen') return 'oxygen';
+    if (t.gas === 'trimix') return `${t.o2_pct ?? '?'}/${t.he_pct ?? '?'}`;
+    return `EAN${t.o2_pct ?? '?'}`;
+  }
   function toggle(list: string[], id: string): string[] {
     return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
   }
@@ -160,6 +181,96 @@
         <label>Sort<input type="number" bind:value={setup.sort} /></label>
       </div>
       <label>Description<textarea rows="2" bind:value={setup.description_md}></textarea></label>
+      <fieldset class="template">
+        <legend>Dived with</legend>
+        <p class="muted">"Use gear setup" in the dive editor fills these in.</p>
+        {#each setup.tanks as tank, i (i)}
+          <div class="tank-row">
+            <Field label="Role" id="dl-setup-tank-{i}-role">
+              {#snippet children(c)}
+                <select {...c} bind:value={tank.role}>
+                  <option value="back">back gas</option>
+                  <option value="stage">stage</option>
+                  <option value="deco">deco gas</option>
+                  <option value="bailout">bailout</option>
+                </select>
+              {/snippet}
+            </Field>
+            <Field label="Cylinder" id="dl-setup-tank-{i}-cylinder">
+              {#snippet children(c)}
+                <input
+                  {...c}
+                  type="text"
+                  list="dl-setup-cylinders"
+                  bind:value={tank.cylinder}
+                  onchange={() => {
+                    const preset = presets.cylinders.find(
+                      (p) => p.name.toLowerCase() === tank.cylinder.trim().toLowerCase(),
+                    );
+                    if (preset) tank.volume_l = preset.volume_l;
+                  }}
+                />
+              {/snippet}
+            </Field>
+            <Field label="Gas ({mixLabel(tank)})" id="dl-setup-tank-{i}-gas">
+              {#snippet children(c)}
+                <select
+                  {...c}
+                  value=""
+                  onchange={(e) => {
+                    const std = presets.gases.find((g) => g.label === e.currentTarget.value);
+                    if (!std) return;
+                    tank.gas = std.gas;
+                    tank.o2_pct = std.o2;
+                    tank.he_pct = std.he;
+                    e.currentTarget.value = '';
+                  }}
+                >
+                  <option value="">change…</option>
+                  {#each presets.gases as g (g.label)}<option value={g.label}>{g.label}</option
+                    >{/each}
+                </select>
+              {/snippet}
+            </Field>
+            <button
+              type="button"
+              class="dl-btn dl-btn-ghost dl-btn-sm"
+              onclick={() => (setup.tanks = setup.tanks.filter((_, j) => j !== i))}
+              ><span aria-hidden="true">×</span> Remove tank<span class="dl-visually-hidden">
+                {i + 1}</span
+              ></button
+            >
+          </div>
+        {/each}
+        <datalist id="dl-setup-cylinders">
+          {#each presets.cylinders as p (p.name)}<option value={p.name}>{p.volume_l} L</option
+            >{/each}
+        </datalist>
+        <div class="actions">
+          <button
+            type="button"
+            class="dl-btn dl-btn-ghost dl-btn-sm"
+            onclick={() =>
+              (setup.tanks = [...setup.tanks, emptyTank(setup.tanks.length ? 'stage' : 'back')])}
+            >+ Tank</button
+          >
+          <button
+            type="button"
+            class="dl-btn dl-btn-ghost dl-btn-sm"
+            onclick={() => (setup.tanks = [...setup.tanks, emptyTank('deco')])}>+ Deco gas</button
+          >
+        </div>
+        <div class="field-row">
+          <Field label="Suit" id="dl-setup-suit">
+            {#snippet children(c)}<input {...c} type="text" bind:value={setup.suit} />{/snippet}
+          </Field>
+          <Field label="Weights (kg)" id="dl-setup-weights">
+            {#snippet children(c)}
+              <input {...c} type="number" step="0.5" min="0" bind:value={setup.weights_kg} />
+            {/snippet}
+          </Field>
+        </div>
+      </fieldset>
       <div class="chips">
         {#each data.items as i (i.id)}
           <button
@@ -188,7 +299,15 @@
           <div>
             <strong>{s.name}</strong><br /><span class="muted"
               >{s.items.map((i) => i.name).join(', ') || 'no items'}</span
-            >
+            >{#if s.tanks?.length || s.suit || s.weights_kg != null}<br /><span class="muted"
+                >{[
+                  s.tanks?.map((t) => `${t.cylinder} ${mixLabel(t)}`).join(' + '),
+                  s.suit,
+                  s.weights_kg != null ? `${s.weights_kg} kg` : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}</span
+              >{/if}
           </div>
           <div class="row-actions">
             <button type="button" class="dl-btn dl-btn-ghost dl-btn-sm" onclick={() => editSetup(s)}
@@ -283,7 +402,7 @@
   .columns {
     display: grid;
     gap: 28px;
-    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
     align-items: start;
   }
   h2 {
@@ -311,7 +430,31 @@
   }
   .actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
+  }
+  .template {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0;
+    padding: 10px 12px 12px;
+    border: 1px solid var(--dl-color-border);
+    border-radius: var(--dl-radius-sm);
+  }
+  .template legend {
+    padding: 0 4px;
+    font-size: var(--dl-text-md);
+    color: var(--dl-color-text-muted);
+  }
+  .template p {
+    margin: 0;
+  }
+  .tank-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 8px;
+    align-items: end;
   }
   .list {
     list-style: none;
