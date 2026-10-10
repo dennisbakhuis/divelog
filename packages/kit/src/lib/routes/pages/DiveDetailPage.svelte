@@ -36,6 +36,8 @@
     typesRawAddsNothing,
   } from '$lib/core/dive/dive-page';
   import { getDivelog } from '$lib/core/dive/context';
+  import { goto } from '$app/navigation';
+  import { followWithState } from '$lib/components/dive/follow';
 
   const { urls } = getDivelog();
 
@@ -136,6 +138,28 @@
   });
   const noRoute = $derived(!!dive.map && !routeAnnotation);
 
+  let backTo = $state<string | undefined>();
+  const prevHref = $derived(dive.prev_number ? urls.dive(dive.prev_number) : null);
+  const nextHref = $derived(dive.next_number ? urls.dive(dive.next_number) : null);
+
+  function typing(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) return false;
+    return (
+      target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+    );
+  }
+
+  /** `[` and `]` page to the previous and next dive, unless the key belongs to something else. */
+  function onPagerKey(e: KeyboardEvent) {
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key !== '[' && e.key !== ']') return;
+    if (typing(e.target) || document.querySelector('dialog[open]')) return;
+    const href = e.key === '[' ? prevHref : nextHref;
+    if (!href) return;
+    e.preventDefault();
+    void goto(href, { state: { from: backTo } as App.PageState });
+  }
+
   type TabId = 'story' | 'original' | 'logbook';
   const tabs = $derived(
     [
@@ -148,34 +172,57 @@
 
 {#snippet pager()}
   <span class="pager">
-    {#if dive.prev_number}<a href={urls.dive(dive.prev_number)} rel="prev"
-        >← <span class="dl-num">#{dive.prev_number}</span>{#if dive.prev_site_name}<span
+    {#if prevHref}<a
+        href={prevHref}
+        rel="prev"
+        aria-keyshortcuts="["
+        onclick={(e) => followWithState(e, prevHref, { from: backTo })}
+        ><span aria-hidden="true">←</span>
+        <span class="dl-visually-hidden">Previous dive:</span>
+        <span class="dl-num">#{dive.prev_number}</span>{#if dive.prev_site_name}<span
             class="pager-name">{dive.prev_site_name}</span
           >{/if}</a
       >{/if}
-    {#if dive.next_number}<a href={urls.dive(dive.next_number)} rel="next"
-        >{#if dive.next_site_name}<span class="pager-name">{dive.next_site_name}</span>{/if}<span
+    {#if nextHref}<a
+        href={nextHref}
+        rel="next"
+        aria-keyshortcuts="]"
+        onclick={(e) => followWithState(e, nextHref, { from: backTo })}
+        ><span class="dl-visually-hidden">Next dive:</span>
+        {#if dive.next_site_name}<span class="pager-name">{dive.next_site_name}</span>{/if}<span
           class="dl-num">#{dive.next_number}</span
-        > →</a
+        > <span aria-hidden="true">→</span></a
       >{/if}
   </span>
 {/snippet}
 
+<svelte:window onkeydown={onPagerKey} />
+
 <article class="dive dl-container dl-detail">
   <DetailTop
     back={{ href: urls.log(), label: 'Dive log' }}
+    label="Dive navigation"
+    bind:backTo
     owner={data.owner
       ? {
           edit: { label: 'Edit', href: data.editHref },
-          actions: noRoute
-            ? [{ label: 'Mark route', href: urls.admin.dive(dive.number, 'map') }]
-            : [],
+          actions: [
+            ...(noRoute
+              ? [{ label: 'Mark route', href: urls.admin.dive(dive.number, 'map') }]
+              : []),
+            { label: '+ New dive', href: urls.admin.newDive() },
+          ],
           note: noRoute ? 'no route yet' : null,
         }
       : null}
   >
     {@render pager()}
   </DetailTop>
+  {#if prevHref || nextHref}
+    <p class="dl-visually-hidden" id="dl-pager-keys">
+      Press [ for the previous dive and ] for the next dive.
+    </p>
+  {/if}
 
   <header class="head" class:has-bg={headerBg}>
     {#if headerBg?.kind === 'drawn' && drawnMap}
@@ -218,7 +265,8 @@
             >{tag}</a
           >{/each}
         {#if showTypesRaw}<span class="raw" title="As ticked in the paper log"
-            >{dive.types_raw}</span
+            ><span class="dl-visually-hidden">As ticked in the paper log:</span>
+            {dive.types_raw}</span
           >{/if}
       </p>
     {/if}
@@ -304,7 +352,7 @@
       {/if}
       {#if dive.buddies.length}
         <article class="dl-card with">
-          <p class="eyebrow">With</p>
+          <h2 class="eyebrow">With</h2>
           <ul class="team">
             {#each dive.buddies as buddy (buddy.slug)}
               <li class="buddy">
@@ -504,8 +552,8 @@
     </section>
   {/if}
 
-  <nav class="crumbs bottom">
-    <a href={urls.log()}>← Dive log</a>
+  <nav class="crumbs bottom" aria-label="Dive navigation, end of page">
+    <a href={backTo ?? urls.log()}><span aria-hidden="true">←</span> Dive log</a>
     {@render pager()}
   </nav>
 </article>
@@ -790,6 +838,8 @@
   .eyebrow {
     margin: 0 0 6px;
     font-family: var(--dl-font-mono);
+    font-weight: 400;
+    line-height: inherit;
     font-size: 10.5px;
     letter-spacing: 0.12em;
     text-transform: uppercase;

@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { PublicDataFor } from '../public';
-  import { goto } from '$app/navigation';
   import DiveTable from '$lib/components/dive/DiveTable.svelte';
   import WorldMap from '$lib/components/dive/WorldMap.svelte';
   import DiveGlobe from '$lib/components/dive/DiveGlobe.svelte';
@@ -74,8 +73,7 @@
           map={data.map}
           compact
           label="Map of {pluralize(data.map.dots.length, 'dive site')} of {trip.name}"
-          onSelect={(slug) => slug && goto(urls.site(slug))}
-        />
+          />
       </DiveGlobe>
     </div>
   {/if}

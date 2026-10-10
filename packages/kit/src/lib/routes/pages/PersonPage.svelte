@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { PublicDataFor } from '../public';
-  import { goto } from '$app/navigation';
   import DiveTable from '$lib/components/dive/DiveTable.svelte';
   import WorldMap from '$lib/components/dive/WorldMap.svelte';
   import DetailTop from '$lib/components/dive/DetailTop.svelte';
@@ -131,7 +130,7 @@
   {#if data.map.dots.length}
     <section class="block">
       <h2>Where we dived</h2>
-      <WorldMap map={data.map} compact onSelect={(slug) => slug && goto(urls.site(slug))} />
+      <WorldMap map={data.map} compact />
     </section>
   {/if}
 

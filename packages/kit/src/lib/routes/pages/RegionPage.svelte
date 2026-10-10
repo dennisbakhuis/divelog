@@ -1,6 +1,5 @@
 <script lang="ts">
   import type { PublicDataFor } from '../public';
-  import { goto } from '$app/navigation';
   import DetailTop from '$lib/components/dive/DetailTop.svelte';
   import WorldMap from '$lib/components/dive/WorldMap.svelte';
   import { flagEmoji, formatDepth, formatHours, pluralize } from '$lib/core/dive/format';
@@ -73,7 +72,6 @@
         map={data.map}
         compact
         label="Map of {pluralize(data.map.dots.length, 'dive site')} in {region.name}"
-        onSelect={(slug) => slug && goto(urls.site(slug))}
       />
     </div>
   {/if}

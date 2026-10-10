@@ -47,6 +47,10 @@
     compact?: boolean;
     /** Accessible title; defaults to a description of the world map. */
     label?: string;
+    /**
+     * Pin the log to a site (an empty slug unpins it): the dots become toggle buttons.
+     * Without it the dots are links to the site pages.
+     */
     onSelect?: (slug: string) => void;
     onOptions?: (patch: MapOptionsPatch) => void;
   } = $props();
@@ -54,6 +58,8 @@
   const max = $derived(dotMeasureMax(map.dots, size));
   const scale = $derived(colourScale(map.dots, colour));
   let hovered = $state<Dot | null>(null);
+  const uid = $props.id();
+  const titleId = `dl-world-map-${uid}`;
 
   function pick(dot: Dot) {
     onSelect?.(activeSite === dot.slug ? '' : dot.slug);
@@ -68,39 +74,56 @@
   <svg
     viewBox="0 0 {map.width} {map.height}"
     role="group"
-    aria-labelledby="map-title"
+    aria-labelledby={titleId}
     class="world"
   >
-    <title id="map-title">{label || `World map with ${map.dots.length} dive sites`}</title>
+    <title id={titleId}>{label || `World map with ${map.dots.length} dive sites`}</title>
     <path d={map.spherePath} class="sphere" />
     <path d={map.landPath} class="land" />
     {#each map.dots as dot (dot.slug)}
       {@const r = dotRadiusBy(dot, size, max)}
       {@const fill = dotColour(dot, colour, scale)}
-      <g
-        class="site"
-        class:active={activeSite === dot.slug}
-        class:dimmed={(activeSite && activeSite !== dot.slug) ||
-          (highlight !== null && !highlight.has(dot.slug))}
-        transform="translate({dot.point.x} {dot.point.y})"
-        role="button"
-        tabindex="0"
-        aria-label="{dot.name}, {dot.dives} dives"
-        onmouseenter={() => (hovered = dot)}
-        onmouseleave={() => (hovered = null)}
-        onfocus={() => (hovered = dot)}
-        onblur={() => (hovered = null)}
-        onclick={() => pick(dot)}
-        onkeydown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            pick(dot);
-          }
-        }}
-      >
-        <circle class="halo" r={r * 2.2} style="fill: {fill}" />
-        <circle class="dot" {r} style="fill: {fill}" />
-      </g>
+      {@const name = `${dot.name}, ${dot.dives} ${dot.dives === 1 ? 'dive' : 'dives'}`}
+      {@const dimmed =
+        (activeSite && activeSite !== dot.slug) || (highlight !== null && !highlight.has(dot.slug))}
+      {#if onSelect}
+        <g
+          class="site"
+          class:active={activeSite === dot.slug}
+          class:dimmed
+          transform="translate({dot.point.x} {dot.point.y})"
+          role="button"
+          tabindex="0"
+          aria-label={name}
+          aria-pressed={activeSite === dot.slug}
+          onmouseenter={() => (hovered = dot)}
+          onmouseleave={() => (hovered = null)}
+          onfocus={() => (hovered = dot)}
+          onblur={() => (hovered = null)}
+          onclick={() => pick(dot)}
+          onkeydown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              pick(dot);
+            }
+          }}
+        >
+          {@render marker(r, fill)}
+        </g>
+      {:else}
+        <a
+          class="site"
+          class:dimmed
+          href={urls.site(dot.slug)}
+          aria-label={name}
+          onmouseenter={() => (hovered = dot)}
+          onmouseleave={() => (hovered = null)}
+          onfocus={() => (hovered = dot)}
+          onblur={() => (hovered = null)}
+        >
+          <g transform="translate({dot.point.x} {dot.point.y})">{@render marker(r, fill)}</g>
+        </a>
+      {/if}
     {/each}
   </svg>
 
@@ -110,7 +133,7 @@
     <MapOptions {size} {colour} {onOptions} />
   {/if}
 
-  <div class="tooltip" class:visible={hovered} aria-live="polite">
+  <div class="tooltip" class:visible={hovered} aria-hidden="true">
     {#if hovered}
       <strong>{flagEmoji(hovered.country_code)} {hovered.name}</strong>
       <span class="dl-num"
@@ -125,12 +148,13 @@
       >
     {/if}
   </div>
-  <ul class="dl-visually-hidden">
-    {#each map.dots as dot (dot.slug)}
-      <li><a href={urls.site(dot.slug)}>{dot.name}: {dot.dives} dives</a></li>
-    {/each}
-  </ul>
 </div>
+
+{#snippet marker(r: number, fill: string)}
+  <circle class="ring" r={r + 5} />
+  <circle class="halo" r={r * 2.2} style="fill: {fill}" />
+  <circle class="dot" {r} style="fill: {fill}" />
+{/snippet}
 
 <style>
   .map {
@@ -156,6 +180,15 @@
   .site {
     cursor: pointer;
     outline: none;
+  }
+  .ring {
+    fill: none;
+    stroke: var(--dl-color-focus-ring);
+    stroke-width: 2.5;
+    opacity: 0;
+  }
+  .site:focus-visible .ring {
+    opacity: 1;
   }
   .halo {
     opacity: 0.18;

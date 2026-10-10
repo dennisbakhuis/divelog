@@ -129,7 +129,7 @@
     />
   </div>
   <div class="what" data-reveal>
-    <DiveFilters envelope={data.envelope} {filter} onChange={update} />
+    <DiveFilters envelope={data.envelope} {filter} onChange={update} count={filtered.length} />
   </div>
 </section>
 

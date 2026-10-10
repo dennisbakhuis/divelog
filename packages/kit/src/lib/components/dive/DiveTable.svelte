@@ -21,6 +21,9 @@
   import { typeColour } from '$lib/core/dive/stats-view';
   import MapGlyph from './MapGlyph.svelte';
   import { getDivelog } from '$lib/core/dive/context';
+  import { page } from '$app/state';
+  import { fromState } from '$lib/core/dive/back';
+  import { followWithState } from './follow';
 
   const { urls } = getDivelog();
 
@@ -63,6 +66,12 @@
     return [{ key: 'all', label: '', count: dives.length, dives: visible, trips: [] }];
   });
 
+  /** The row link's name: short and unique, e.g. "Dive #650, Cenote Nohoch Nah Chich, 8 Feb 2026". */
+  function rowLabel(dive: DiveListItem): string {
+    const name = dive.title || dive.site?.name || dive.section || 'Untitled dive';
+    return `Dive #${dive.number}, ${name}, ${formatDate(dive.date)}`;
+  }
+
   const SPARK_W = 96;
   const SPARK_H = 52;
 
@@ -79,23 +88,27 @@
   }
 </script>
 
+{#snippet buddyLinks(buddies: DiveListItem['buddies'])}
+  with <a class="above" href={urls.person(buddies[0].slug)}>{buddies[0].name}</a>{#if buddies.length > 1}, {buddies
+      .slice(1)
+      .map((b) => b.name)
+      .join(', ')}{/if}
+{/snippet}
+
 {#snippet row(dive: DiveListItem)}
+  {@const href = urls.dive(dive.number)}
   <li id="dive-row-{dive.number}">
-    <a class="dive" href={urls.dive(dive.number)}>
+    <div class="dive">
       <span
         class="cover"
         class:has-photo={dive.cover_url}
         class:has-spark={!dive.cover_url && dive.spark}
+        aria-hidden="true"
       >
         {#if dive.cover_url}
           <img src={dive.cover_url} alt="" loading="lazy" width="120" height="80" />
         {:else if dive.spark}
-          <svg
-            viewBox="0 -6 {SPARK_W} {SPARK_H + 8}"
-            preserveAspectRatio="none"
-            role="img"
-            aria-label="Depth profile, {formatDepth(dive.max_depth_m)} max"
-          >
+          <svg viewBox="0 -6 {SPARK_W} {SPARK_H + 8}" preserveAspectRatio="none">
             <line class="surface" x1="0" y1="0" x2={SPARK_W} y2="0" />
             <path class="profile" d={profileArea(dive.spark, SPARK_W, SPARK_H)} />
           </svg>
@@ -105,8 +118,6 @@
             class="glyph"
             viewBox="-14 -14 28 28"
             style:color={typeColour(dive.site?.site_type ?? '')}
-            role="img"
-            aria-label={dive.site?.site_type ?? 'site'}
           >
             <MapGlyph type={glyph.type} objectKind={glyph.objectKind} />
           </svg>
@@ -114,34 +125,50 @@
       </span>
       <span class="main">
         <span class="title">
-          <span class="number dl-num">#{dive.number}</span>
-          {#if dive.title && dive.section && !hideSite}
-            {dive.section}<span class="section">· {dive.title}</span>
-          {:else}
-            {dive.title ||
-              (hideSite ? dive.section || formatDate(dive.date) : dive.site?.name) ||
-              'Untitled dive'}
-            {#if dive.section && !hideSite}<span class="section">· {dive.section}</span>{/if}
-          {/if}
+          <span class="number dl-num" aria-hidden="true">#{dive.number}</span>
+          <a
+            class="row-link"
+            {href}
+            aria-label={rowLabel(dive)}
+            onclick={(e) => followWithState(e, href, fromState(page.url))}
+          >
+            {#if dive.title && dive.section && !hideSite}
+              {dive.section}<span class="section">· {dive.title}</span>
+            {:else}
+              {dive.title ||
+                (hideSite ? dive.section || formatDate(dive.date) : dive.site?.name) ||
+                'Untitled dive'}
+              {#if dive.section && !hideSite}<span class="section">· {dive.section}</span>{/if}
+            {/if}
+          </a>
         </span>
         <span class="where">
           {#if hideSite}
             {[
               dive.title ? dive.section : null,
               dive.title || dive.section ? formatDate(dive.date) : null,
-              dive.buddies.length ? `with ${dive.buddies.map((b) => b.name).join(', ')}` : null,
             ]
               .filter(Boolean)
-              .join(' · ')}
+              .join(' · ')}{#if dive.buddies.length}{dive.title || dive.section
+                ? ' · '
+                : ''}{@render buddyLinks(dive.buddies)}{/if}
           {:else}
             {#if dive.site}
-              {flagEmoji(dive.site.country_code)}
-              {siteLocation(dive.site.name, dive.site.area)}
+              <span aria-hidden="true">{flagEmoji(dive.site.country_code)}</span>
+              {@const loc = siteLocation(dive.site.name, dive.site.area)}
+              {@const cut = loc.toLowerCase().startsWith(dive.site.name.toLowerCase())
+                ? dive.site.name.length
+                : loc.length}
+              <a class="above" href={urls.site(dive.site.slug)}>{loc.slice(0, cut)}</a
+              >{loc.slice(cut)}
             {:else}
               Unknown site
             {/if}
             {#if dive.buddies.length}
-              · with {dive.buddies.map((b) => b.name).join(', ')}
+              · {@render buddyLinks(dive.buddies)}
+            {/if}
+            {#if dive.trip && !groupBy}
+              · <a class="above trip-link" href={urls.trip(dive.trip.slug)}>{dive.trip.name}</a>
             {/if}
           {/if}
         </span>
@@ -166,8 +193,7 @@
         <span><small>water</small>{formatTemp(dive.water_temp_c)}</span>
         <span class="profile-mark">
           {#if dive.has_profile && dive.cover_url}
-            <svg viewBox="0 0 16 16" width="14" height="14" role="img">
-              <title>Dive-computer profile</title>
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
               <path
                 d="M1 3h2l3 9h4l3-9h2"
                 fill="none"
@@ -177,10 +203,11 @@
                 stroke-linejoin="round"
               />
             </svg>
+            <span class="dl-visually-hidden">Dive-computer profile</span>
           {/if}
         </span>
       </span>
-    </a>
+    </div>
   </li>
 {/snippet}
 
@@ -274,6 +301,7 @@
     scroll-margin-top: calc(var(--dl-header-h) + 48px);
   }
   .dive {
+    position: relative;
     display: grid;
     grid-template-columns: 96px 1fr auto;
     gap: 16px;
@@ -291,6 +319,38 @@
   .dive:hover {
     border-color: var(--dl-color-accent);
     transform: translateX(2px);
+  }
+  .dive:has(.row-link:focus-visible) {
+    border-color: var(--dl-color-accent);
+    outline: var(--dl-focus-ring);
+    outline-offset: var(--dl-focus-offset);
+  }
+  .row-link {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 10px;
+    color: inherit;
+    text-decoration: none;
+  }
+  .row-link:focus-visible {
+    outline: none;
+  }
+  .row-link::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+  }
+  .above {
+    position: relative;
+    z-index: 1;
+    color: inherit;
+    text-decoration: none;
+  }
+  .above:hover {
+    color: var(--dl-color-accent);
+    text-decoration: underline;
   }
   .cover {
     --map-bg: var(--dl-color-surface-2);
