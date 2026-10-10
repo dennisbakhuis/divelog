@@ -311,7 +311,7 @@ def nearby_sites(
     if origin is None:
         return []
     found: list[tuple[float, SiteRecord, tuple[float, float]]] = []
-    for other in store.sites.values():
+    for other in store.listed_sites(owner).values():
         if other.site_id == site.site_id or (where := _placed(other)) is None:
             continue
         distance = haversine_km(*origin, *where)
