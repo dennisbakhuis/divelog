@@ -20,7 +20,7 @@ instance layers under its own log.
 | `schema/v1` | JSON Schema of the data formats, exported from the server models | |
 | `docs/` | `FORMAT.md` data format, `KIT.md` mounting the kit, `DEPLOY.md`, `CONTRIBUTING.md` | |
 
-Code is Apache-2.0 (see `LICENSE` and `NOTICE`). The shared site data in `divelog-sites` is
+Code is AGPL-3.0-only (see `LICENSE` and `NOTICE`). The shared site data in `divelog-sites` is
 licensed separately, in three layers:
 
 - the site database (structured fields, map nodes and edges): Open Database License 1.0;

@@ -126,5 +126,5 @@ By signing off a commit (`Signed-off-by: Your Name <you@example.org>`) you certi
 > my sign-off) is maintained indefinitely and may be redistributed consistent with this project
 > or the open source license(s) involved.
 
-Contributions are licensed under Apache-2.0, the licence of this repository (see `LICENSE` and
+Contributions are licensed under AGPL-3.0-only, the licence of this repository (see `LICENSE` and
 `NOTICE`).
