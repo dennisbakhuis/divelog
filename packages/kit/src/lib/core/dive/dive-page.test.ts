@@ -39,9 +39,7 @@ describe('buddyRawAddsNothing', () => {
   });
 
   it('ignores a nickname in brackets and accepts aliases', () => {
-    expect(buddyRawAddsNothing('Andrea Rossi (mara)', [person('Andrea', 'Rossi')])).toBe(
-      true,
-    );
+    expect(buddyRawAddsNothing('Andrea Rossi (mara)', [person('Andrea', 'Rossi')])).toBe(true);
     expect(buddyRawAddsNothing('JP', [person('Jean-Paul', 'X', ['JP'])])).toBe(true);
   });
 
