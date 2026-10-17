@@ -305,6 +305,20 @@ async def test_api_commons_sites_by_name_alias_and_area(adopted: Repos, api: Asy
     }
 
 
+async def test_api_commons_sites_takes_several_words_and_typos(
+    adopted: Repos, api: AsyncClient
+) -> None:
+    async def ids(q: str, **params: str) -> list[str]:
+        response = await api.get(f"{ADMIN}/sites", params={"q": q, **params})
+        return [h["id"] for h in response.json()]
+
+    assert await ids("commons sprign") == [COMMONS_SITE]
+    assert await ids("petit sourse") == [SITE]
+    assert await ids("spring petite") == [SITE]
+    assert await ids("spring diary") == []
+    assert await ids("spring", near="44.61,1.71") == [SITE, COMMONS_SITE]
+
+
 async def test_api_commons_sites_near_orders_by_distance(adopted: Repos, api: AsyncClient) -> None:
     response = await api.get(f"{ADMIN}/sites", params={"near": "44.6,1.7"})
     hits = response.json()

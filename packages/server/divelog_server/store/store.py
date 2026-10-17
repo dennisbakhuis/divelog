@@ -48,6 +48,7 @@ from divelog_server.store.overlay import (
     overlay_frontmatter,
     overlay_is_empty,
 )
+from divelog_server.store.site_search import SiteIndex
 from divelog_server.store.sources import PUBLIC_REPO_DIRS, CommonsSource, LogSiteSource
 from divelog_server.store.trips import DEFAULT_HOME_COUNTRIES, TripIndex, derive_trips
 
@@ -121,6 +122,7 @@ class Store(LogRepo):
         self.map_origin: dict[str, MapOrigin] = {}
         self.dangling_sites: set[str] = set()
         self.status: list[str] = []
+        self._commons_index: SiteIndex | None = None
         self._resolve()
         self._index()
 
@@ -228,12 +230,20 @@ class Store(LogRepo):
             map_origin[map_id] = "log"
         self.sites = sites
         self.site_origin = origin
+        self._commons_index = None
         self.regions = {**base_regions, **self.log_sites.regions}
         self.maps = {**base_maps, **self.log_sites.maps}
         self.map_origin = map_origin
         self.seed_maps = self.log_sites.seed_maps | (commons.seed_maps if commons else set())
         self.status = status
         self.errors = [*self._load_errors, *errors]
+
+    def commons_index(self) -> SiteIndex:
+        """The search index over the commons records, built on first use after each load."""
+        if self._commons_index is None:
+            records = self.commons.sites.values() if self.commons else ()
+            self._commons_index = SiteIndex.of(records)
+        return self._commons_index
 
     def site_pin_state(self, site_id: str) -> PinState | None:
         """The pin of an overlay or fork against the commons; None for a personal site."""

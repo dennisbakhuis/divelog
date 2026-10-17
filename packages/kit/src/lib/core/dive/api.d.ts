@@ -675,7 +675,7 @@ export interface paths {
     };
     /**
      * Admin Sites Nearby
-     * @description Sites that may already be the one being created: same name or alias, or within reach.
+     * @description Sites that may already be the one being created: name or alias matches, or within reach.
      *
      *     Needs ``lat`` and ``lon`` together, ``name``, or both (422 otherwise).
      */

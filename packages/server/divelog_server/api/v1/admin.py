@@ -521,7 +521,7 @@ async def admin_sites_nearby(
     radius_m: Annotated[float, Query(gt=0, le=50_000)] = MATCH_RADIUS_M,
     limit: Annotated[int, Query(ge=1, le=50)] = 8,
 ) -> NearbySitesOut:
-    """Sites that may already be the one being created: same name or alias, or within reach.
+    """Sites that may already be the one being created: name or alias matches, or within reach.
 
     Needs ``lat`` and ``lon`` together, ``name``, or both (422 otherwise).
     """

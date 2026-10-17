@@ -217,7 +217,7 @@ describe('SiteCreate', () => {
       h.textContent?.replace(/\s+/g, ' '),
     );
     expect(hits[0]).toContain('120 m away · 3 dives');
-    expect(hits[1]).toContain('same name · Rocamadour');
+    expect(hits[1]).toContain('name matches · Rocamadour');
     expect(target.querySelector('.nearby .count')?.textContent).toBe('2');
     const adopt = target.querySelector<HTMLButtonElement>(
       '[aria-label="Adopt Cabouy from the commons"]',

@@ -295,8 +295,9 @@ def nearby_sites(
     """Sites that may already be the one being created, in this log and in the commons.
 
     The log list covers every site the log lists (its own, forks and commons sites it dived
-    or overlays); the commons list the remaining commons sites. Both follow the import's
-    matching rules: same name or alias, or placed within ``radius_m``.
+    or overlays); the commons list the remaining commons sites. Both list the sites whose
+    name or alias matches every word of ``name`` (typos allowed, as in the admin search) and
+    those placed within ``radius_m``.
     """
     log_ids = {sid for sid in store.sites if store.is_listed(sid)}
     log_hits = nearby(name, lat, lon, (store.sites[s] for s in log_ids), radius_m)
@@ -329,6 +330,6 @@ def nearby_sites(
             matched_by=hit.matched_by if hit.matched_by != "uuid" else "name",
             distance_m=hit.distance_m,
         )
-        for hit in nearby(name, lat, lon, unused, radius_m)[:limit]
+        for hit in nearby(name, lat, lon, unused, radius_m, store.commons_index())[:limit]
     ]
     return NearbySitesOut(log=log, commons=commons)

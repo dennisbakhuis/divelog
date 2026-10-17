@@ -3,8 +3,11 @@
 The rules, in order: the Subsurface UUID (or a site id equal to it), then a case-insensitive
 name or alias, then the nearest placed site within :data:`MATCH_RADIUS_M`. A name shared by
 several sites goes to the nearest of them when the import is placed, else to the first id.
+:func:`nearby`, the "already known?" list of the admin, uses the forgiving admin search for
+the name instead.
 """
 
+import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Literal
@@ -12,6 +15,7 @@ from typing import Literal
 from divelog_server.importers.subsurface import DraftSite
 from divelog_server.services.dives import haversine_km
 from divelog_server.store.models import SiteRecord
+from divelog_server.store.site_search import NAME_KINDS, SearchScore, SiteIndex, match, words
 
 MATCH_RADIUS_M = 300.0
 
@@ -99,11 +103,14 @@ def nearby(
     lon: float | None,
     sites: Iterable[SiteRecord],
     radius_m: float = MATCH_RADIUS_M,
+    index: SiteIndex | None = None,
 ) -> list[SiteMatch]:
-    """Every site that could be the one described: same name or alias, or placed within reach.
+    """Every site that could be the one described: a matching name or alias, or within reach.
 
-    The rules of :func:`match_site` without the UUID, applied to every site instead of the
-    first hit: a name rule wins over the distance rule for the same site.
+    Unlike :func:`match_site`, which only takes an exact name, the name rule is the admin
+    search of :mod:`~divelog_server.store.site_search` over names and aliases: every word of
+    ``name`` has to match, typos allowed. A name rule wins over the distance rule for the same
+    site.
 
     Parameters
     ----------
@@ -115,30 +122,46 @@ def nearby(
         The sites to look through.
     radius_m
         Largest distance for a match by position alone.
+    index
+        A prebuilt search index that covers ``sites`` (it may hold more); built from
+        ``sites`` when omitted.
 
     Returns
     -------
     list[SiteMatch]
-        Nearest first (unplaced ones last), then by site id; ``distance_m`` in whole metres
-        whenever both ends are placed.
+        Nearest first (unplaced ones last), then the best name match, then by site id;
+        ``distance_m`` in whole metres whenever both ends are placed. ``matched_by`` is
+        ``name`` when every word matched a name, ``alias`` when an alias was needed.
     """
-    key = _key(name) if name and name.strip() else None
+    records = list(sites)
+    scores: dict[str, SearchScore] = {}
+    if name and words(name):
+        scores = match(name, index if index is not None else SiteIndex.of(records), NAME_KINDS)
     point = DraftSite(uuid="", name=name or "", lat=lat, lon=lon)
-    found: list[SiteMatch] = []
-    for site in sites:
+    found: list[tuple[tuple[bool, float, float], SiteMatch]] = []
+    for site in records:
         distance = _distance_m(point, site)
+        score = scores.get(site.site_id)
         rule: MatchedBy | None = None
-        if key and key in {_key(n) for n in (site.name, site.full_name, site.short_name) if n}:
-            rule = "name"
-        elif key and key in {_key(a) for a in site.aliases}:
-            rule = "alias"
+        if score is not None:
+            rule = "name" if score.by_name else "alias"
         elif distance is not None and distance <= radius_m:
             rule = "distance"
         if rule is not None:
             found.append(
-                SiteMatch(site.site_id, rule, round(distance) if distance is not None else None)
+                (
+                    score.rank if score is not None else (True, math.inf, math.inf),
+                    SiteMatch(
+                        site.site_id, rule, round(distance) if distance is not None else None
+                    ),
+                )
             )
-    return sorted(
-        found,
-        key=lambda m: (m.distance_m is None, m.distance_m or 0.0, m.site_id),
+    found.sort(
+        key=lambda item: (
+            item[1].distance_m is None,
+            item[1].distance_m or 0.0,
+            item[0],
+            item[1].site_id,
+        )
     )
+    return [m for _, m in found]

@@ -3,6 +3,13 @@
 `@divelog/kit` and `divelog-server` share version numbers. API major and data format stay at 1
 unless a section says otherwise.
 
+## Unreleased
+
+- Searching the commons from the admin takes several words, each matching a name, alias or
+  area ("blue hole dahab"), and forgives small typos ("tortuge" finds Tortuga); exact and
+  prefix matches rank first. The new-site "already known?" check uses the same search for names
+  and aliases. The server now depends on `rapidfuzz`.
+
 ## 0.3.0 — the UX rework (10 October 2026)
 
 Logging a dive and creating a site now take far fewer clicks and less typing, every admin page

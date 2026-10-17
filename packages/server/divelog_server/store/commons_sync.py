@@ -2,7 +2,8 @@
 
 ``pull`` fast-forwards the commons checkout a log names in ``divelog.yaml``, records the new
 head as the manifest ``ref`` and reports the overlays and forks the new commons revisions made
-stale. ``search`` is the "adopt a site" lookup over the commons records.
+stale. ``search`` is the "adopt a site" lookup over the commons records, by words (typos
+allowed, see :mod:`~divelog_server.store.site_search`) and/or distance.
 """
 
 import math
@@ -11,6 +12,7 @@ from pathlib import Path
 
 from divelog_server.store.manifest import commons_root_for, read_manifest, write_manifest
 from divelog_server.store.proposals import commit_all, is_git_repo, run_git, short_head
+from divelog_server.store.site_search import match, words
 from divelog_server.store.sources import CommonsSource
 from divelog_server.store.store import SiteOrigin, Store
 
@@ -213,19 +215,20 @@ def search(
     limit: int = 20,
     radius_km: float = NEAR_KM,
 ) -> list[CommonsHit]:
-    """Commons sites matching ``q`` (name, alias or area substring) and/or within ``radius_km``.
+    """Commons sites matching every word of ``q`` and/or within ``radius_km`` of ``near``.
 
-    With ``near`` the hits are ordered by distance, else by name.
+    Words match names, aliases and the area as :mod:`~divelog_server.store.site_search`
+    describes, typos included. With ``near`` the hits are ordered by distance, then by how
+    well they match; without it by how well they match, then by name.
     """
     if store.commons is None:
         return []
-    needle = q.strip().casefold()
-    hits: list[CommonsHit] = []
+    scores = match(q, store.commons_index()) if words(q) else None
+    ranked: list[tuple[tuple[bool, float, float], CommonsHit]] = []
     for site_id, record in store.commons.sites.items():
-        if needle:
-            names = [record.name, record.full_name, record.short_name, record.area, *record.aliases]
-            if not any(needle in n.casefold() for n in names if n):
-                continue
+        score = scores.get(site_id) if scores is not None else None
+        if scores is not None and score is None:
+            continue
         distance = None
         if near is not None:
             if record.lat is None or record.lon is None:
@@ -233,22 +236,21 @@ def search(
             distance = haversine_km(near[0], near[1], record.lat, record.lon)
             if distance > radius_km:
                 continue
-        hits.append(
-            CommonsHit(
-                site_id=site_id,
-                name=record.name,
-                country=record.country,
-                type=record.type,
-                lat=record.lat,
-                lon=record.lon,
-                area=record.area,
-                dives=len(store.dives_by_site.get(site_id, [])),
-                origin=store.site_origin.get(site_id, "commons"),
-                distance_km=round(distance, 3) if distance is not None else None,
-            )
+        hit = CommonsHit(
+            site_id=site_id,
+            name=record.name,
+            country=record.country,
+            type=record.type,
+            lat=record.lat,
+            lon=record.lon,
+            area=record.area,
+            dives=len(store.dives_by_site.get(site_id, [])),
+            origin=store.site_origin.get(site_id, "commons"),
+            distance_km=round(distance, 3) if distance is not None else None,
         )
+        ranked.append((score.rank if score is not None else (False, 0.0, 0.0), hit))
     if near is not None:
-        hits.sort(key=lambda h: (h.distance_km or 0.0, h.name))
+        ranked.sort(key=lambda item: (item[1].distance_km or 0.0, item[0], item[1].name))
     else:
-        hits.sort(key=lambda h: (h.name.casefold(), h.site_id))
-    return hits[:limit]
+        ranked.sort(key=lambda item: (item[0], item[1].name.casefold(), item[1].site_id))
+    return [hit for _, hit in ranked[:limit]]

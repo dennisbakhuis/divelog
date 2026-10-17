@@ -405,8 +405,8 @@
         </ul>
       {:else}
         <p class="muted">
-          Sites with the same name or within 300 m of the pin, in your log and the commons, show up
-          here.
+          Sites whose name or alias matches (typos allowed) or within 300 m of the pin, in your log
+          and the commons, show up here.
         </p>
       {/if}
     </section>

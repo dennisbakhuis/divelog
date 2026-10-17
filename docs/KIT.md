@@ -218,11 +218,13 @@ site's `origin` (`log`, `commons` or `fork`); the kit shows what follows from it
 - **Repo notices.** The admin bar shows the log's and the commons' checked-out commits, the
   commons state and a badge with the load notices (shadowed records, stale overlays and forks),
   each site notice linking to its editor.
-- **Adopt a site.** The new-site form lists commons sites with the same name or near the pin
-  ("Adopt"), and its "Search the commons by name instead" section and the dive editor's site
-  picker ("From the commons") search `GET /admin/commons/sites` by name, alias or area,
-  optionally within 25 km of the current site. Adopting needs no file: the site editor opens
-  the commons record and the first save writes the overlay.
+- **Adopt a site.** The new-site form lists commons sites with a matching name or near the
+  pin ("Adopt"), and its "Search the commons by name instead" section and the dive editor's
+  site picker ("From the commons") search `GET /admin/commons/sites` by name, alias or area,
+  optionally within 25 km of the current site. Every word of the query has to match some
+  field, small typos included ("blue hole dahab", "tortuge"); exact and prefix matches come
+  before near misses, and with a point the nearest come first. Adopting needs no file: the
+  site editor opens the commons record and the first save writes the overlay.
 - **Commons pull.** "pull commons" in the admin bar calls `POST /admin/commons/pull`, which
   fast-forwards the commons checkout and pins the log's `divelog.yaml`; the popover shows the
   old and new head and the sites that became stale, each linking to its editor. The button is
@@ -263,8 +265,9 @@ component (exported, with `LocationPicker`); the dialog passes `compact`.
    Madeira and the Azores `PRT`. Only the Dutch Caribbean is split out, as `BES`. Change the
    country by hand where that matters.
 4. **Already known?** While the name or pin changes, `GET /admin/sites/nearby` lists log sites
-   and commons sites with the same name, an alias, or within 300 m, nearest first: "Use this
-   site" (log) or "Adopt" (commons) instead of creating a duplicate. Nothing is blocked.
+   and commons sites whose name or alias matches (the same word search, typos allowed), or
+   within 300 m, nearest first: "Use this site" (log) or "Adopt" (commons) instead of creating
+   a duplicate. Nothing is blocked.
 5. **Type sets the water.** The type select is the one list in `core/dive/site-types.ts`
    (`SITE_TYPES`, `waterDefault`): lake, quarry, cave, cenote… fresh; sea, reef, wreck salt. A
    water picked by hand stays. "+ New region" opens `RegionForm` in a dialog with the country

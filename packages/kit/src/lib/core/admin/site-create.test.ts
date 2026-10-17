@@ -123,8 +123,8 @@ describe('the server checks', () => {
     expect(nearbyReason({ matched_by: 'distance', distance_m: 120.4 })).toBe('120 m away');
     expect(nearbyReason({ matched_by: 'distance', distance_m: 2345 })).toBe('2.3 km away');
     expect(nearbyReason({ matched_by: 'distance', distance_m: null })).toBe('nearby');
-    expect(nearbyReason({ matched_by: 'name', distance_m: null })).toBe('same name');
-    expect(nearbyReason({ matched_by: 'name', distance_m: 80 })).toBe('same name, 80 m away');
+    expect(nearbyReason({ matched_by: 'name', distance_m: null })).toBe('name matches');
+    expect(nearbyReason({ matched_by: 'name', distance_m: 80 })).toBe('name matches, 80 m away');
     expect(nearbyReason({ matched_by: 'alias', distance_m: null })).toBe('matches an alias');
     expect(nearbyReason({ matched_by: 'alias', distance_m: 10 })).toBe(
       'matches an alias, 10 m away',

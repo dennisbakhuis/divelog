@@ -170,7 +170,7 @@ export async function fetchNearby(path: string): Promise<NearbySitesOut> {
   }
 }
 
-/** "Same name", "Also known as …", or "120 m away": why a nearby site is listed. */
+/** "Name matches", "matches an alias", or "120 m away": why a nearby site is listed. */
 export function nearbyReason(hit: {
   matched_by: 'name' | 'alias' | 'distance';
   distance_m: number | null;
@@ -181,7 +181,7 @@ export function nearbyReason(hit: {
       : hit.distance_m < 1000
         ? `${Math.round(hit.distance_m)} m away`
         : `${(hit.distance_m / 1000).toFixed(1)} km away`;
-  if (hit.matched_by === 'name') return away ? `same name, ${away}` : 'same name';
+  if (hit.matched_by === 'name') return away ? `name matches, ${away}` : 'name matches';
   if (hit.matched_by === 'alias') return away ? `matches an alias, ${away}` : 'matches an alias';
   return away || 'nearby';
 }

@@ -85,7 +85,7 @@ test.describe('site creation and the site workspace', () => {
     await page.getByRole('textbox', { name: 'Name', exact: true }).fill(SITE_NAME);
     const nearby = page.locator('.nearby');
     await expect(nearby.locator('.hit')).toHaveCount(1, { timeout: 15_000 });
-    await expect(nearby).toContainText('same name');
+    await expect(nearby).toContainText('name matches');
     await nearby.getByRole('button', { name: `Use ${SITE_NAME} instead` }).click();
     await expect(page).toHaveURL(new RegExp(`/admin/sites/${SITE_SLUG}$`));
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(SITE_NAME);
