@@ -12,6 +12,11 @@ unless a section says otherwise.
 - The commons search has a "Near me" button where no site position is given: it uses the device
   location to list commons sites within 25 km. Hits found around a point show how far away
   they are ("400 m away", "13 km away").
+- `PUBLIC_COMMONS_SITES` (off by default, optionally limited by `PUBLIC_COMMONS_REGIONS`) lists
+  commons sites you never dived in the public site list, region pages and region maps; the kit
+  marks them "not dived" (badge, hollow marker) and the sites list gets an "Only my dives"
+  toggle. Region site lists carry a `dives` count, and an undived `MapSite` has 0 dives and
+  null years.
 
 ## 0.3.0 — the UX rework (10 October 2026)
 

@@ -230,10 +230,16 @@ site's `origin` (`log`, `commons` or `fork`); the kit shows what follows from it
   fast-forwards the commons checkout and pins the log's `divelog.yaml`; the popover shows the
   old and new head and the sites that became stale, each linking to its editor. The button is
   disabled with a reason when the server has git off for the commons.
+- **Undived sites.** With the server's `PUBLIC_COMMONS_SITES` on (see DEPLOY.md), the public
+  lists also hold commons sites the owner never dived. Anything with a `dives` count of 0
+  (`notDived()` in `core/dive/sites-filter`) shows a "not dived" badge on the sites page and the
+  region page and a hollow, muted marker on the region map (`dotColour`/`dotRadiusBy`, with a
+  "not dived" key entry); the sites page adds an "Only my dives" toggle (`?mine=1`) when any
+  are listed.
 - **Imports.** The Subsurface import report lists every imported site with the site it
   matched (by Subsurface id, name, alias or distance, in metres) or created, and its origin.
 
-`@divelog/kit/testing` has sample records for these: `fakeSite`, `commonsSite`,
+`@divelog/kit/testing` has sample records for these: `fakeSite`, `commonsSite`, `atlasSite`,
 `stalePinSite`, `forkSite`, `fakeMap`, `staleAnnotation`, `fakeRepoStatus`, `fakeCommonsHits`
 and `fakeCommonsPull`.
 

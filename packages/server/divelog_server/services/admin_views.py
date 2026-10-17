@@ -299,7 +299,7 @@ def nearby_sites(
     name or alias matches every word of ``name`` (typos allowed, as in the admin search) and
     those placed within ``radius_m``.
     """
-    log_ids = {sid for sid in store.sites if store.is_listed(sid)}
+    log_ids = {sid for sid in store.sites if store.in_log(sid)}
     log_hits = nearby(name, lat, lon, (store.sites[s] for s in log_ids), radius_m)
     log = [
         NearbyLogSite(

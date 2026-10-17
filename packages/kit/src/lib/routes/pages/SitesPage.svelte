@@ -7,12 +7,14 @@
   import { page } from '$app/state';
   import { replaceState } from '$app/navigation';
   import {
+    notDived,
     siteMatches,
     sitesFilterFromParams,
     sitesFilterToParams,
   } from '$lib/core/dive/sites-filter';
   import { announce } from '$lib/core/ui/announce';
   import OwnerBar from '$lib/components/shell/OwnerBar.svelte';
+  import NotDivedBadge from '$lib/components/dive/NotDivedBadge.svelte';
 
   const { urls, config } = getDivelog();
   const copy = copyFor(config);
@@ -22,8 +24,16 @@
   let type = $state(initial.type);
   let country = $state(initial.country);
   let query = $state(initial.q);
+  let mine = $state(initial.mine);
 
-  const filter = $derived({ q: query, country, type });
+  const filter = $derived({ q: query, country, type, mine });
+  /** Sites listed from the commons that the owner never dived; the toggle shows only with some. */
+  const undived = $derived(
+    data.countries.reduce(
+      (n, c) => n + c.regions.reduce((m, r) => m + r.sites.filter(notDived).length, 0),
+      0,
+    ),
+  );
   const shown = $derived(
     data.countries
       .filter((c) => !country || c.code === country)
@@ -95,6 +105,12 @@
       <option value="">All types</option>
       {#each data.types as t (t)}<option value={t}>{t}</option>{/each}
     </select>
+    {#if undived}
+      <label class="mine">
+        <input type="checkbox" bind:checked={mine} onchange={() => sync()} />
+        Only my dives
+      </label>
+    {/if}
     <span class="count dl-num">{count} sites</span>
   </div>
 
@@ -114,7 +130,7 @@
         <ul class="sites">
           {#each region.sites as site (site.slug)}
             <li data-reveal>
-              <a class="site dl-card" href={urls.site(site.slug)}>
+              <a class="site dl-card" class:undived={notDived(site)} href={urls.site(site.slug)}>
                 <span class="thumb">
                   <span class="type-mark">{site.site_type}</span>
                 </span>
@@ -128,7 +144,11 @@
                       >{/if}
                   </span>
                   <span class="site-foot">
-                    <span class="dl-num">{pluralize(site.dives, 'dive')}</span>
+                    {#if notDived(site)}
+                      <NotDivedBadge />
+                    {:else}
+                      <span class="dl-num">{pluralize(site.dives, 'dive')}</span>
+                    {/if}
                     {#if site.last_dive}<span class="dl-num faint"
                         >last {site.last_dive.slice(0, 4)}</span
                       >{/if}
@@ -168,7 +188,7 @@
     align-items: center;
     margin-bottom: 36px;
   }
-  .toolbar input,
+  .toolbar input[type='search'],
   .toolbar select {
     font: inherit;
     font-size: 14.5px;
@@ -178,11 +198,31 @@
     border-radius: var(--dl-radius-sm);
     padding: 9px 12px;
   }
-  .toolbar input {
+  .toolbar input[type='search'] {
     flex: 1 1 240px;
   }
   .toolbar select {
     text-transform: capitalize;
+  }
+  .mine {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 0 12px;
+    font-size: 14.5px;
+    color: var(--dl-color-text);
+    border: 1px solid var(--dl-color-border-control);
+    border-radius: var(--dl-radius-sm);
+    background: var(--dl-color-surface);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .mine input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--dl-color-accent);
   }
   .count {
     margin-left: auto;
@@ -242,7 +282,15 @@
     transform: translateY(-2px);
     border-color: var(--dl-color-accent);
   }
+  .site.undived .thumb {
+    background: transparent;
+    border: 1px dashed var(--dl-color-border-strong);
+  }
+  .site.undived .site-name {
+    color: var(--dl-color-text-muted);
+  }
   .thumb {
+    box-sizing: border-box;
     width: 84px;
     height: 62px;
     border-radius: var(--dl-radius-sm);

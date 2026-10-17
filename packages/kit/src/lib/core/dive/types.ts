@@ -45,7 +45,10 @@ export type Site = Narrow<
   { water: Water; location_visibility: LocationVisibility; attachments: Attachment[] }
 >;
 
-export type Region = Narrow<Schemas['RegionOut'], { sites: SiteSummary[] }>;
+/** A site in a region's list, with the dives the viewer may see there (0: not dived). */
+export type RegionSite = Narrow<Schemas['RegionSite'], { water: Water }>;
+
+export type Region = Narrow<Schemas['RegionOut'], { sites: RegionSite[] }>;
 
 export type RegionStats = Schemas['RegionStats'];
 

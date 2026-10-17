@@ -15,6 +15,7 @@ from divelog_server.schemas.dive import (
     PersonOut,
     PersonPublic,
     RegionOut,
+    RegionSite,
     SiteDetail,
     SiteDiveRoute,
     SiteOut,
@@ -201,8 +202,15 @@ def region_out(store: Store, region_id: str, owner: bool, *, with_body: bool) ->
         (s for s in listed.values() if s.region == region_id), key=lambda s: s.name.lower()
     )
     visible = {d.number for d in _visible(store, owner)}
-    numbers = [n for s in sites for n in store.dives_by_site.get(s.site_id, []) if n in visible]
+    per_site = {
+        s.site_id: [n for n in store.dives_by_site.get(s.site_id, []) if n in visible]
+        for s in sites
+    }
+    numbers = [n for found in per_site.values() for n in found]
     region_dives = [store.dives[n] for n in numbers] if with_body else []
+    map_sites = stats_service.compute_stats(region_dives, listed).map_sites if with_body else []
+    if with_body and store.public_commons:
+        map_sites = stats_service.undived_markers(sites, map_sites)
     return RegionOut(
         id=region.region,
         name=region.name,
@@ -210,10 +218,15 @@ def region_out(store: Store, region_id: str, owner: bool, *, with_body: bool) ->
         country_code=alpha2(region.country),
         waters=region.waters,
         body_md=region.body_md if with_body else "",
-        sites=[dive_service.site_summary(store, s) for s in sites],
+        sites=[
+            RegionSite(
+                **dive_service.site_summary(store, s).model_dump(), dives=len(per_site[s.site_id])
+            )
+            for s in sites
+        ],
         dives=len(numbers),
         stats=stats_service.region_stats(region_dives, listed) if with_body else None,
-        map_sites=stats_service.compute_stats(region_dives, listed).map_sites if with_body else [],
+        map_sites=map_sites,
     )
 
 

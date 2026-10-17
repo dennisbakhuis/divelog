@@ -34,6 +34,8 @@ def get_store() -> Store:
             home_countries=settings.home_countries,
             commons=build_commons(),
             owner_name=settings.OWNER_NAME,
+            public_commons=settings.PUBLIC_COMMONS_SITES,
+            public_commons_regions=settings.public_commons_regions,
         )
         _store.load()
     return _store

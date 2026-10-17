@@ -115,9 +115,12 @@ export const COLOUR_MODES: { mode: ColourMode; label: string }[] = [
   { mode: 'depth', label: 'max depth' },
 ];
 
-/** Dot radius for the chosen measure; `max` is that measure's maximum over the dots. */
+/**
+ * Dot radius for the chosen measure; `max` is that measure's maximum over the dots. A site
+ * without dives gets the uniform size, so its hollow marker stays visible.
+ */
 export function dotRadiusBy(site: MapSite, mode: SizeMode, max: number): number {
-  if (mode === 'uniform') return 4.5;
+  if (mode === 'uniform' || site.dives === 0) return 4.5;
   const value = mode === 'minutes' ? site.minutes : site.dives;
   return 3 + 7 * Math.sqrt(value / Math.max(max, 1));
 }
@@ -158,17 +161,24 @@ export type ColourScale = { min: number; max: number };
 
 export function colourScale(sites: MapSite[], mode: ColourMode): ColourScale {
   if (mode === 'year') {
-    const years = sites.map((s) => s.last_year);
+    const years = sites.flatMap((s) => (s.last_year === null ? [] : [s.last_year]));
     return { min: Math.min(...years, 3000), max: Math.max(...years, 0) };
   }
   if (mode === 'depth') return { min: 0, max: Math.max(...sites.map((s) => s.max_depth_m), 1) };
   return { min: 0, max: 1 };
 }
 
-/** A colour for one dot: a hue ramp for the continuous modes, a token per family otherwise. */
+/** The muted colour of a site nobody logged a dive at, in every colour mode. */
+export const UNDIVED_COLOUR = 'var(--dl-color-text-faint)';
+
+/**
+ * A colour for one dot: a hue ramp for the continuous modes, a token per family otherwise, and
+ * the muted `UNDIVED_COLOUR` for a site without dives.
+ */
 export function dotColour(site: MapSite, mode: ColourMode, scale: ColourScale): string {
+  if (site.dives === 0) return UNDIVED_COLOUR;
   if (mode === 'type') return typeColour(site.site_type);
-  const value = mode === 'year' ? site.last_year : site.max_depth_m;
+  const value = (mode === 'year' ? site.last_year : site.max_depth_m) ?? scale.min;
   const span = scale.max - scale.min || 1;
   const t = Math.min(1, Math.max(0, (value - scale.min) / span));
   if (mode === 'year') return `hsl(${200 + 0 * t} ${25 + 60 * t}% ${40 + 25 * t}%)`;

@@ -6,6 +6,7 @@
  */
 export { fakeDivelog, fakeEvent, thrown, type Responses } from './fake.js';
 export {
+  atlasSite,
   COMMONS_ATTRIBUTION,
   commonsSite,
   drawnRef,

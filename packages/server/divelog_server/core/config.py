@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     MAIL_GREETING: str = "Hi {owner_name},"
     COMMONS_ROOT: str = ""
     COMMONS_GIT_ENABLED: bool = False
+    PUBLIC_COMMONS_SITES: bool = False
+    PUBLIC_COMMONS_REGIONS: str = ""
 
     APP_VERSION: str = Field(default="", validate_default=True)
     DEBUG: bool = False
@@ -69,6 +71,11 @@ class Settings(BaseSettings):
     def home_countries(self) -> frozenset[str]:
         """ISO-3 codes of the countries that do not count as abroad for trips."""
         return frozenset(c.strip().upper() for c in self.HOME_COUNTRIES.split(",") if c.strip())
+
+    @property
+    def public_commons_regions(self) -> frozenset[str]:
+        """Region ids ``PUBLIC_COMMONS_SITES`` is limited to; empty means every region."""
+        return frozenset(r.strip() for r in self.PUBLIC_COMMONS_REGIONS.split(",") if r.strip())
 
 
 @lru_cache

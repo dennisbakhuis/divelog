@@ -3078,7 +3078,10 @@ export interface components {
       warning: string | null;
       drawn: components['schemas']['SiteMapOut'] | null;
     };
-    /** MapSite */
+    /**
+     * MapSite
+     * @description A site marker; an atlas site the owner never dived has 0 dives and no years.
+     */
     MapSite: {
       /** Slug */
       slug: string;
@@ -3099,9 +3102,9 @@ export interface components {
       /** Max Depth M */
       max_depth_m: number;
       /** First Year */
-      first_year: number;
+      first_year: number | null;
       /** Last Year */
-      last_year: number;
+      last_year: number | null;
     };
     /**
      * MapUnderlay
@@ -3586,7 +3589,7 @@ export interface components {
        */
       body_md: string;
       /** Sites */
-      sites: components['schemas']['SiteSummary'][];
+      sites: components['schemas']['RegionSite'][];
       /**
        * Dives
        * @default 0
@@ -3600,6 +3603,34 @@ export interface components {
        * @description The region text as sanitised HTML.
        */
       readonly body_html: string;
+    };
+    /**
+     * RegionSite
+     * @description A site in a region's list; ``dives`` counts the dives the viewer may see, 0 if undived.
+     */
+    RegionSite: {
+      /** Slug */
+      slug: string;
+      /** Name */
+      name: string;
+      /** Country Code */
+      country_code: string;
+      /** Country Name */
+      country_name: string;
+      /** Region */
+      region: string | null;
+      /** Area */
+      area: string | null;
+      /** Lat */
+      lat: number | null;
+      /** Lon */
+      lon: number | null;
+      /** Site Type */
+      site_type: string;
+      /** Water */
+      water: string | null;
+      /** Dives */
+      dives: number;
     };
     /**
      * RegionStats

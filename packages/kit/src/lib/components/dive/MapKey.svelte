@@ -1,14 +1,18 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import { TYPE_LEGEND, type ColourMode, type ColourScale } from '$lib/core/dive/stats-view';
+  import { NOT_DIVED } from '$lib/core/dive/sites-filter';
 
   let {
     colour,
     scale,
     hint,
+    undived = false,
   }: {
     colour: ColourMode;
     scale: ColourScale;
+    /** Some dots are sites without dives: add their hollow marker to the key. */
+    undived?: boolean;
     /** Trailing note, right-aligned: what the dot size means and how to interact. */
     hint?: Snippet;
   } = $props();
@@ -25,6 +29,9 @@
       <i></i>
       <em class="dl-num">{colour === 'year' ? scale.max : `${Math.round(scale.max)} m`}</em>
     </span>
+  {/if}
+  {#if undived}
+    <span class="undived"><i></i> {NOT_DIVED}</span>
   {/if}
   {#if hint}
     <span class="hint">{@render hint()}</span>
@@ -48,6 +55,10 @@
     height: 9px;
     border-radius: 50%;
     margin-right: 6px;
+  }
+  .undived i {
+    box-sizing: border-box;
+    border: 1.5px dashed var(--dl-color-text-faint);
   }
   .ramp {
     display: inline-flex;
