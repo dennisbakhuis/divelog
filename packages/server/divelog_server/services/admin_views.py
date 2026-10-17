@@ -298,7 +298,7 @@ def nearby_sites(
     or overlays); the commons list the remaining commons sites. Both follow the import's
     matching rules: same name or alias, or placed within ``radius_m``.
     """
-    log_ids = {sid for sid in store.sites if store.is_listed(sid)}
+    log_ids = {sid for sid in store.sites if store.in_log(sid)}
     log_hits = nearby(name, lat, lon, (store.sites[s] for s in log_ids), radius_m)
     log = [
         NearbyLogSite(

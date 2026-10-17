@@ -154,6 +154,22 @@ export function commonsSite(overrides: Partial<Site> = {}): Site {
   });
 }
 
+/** A commons site the owner never dived, listed by the server's `PUBLIC_COMMONS_SITES`. */
+export function atlasSite(overrides: Partial<Site> = {}): Site {
+  return commonsSite({
+    id: 'fra-cabouy',
+    slug: 'fra-cabouy',
+    name: 'Cabouy',
+    max_depth_m: null,
+    dives: 0,
+    first_dive: null,
+    last_dive: null,
+    maps: [],
+    private: null,
+    ...overrides,
+  });
+}
+
 /** A commons site whose overlay was written against an older commons revision. */
 export function stalePinSite(overrides: Partial<Site> = {}): Site {
   return commonsSite({

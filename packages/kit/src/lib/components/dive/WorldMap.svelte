@@ -11,6 +11,7 @@
     type SizeMode,
   } from '$lib/core/dive/stats-view';
   import { flagEmoji, formatMinutes } from '$lib/core/dive/format';
+  import { NOT_DIVED, notDived } from '$lib/core/dive/sites-filter';
   import MapKey from './MapKey.svelte';
   import MapOptions from './MapOptions.svelte';
   import { getDivelog } from '$lib/core/dive/context';
@@ -57,6 +58,7 @@
 
   const max = $derived(dotMeasureMax(map.dots, size));
   const scale = $derived(colourScale(map.dots, colour));
+  const anyUndived = $derived(map.dots.some(notDived));
   let hovered = $state<Dot | null>(null);
   const uid = $props.id();
   const titleId = `dl-world-map-${uid}`;
@@ -78,13 +80,17 @@
     {#each map.dots as dot (dot.slug)}
       {@const r = dotRadiusBy(dot, size, max)}
       {@const fill = dotColour(dot, colour, scale)}
-      {@const name = `${dot.name}, ${dot.dives} ${dot.dives === 1 ? 'dive' : 'dives'}`}
+      {@const undived = notDived(dot)}
+      {@const name = undived
+        ? `${dot.name}, ${NOT_DIVED}`
+        : `${dot.name}, ${dot.dives} ${dot.dives === 1 ? 'dive' : 'dives'}`}
       {@const dimmed =
         (activeSite && activeSite !== dot.slug) || (highlight !== null && !highlight.has(dot.slug))}
       {#if onSelect}
         <g
           class="site"
           class:active={activeSite === dot.slug}
+          class:undived
           class:dimmed
           transform="translate({dot.point.x} {dot.point.y})"
           role="button"
@@ -103,11 +109,12 @@
             }
           }}
         >
-          {@render marker(r, fill)}
+          {@render marker(r, fill, undived)}
         </g>
       {:else}
         <a
           class="site"
+          class:undived
           class:dimmed
           href={urls.site(dot.slug)}
           aria-label={name}
@@ -116,20 +123,25 @@
           onfocus={() => (hovered = dot)}
           onblur={() => (hovered = null)}
         >
-          <g transform="translate({dot.point.x} {dot.point.y})">{@render marker(r, fill)}</g>
+          <g transform="translate({dot.point.x} {dot.point.y})"
+            >{@render marker(r, fill, undived)}</g
+          >
         </a>
       {/if}
     {/each}
   </svg>
 
-  <MapKey {colour} {scale} hint={compact ? undefined : sizeHint} />
+  <MapKey {colour} {scale} undived={anyUndived} hint={compact ? undefined : sizeHint} />
 
   {#if !compact && onOptions}
     <MapOptions {size} {colour} {onOptions} />
   {/if}
 
   <div class="tooltip" class:visible={hovered} aria-hidden="true">
-    {#if hovered}
+    {#if hovered && notDived(hovered)}
+      <strong>{flagEmoji(hovered.country_code)} {hovered.name}</strong>
+      <span class="dl-num faint">{NOT_DIVED} · {hovered.site_type}</span>
+    {:else if hovered}
       <strong>{flagEmoji(hovered.country_code)} {hovered.name}</strong>
       <span class="dl-num"
         >{hovered.dives}
@@ -145,10 +157,14 @@
   </div>
 </div>
 
-{#snippet marker(r: number, fill: string)}
+{#snippet marker(r: number, fill: string, undived: boolean)}
   <circle class="ring" r={r + 5} />
-  <circle class="halo" r={r * 2.2} style="fill: {fill}" />
-  <circle class="dot" {r} style="fill: {fill}" />
+  {#if undived}
+    <circle class="dot hollow" {r} style="stroke: {fill}" />
+  {:else}
+    <circle class="halo" r={r * 2.2} style="fill: {fill}" />
+    <circle class="dot" {r} style="fill: {fill}" />
+  {/if}
 {/snippet}
 
 <style>
@@ -198,6 +214,15 @@
   .site:focus-visible .halo,
   .site.active .halo {
     opacity: 0.4;
+  }
+  .dot.hollow {
+    fill: var(--dl-color-bg);
+    stroke-width: 1.5;
+    stroke-dasharray: 2 1.5;
+  }
+  .site.undived:hover .dot.hollow,
+  .site.undived:focus-visible .dot.hollow {
+    stroke-dasharray: none;
   }
   .site.dimmed {
     opacity: 0.25;

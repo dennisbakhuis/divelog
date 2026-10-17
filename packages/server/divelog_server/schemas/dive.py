@@ -317,6 +317,12 @@ class SiteSummary(ApiModel):
     water: str | None = None
 
 
+class RegionSite(SiteSummary):
+    """A site in a region's list; ``dives`` counts the dives the viewer may see, 0 if undived."""
+
+    dives: int
+
+
 class RegionOut(ApiModel):
     id: str
     name: str
@@ -324,7 +330,7 @@ class RegionOut(ApiModel):
     country_code: str
     waters: list[str]
     body_md: str = ""
-    sites: list[SiteSummary] = Field(default_factory=list)
+    sites: list[RegionSite] = Field(default_factory=list)
     dives: int = 0
     stats: "RegionStats | None" = None
     map_sites: list["MapSite"] = Field(default_factory=list)
@@ -720,6 +726,8 @@ class DepthBucket(ApiModel):
 
 
 class MapSite(ApiModel):
+    """A site marker; an atlas site the owner never dived has 0 dives and no years."""
+
     slug: str
     name: str
     country_code: str
@@ -729,8 +737,8 @@ class MapSite(ApiModel):
     minutes: int
     site_type: str
     max_depth_m: float
-    first_year: int
-    last_year: int
+    first_year: int | None
+    last_year: int | None
 
 
 class RegionStats(ApiModel):

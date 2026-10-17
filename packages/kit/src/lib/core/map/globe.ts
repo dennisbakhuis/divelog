@@ -45,11 +45,11 @@ export function sameView(a: GlobeView | null, b: GlobeView | null, tolerance = 1
   );
 }
 
-/** What the current selection logged at one site. */
-export type SiteTally = Pick<
-  MapSite,
-  'dives' | 'minutes' | 'max_depth_m' | 'first_year' | 'last_year'
->;
+/** What the current selection logged at one site; a tally always has a dive, so years. */
+export type SiteTally = Pick<MapSite, 'dives' | 'minutes' | 'max_depth_m'> & {
+  first_year: number;
+  last_year: number;
+};
 
 export type DotOptions = {
   size: SizeMode;

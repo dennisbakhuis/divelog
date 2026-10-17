@@ -11,6 +11,7 @@ import {
   recordTiles,
   typeColour,
   waterTempByMonth,
+  UNDIVED_COLOUR,
 } from './stats-view.js';
 import type { DiveStats } from './types.js';
 import { DEFAULT_CONFIG, createUrls } from './config.js';
@@ -91,6 +92,36 @@ describe('stats view', () => {
     expect(dotColour({ ...site, max_depth_m: 30 }, 'depth', { min: 0, max: 60 })).toMatch(/^hsl\(/);
     expect(barHeights([1, 2, 4], (v) => v)).toEqual([25, 50, 100]);
     expect(barHeights([0, 0], (v) => v)).toEqual([0, 0]);
+  });
+
+  it('mutes a site without dives in every colour mode and keeps it out of the year scale', () => {
+    const dived = {
+      slug: 'd',
+      name: 'd',
+      country_code: 'FR',
+      lat: 0,
+      lon: 0,
+      dives: 3,
+      minutes: 120,
+      site_type: 'cave',
+      max_depth_m: 20,
+      first_year: 2019,
+      last_year: 2023,
+    };
+    const undived = {
+      ...dived,
+      slug: 'u',
+      dives: 0,
+      minutes: 0,
+      first_year: null,
+      last_year: null,
+    };
+    expect(colourScale([dived, undived], 'year')).toEqual({ min: 2023, max: 2023 });
+    for (const mode of ['type', 'year', 'depth'] as const)
+      expect(dotColour(undived, mode, colourScale([dived], mode))).toBe(UNDIVED_COLOUR);
+    expect(dotColour(dived, 'type', { min: 0, max: 1 })).toBe('var(--dl-tag-cave)');
+    expect(dotRadiusBy(undived, 'dives', 3)).toBe(4.5);
+    expect(dotRadiusBy(undived, 'minutes', 120)).toBe(4.5);
   });
 });
 

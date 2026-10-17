@@ -103,6 +103,23 @@ Give that key write access to the log repository only. The git remote is the bac
 log; the commons is upstream's. Media in `/data/media` is not in git: back it up with your
 usual file backup or set `STORAGE_BACKEND=s3` with the `S3_*` variables.
 
+## Commons sites in public lists
+
+By default the public site list, the region pages and their maps show only the sites of your
+own log: your sites, forks, and commons sites you dived. Every other commons site keeps its own
+page at its URL but is listed nowhere, because the instance is a personal logbook.
+
+| Setting | Default | What |
+| --- | --- | --- |
+| `PUBLIC_COMMONS_SITES` | `false` | List the commons sites you never dived as well: a logbook plus atlas |
+| `PUBLIC_COMMONS_REGIONS` | empty | Comma-separated region ids the switch is limited to; empty means all |
+
+With the switch on, those sites appear in the lists with a dive count of 0, and the kit marks
+them "not dived" (a badge in the lists, a hollow marker on the region maps) and offers "Only my
+dives" on the sites page. It is off by default because a commons can carry thousands of sites
+that would bury your own; limit it to the regions you want to present as an atlas. The log
+overview's map and stats stay about your dives either way.
+
 ## Pulling the commons
 
 With `COMMONS_GIT_ENABLED=true` the admin "pull" fetches the log and the commons together; a

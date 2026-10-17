@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { flushSync } from 'svelte';
 import WorldMap from './WorldMap.svelte';
 import type { MapSite } from '$lib/core/dive/types.js';
 import { key, render } from '$lib/components/ui/__fixtures__/test-utils.js';
@@ -79,5 +80,19 @@ describe('WorldMap', () => {
     const target = world({});
     expect(target.querySelector('.tooltip')?.getAttribute('aria-hidden')).toBe('true');
     expect(target.querySelector('[aria-live]')).toBeNull();
+  });
+
+  it('keys the hollow not-dived marker only when a site has no dives', () => {
+    expect(world({}).querySelector('.legend')?.textContent).not.toContain('not dived');
+    const undived = { ...dot('cabouy', 'Cabouy', 0), first_year: null, last_year: null };
+    const target = world({ map: { ...map, dots: [...map.dots, undived] } });
+    expect(target.querySelector('.legend')?.textContent).toContain('not dived');
+    const link = target.querySelector('svg a[href="/dive/sites/cabouy"]')!;
+    expect(link.getAttribute('aria-label')).toBe('Cabouy, not dived');
+    expect(link.querySelector('.dot.hollow')).not.toBeNull();
+    expect(link.querySelector('.halo')).toBeNull();
+    link.dispatchEvent(new Event('mouseenter'));
+    flushSync();
+    expect(target.querySelector('.tooltip')?.textContent).toContain('not dived · lake');
   });
 });

@@ -97,6 +97,10 @@ class Store(LogRepo):
         A read-only site commons, or None for a log-only instance.
     owner_name
         Author of the changelog entries written when a site moves to a new revision.
+    public_commons
+        List commons sites the owner never dived in public lists as well.
+    public_commons_regions
+        Region ids ``public_commons`` is limited to; empty means every region.
     """
 
     def __init__(
@@ -106,10 +110,14 @@ class Store(LogRepo):
         home_countries: frozenset[str] = DEFAULT_HOME_COUNTRIES,
         commons: CommonsSource | None = None,
         owner_name: str | None = None,
+        public_commons: bool = False,
+        public_commons_regions: frozenset[str] = frozenset(),
     ) -> None:
         super().__init__(root, git)
         self.home_countries = home_countries
         self.owner_name = owner_name
+        self.public_commons = public_commons
+        self.public_commons_regions = public_commons_regions
         self.log_sites = LogSiteSource(root)
         self.commons = commons
         self._load_errors: list[str] = []
@@ -289,13 +297,27 @@ class Store(LogRepo):
         """Derived trips as the viewer sees them: over public dives, or all but drafts."""
         return self.trips_owner if owner else self.trips_public
 
+    def in_log(self, site_id: str) -> bool:
+        """Whether a site belongs to the log: dived in it, or not a plain commons record."""
+        return self.site_origin.get(site_id) != "commons" or bool(self.dives_by_site.get(site_id))
+
     def is_listed(self, site_id: str) -> bool:
-        """Whether a site shows in public lists: dived in this log, or not a plain commons record.
+        """Whether a site shows in public lists: it belongs to the log, or the atlas lists it.
 
         A commons checkout can carry thousands of sites the owner never dived; those keep their
-        own page but stay out of every public list.
+        own page but stay out of every public list unless ``public_commons`` is on (limited to
+        ``public_commons_regions`` when that is not empty).
         """
-        return self.site_origin.get(site_id) != "commons" or bool(self.dives_by_site.get(site_id))
+        return self.in_log(site_id) or self.in_atlas(site_id)
+
+    def in_atlas(self, site_id: str) -> bool:
+        """Whether ``public_commons`` lists a commons site, its region allowed, dived or not."""
+        if not self.public_commons or self.site_origin.get(site_id) != "commons":
+            return False
+        if not self.public_commons_regions:
+            return True
+        site = self.sites.get(site_id)
+        return site is not None and site.region in self.public_commons_regions
 
     def listed_sites(self, owner: bool = False) -> dict[str, SiteRecord]:
         """The sites a list shows: every merged site for the owner, else the listed ones."""

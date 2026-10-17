@@ -1,4 +1,5 @@
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from datetime import date
 
 from divelog_server.schemas.dive import (
@@ -94,8 +95,8 @@ def compute_stats(dives: list[DiveRecord], sites: Sites) -> DiveStats:
         m.dives += 1
         m.minutes += round(d.duration_min)
         m.max_depth_m = max(m.max_depth_m, d.max_depth_m)
-        m.first_year = min(m.first_year, d.date.year)
-        m.last_year = max(m.last_year, d.date.year)
+        m.first_year = min(m.first_year or d.date.year, d.date.year)
+        m.last_year = max(m.last_year or d.date.year, d.date.year)
 
     site_ids = {d.site for d in counted if d.site}
     countries_all = {code for d in counted if (code := _country(d, sites))}
@@ -131,6 +132,45 @@ def compute_stats(dives: list[DiveRecord], sites: Sites) -> DiveStats:
         longest=_record(longest, float(longest.duration_min) if longest else None, sites),
         coldest=_record(coldest, coldest.water_temp_c if coldest else None, sites),
     )
+
+
+def undived_markers(sites: Iterable[SiteRecord], markers: list[MapSite]) -> list[MapSite]:
+    """Markers for the exactly placed ``sites`` that ``markers`` lacks, with 0 dives and no years.
+
+    Parameters
+    ----------
+    sites
+        The sites a map may show.
+    markers
+        The markers of the dived sites, as ``compute_stats`` builds them.
+
+    Returns
+    -------
+    list[MapSite]
+        ``markers`` followed by the undived sites, by name.
+    """
+    have = {m.slug for m in markers}
+    undived = [
+        MapSite(
+            slug=site.site_id,
+            name=site.name,
+            country_code=alpha2(site.country),
+            lat=site.lat,
+            lon=site.lon,
+            dives=0,
+            minutes=0,
+            site_type=site.type,
+            max_depth_m=0,
+            first_year=None,
+            last_year=None,
+        )
+        for site in sorted(sites, key=lambda s: s.name.lower())
+        if site.site_id not in have
+        and site.location_visibility != "region_only"
+        and site.lat is not None
+        and site.lon is not None
+    ]
+    return [*markers, *undived]
 
 
 def compute_summary(dives: list[DiveRecord], sites: Sites) -> DiveSummary:

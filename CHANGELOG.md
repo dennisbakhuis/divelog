@@ -3,6 +3,14 @@
 `@divelog/kit` and `divelog-server` share version numbers. API major and data format stay at 1
 unless a section says otherwise.
 
+## Unreleased
+
+- `PUBLIC_COMMONS_SITES` (off by default, optionally limited by `PUBLIC_COMMONS_REGIONS`) lists
+  commons sites you never dived in the public site list, region pages and region maps; the kit
+  marks them "not dived" (badge, hollow marker) and the sites list gets an "Only my dives"
+  toggle. Region site lists carry a `dives` count, and an undived `MapSite` has 0 dives and
+  null years.
+
 ## 0.3.0 — the UX rework (10 October 2026)
 
 Logging a dive and creating a site now take far fewer clicks and less typing, every admin page

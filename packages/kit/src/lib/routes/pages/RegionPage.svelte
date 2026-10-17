@@ -4,6 +4,8 @@
   import WorldMap from '$lib/components/dive/WorldMap.svelte';
   import { flagEmoji, formatDepth, formatHours, pluralize } from '$lib/core/dive/format';
   import { getDivelog } from '$lib/core/dive/context';
+  import { notDived } from '$lib/core/dive/sites-filter';
+  import NotDivedBadge from '$lib/components/dive/NotDivedBadge.svelte';
 
   const { urls } = getDivelog();
 
@@ -93,8 +95,11 @@
       <h2>Sites</h2>
       <ul class="sites">
         {#each region.sites as site (site.slug)}
-          <li>
-            <a href={urls.site(site.slug)}>{site.name}</a>
+          <li class:undived={notDived(site)}>
+            <span class="name">
+              <a href={urls.site(site.slug)}>{site.name}</a>
+              {#if notDived(site)}<NotDivedBadge />{/if}
+            </span>
             <span class="muted">{site.site_type}{site.area ? ` · ${site.area}` : ''}</span>
           </li>
         {/each}
@@ -196,6 +201,15 @@
   }
   .sites a:hover {
     color: var(--dl-color-accent);
+  }
+  .name {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+  }
+  .undived a {
+    color: var(--dl-color-text-muted);
   }
   .muted {
     color: var(--dl-color-text-faint);
