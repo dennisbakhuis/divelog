@@ -9,6 +9,9 @@ unless a section says otherwise.
   area ("blue hole dahab"), and forgives small typos ("tortuge" finds Tortuga); exact and
   prefix matches rank first. The new-site "already known?" check uses the same search for names
   and aliases. The server now depends on `rapidfuzz`.
+- The commons search has a "Near me" button where no site position is given: it uses the device
+  location to list commons sites within 25 km. Hits found around a point show how far away
+  they are ("400 m away", "13 km away").
 
 ## 0.3.0 — the UX rework (10 October 2026)
 

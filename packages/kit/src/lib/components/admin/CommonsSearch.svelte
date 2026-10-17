@@ -1,8 +1,11 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, tick } from 'svelte';
   import { adminApi, adminJson, AdminApiError } from '$lib/core/admin/client';
+  import { canLocate, COARSE_FIX, LocateError, locateDevice } from '$lib/core/admin/geolocation';
   import type { CommonsSiteHit } from '$lib/core/dive/types';
   import { commonsSearchPath, splitHits } from '$lib/core/dive/sharing';
+  import { formatDistance, type LatLon } from '$lib/core/map/coords';
+  import { announce } from '$lib/core/ui/announce';
   import OriginBadge from '$lib/components/shell/OriginBadge.svelte';
 
   let {
@@ -12,8 +15,11 @@
     onUse,
   }: {
     query?: string;
-    /** A point to search around, e.g. the dive's or the new site's position. */
-    near?: { lat: number; lon: number } | null;
+    /**
+     * A point to search around, e.g. the dive's or the new site's position. Without one,
+     * a "Near me" button offers the device location where the browser has geolocation.
+     */
+    near?: LatLon | null;
     actionLabel?: string;
     onUse: (hit: CommonsSiteHit) => void | Promise<void>;
   } = $props();
@@ -23,13 +29,48 @@
   let searched = $state(false);
   let loading = $state(false);
   let error = $state('');
+  let here = $state<LatLon | null>(null);
+  let locating = $state(false);
+  let locateError = $state('');
+  let nearBox = $state<HTMLInputElement>();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let seq = 0;
 
+  const locatable = canLocate();
+  const propsId = $props.id();
+  const locateErrorId = `dl-commons-locate-${propsId}`;
+  const centre = $derived(near ?? here);
+  const nearLabel = $derived(
+    near
+      ? `within 25 km of ${near.lat.toFixed(3)}, ${near.lon.toFixed(3)}`
+      : 'within 25 km of your location',
+  );
   const split = $derived(splitHits(hits));
-  const around = $derived(useNear && near ? near : null);
+  const around = $derived(useNear && centre ? centre : null);
 
-  async function run(q: string, point: { lat: number; lon: number } | null) {
+  async function locate() {
+    if (locating) return;
+    locating = true;
+    locateError = '';
+    try {
+      here = await locateDevice(COARSE_FIX);
+      useNear = true;
+      announce('Searching the commons within 25 km of your location');
+      await tick();
+      nearBox?.focus();
+    } catch (err) {
+      locateError =
+        err instanceof LocateError && err.reason === 'denied'
+          ? 'Location access was refused; search by name instead.'
+          : err instanceof LocateError
+            ? err.message
+            : 'Could not get the device location.';
+    } finally {
+      locating = false;
+    }
+  }
+
+  async function run(q: string, point: LatLon | null) {
     const mine = ++seq;
     if (!q.trim() && !point) {
       hits = [];
@@ -72,13 +113,21 @@
       aria-label="Search the commons"
       bind:value={query}
     />
-    {#if near}
+    {#if centre}
       <label class="near"
-        ><input type="checkbox" bind:checked={useNear} /> within 25 km of {near.lat.toFixed(3)},
-        {near.lon.toFixed(3)}</label
+        ><input type="checkbox" bind:checked={useNear} bind:this={nearBox} /> {nearLabel}</label
+      >
+    {:else if locatable}
+      <button
+        type="button"
+        class="dl-btn dl-btn-ghost dl-btn-sm near-me"
+        aria-disabled={locating ? 'true' : undefined}
+        aria-describedby={locateError ? locateErrorId : undefined}
+        onclick={locate}>{locating ? 'Locating…' : 'Near me'}</button
       >
     {/if}
   </div>
+  {#if locateError}<p class="error" role="alert" id={locateErrorId}>{locateError}</p>{/if}
   {#if error}<p class="error" role="alert">{error}</p>{/if}
   {#if split.fresh.length}
     <ul class="hits">
@@ -87,10 +136,14 @@
           <span class="name">
             {hit.name}
             <span class="muted"
-              >{[hit.area, hit.country, hit.type].filter(Boolean).join(' · ')}{hit.distance_km !==
-              null
-                ? ` · ${hit.distance_km.toFixed(1)} km`
-                : ''}</span
+              >{[
+                hit.area,
+                hit.country,
+                hit.type,
+                hit.distance_km !== null ? `${formatDistance(hit.distance_km * 1000)} away` : '',
+              ]
+                .filter(Boolean)
+                .join(' · ')}</span
             >
           </span>
           <OriginBadge origin={hit.origin} />
@@ -125,6 +178,9 @@
   .bar input[type='search'] {
     flex: 1;
     min-width: 220px;
+  }
+  .near-me {
+    flex: none;
   }
   .near {
     font-size: 13px;

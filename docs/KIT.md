@@ -221,7 +221,8 @@ site's `origin` (`log`, `commons` or `fork`); the kit shows what follows from it
 - **Adopt a site.** The new-site form lists commons sites with a matching name or near the
   pin ("Adopt"), and its "Search the commons by name instead" section and the dive editor's
   site picker ("From the commons") search `GET /admin/commons/sites` by name, alias or area,
-  optionally within 25 km of the current site. Every word of the query has to match some
+  optionally within 25 km of the current site, or of the device ("Near me", where the browser
+  has geolocation and no site position is given). Every word of the query has to match some
   field, small typos included ("blue hole dahab", "tortuge"); exact and prefix matches come
   before near misses, and with a point the nearest come first. Adopting needs no file: the
   site editor opens the commons record and the first save writes the overlay.

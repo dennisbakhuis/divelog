@@ -112,7 +112,7 @@ describe('LocationPicker without WebGL', () => {
     unmount(app);
   });
 
-  it('uses the device location', () => {
+  it('uses the device location', async () => {
     const getCurrentPosition = vi.fn((ok: PositionCallback) =>
       ok({ coords: { latitude: 20.2123456, longitude: -87.4654321 } } as GeolocationPosition),
     );
@@ -123,15 +123,20 @@ describe('LocationPicker without WebGL', () => {
     )!;
     button.click();
     flushSync();
-    expect(onchange).toHaveBeenCalledWith({
-      lat: 20.212346,
-      lon: -87.465432,
-      source: 'geolocation',
-    });
+    expect(button.textContent).toBe('Locating…');
+    await vi.waitFor(() =>
+      expect(onchange).toHaveBeenCalledWith({
+        lat: 20.212346,
+        lon: -87.465432,
+        source: 'geolocation',
+      }),
+    );
+    flushSync();
+    expect(button.textContent).toBe('Use my location');
     unmount(app);
   });
 
-  it('says so when location access is refused', () => {
+  it('says so when location access is refused', async () => {
     const getCurrentPosition = vi.fn((_ok: PositionCallback, fail: PositionErrorCallback) =>
       fail({ code: 1, PERMISSION_DENIED: 1 } as GeolocationPositionError),
     );
@@ -140,9 +145,13 @@ describe('LocationPicker without WebGL', () => {
     [...target.querySelectorAll('button')]
       .find((b) => b.textContent === 'Use my location')!
       .click();
-    flushSync();
+    await vi.waitFor(() => {
+      flushSync();
+      expect(target.textContent).toContain(
+        'Location access was refused; tap the map or paste the position instead.',
+      );
+    });
     expect(onchange).not.toHaveBeenCalled();
-    expect(target.textContent).toContain('Location access was refused');
     unmount(app);
   });
 });

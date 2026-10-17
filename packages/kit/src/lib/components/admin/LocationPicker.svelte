@@ -21,6 +21,7 @@
   import { countryBounds, loadCountries } from '$lib/core/map/countries';
   import { formatLatLon, nudge, parseLatLon, type LatLon } from '$lib/core/map/coords';
   import type { GeoSource, PickedPoint } from '$lib/core/admin/site-create';
+  import { canLocate, LocateError, locateDevice } from '$lib/core/admin/geolocation';
   import { announce } from '$lib/core/ui/announce';
   import { mapWorkerUrl } from '$lib/components/map-worker';
   import { getDivelog } from '$lib/core/dive/context';
@@ -84,7 +85,7 @@
   let textFocused = $state(false);
   let pasteError = $state('');
   let locating = $state(false);
-  const canLocate = typeof navigator !== 'undefined' && 'geolocation' in navigator;
+  const locatable = canLocate();
 
   const shownError = $derived(pasteError || error);
 
@@ -134,27 +135,22 @@
     applyText('paste');
   }
 
-  function locate() {
-    if (!canLocate) return;
+  async function locate() {
+    if (!locatable) return;
     locating = true;
     pasteError = '';
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        locating = false;
-        const lat = Math.round(position.coords.latitude * 1e6) / 1e6;
-        const lon = Math.round(position.coords.longitude * 1e6) / 1e6;
-        emit(lat, lon, 'geolocation');
-        flyTo({ lat, lon });
-      },
-      (err) => {
-        locating = false;
-        pasteError =
-          err.code === err.PERMISSION_DENIED
-            ? 'Location access was refused; tap the map or paste the position instead.'
-            : 'Could not get the device location.';
-      },
-      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 60_000 },
-    );
+    try {
+      const point = await locateDevice();
+      emit(point.lat, point.lon, 'geolocation');
+      flyTo(point);
+    } catch (err) {
+      pasteError =
+        err instanceof LocateError && err.reason === 'denied'
+          ? 'Location access was refused; tap the map or paste the position instead.'
+          : 'Could not get the device location.';
+    } finally {
+      locating = false;
+    }
   }
 
   async function frameCountry() {
@@ -428,7 +424,7 @@
       </p>
     </div>
     <div class="dl-picker-actions">
-      {#if canLocate}
+      {#if locatable}
         <button
           type="button"
           class="dl-btn dl-btn-ghost dl-btn-sm"
