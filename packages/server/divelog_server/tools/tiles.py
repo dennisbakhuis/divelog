@@ -30,6 +30,7 @@ from typing import Any, TextIO
 from urllib.request import Request, urlopen
 
 from divelog_server.core.config import get_settings
+from divelog_server.store.commons_sync import PullError
 from divelog_server.store.files import write_json
 from divelog_server.store.store import Store
 from divelog_server.tools.common import log_root, open_store
@@ -56,6 +57,11 @@ def register(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") ->
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--log", type=Path, help="log repository (default: env DATA_ROOT)")
+    parser.add_argument(
+        "--commons",
+        type=Path,
+        help="commons checkout (default: env COMMONS_ROOT, then divelog.yaml)",
+    )
     parser.add_argument("--media", type=Path, help="media directory (default: env MEDIA_ROOT)")
     parser.add_argument("--build", help="Protomaps build stamp, e.g. 20260926 (default: latest)")
     parser.add_argument("--dry-run", action="store_true", help="only report cluster sizes")
@@ -233,7 +239,12 @@ def run(args: argparse.Namespace, out: TextIO) -> int:
     if not args.dry_run and shutil.which("pmtiles") is None:
         print("the pmtiles CLI is not on PATH (github.com/protomaps/go-pmtiles)", file=out)
         return 1
-    sites = placed_sites(open_store(log_root(args.log)))
+    try:
+        store = open_store(log_root(args.log), args.commons)
+    except PullError as exc:
+        print(exc, file=out)
+        return 1
+    sites = placed_sites(store)
     build = args.build or (None if args.dry_run else latest_build())
     world = world_entry(previous_world, tiles, build, args.force, out)
     archives = []

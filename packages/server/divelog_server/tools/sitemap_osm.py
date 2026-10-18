@@ -28,6 +28,7 @@ from typing import Any, TextIO
 from PIL import Image, ImageDraw
 
 from divelog_server.schemas.sitemap import SiteMap
+from divelog_server.store.commons_sync import PullError
 from divelog_server.tools.common import (
     default_api,
     dump,
@@ -649,7 +650,11 @@ def starter_map(site: Mapping[str, Any], osm: dict[str, Any], radius: int) -> di
 
 def cmd_fetch(args: argparse.Namespace, out: TextIO) -> int:
     """Write ``osm.json`` and a starter ``map.json`` for a site of the merged store."""
-    store = open_store(log_root(args.log))
+    try:
+        store = open_store(log_root(args.log), args.commons)
+    except PullError as exc:
+        print(exc, file=out)
+        return 1
     record = store.sites.get(args.site_id)
     if record is None:
         print(f"unknown site {args.site_id}", file=out)
@@ -961,6 +966,11 @@ def register(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") ->
     )
     fetch.add_argument(
         "--log", type=Path, default=None, help="log repository (default: env DATA_ROOT)"
+    )
+    fetch.add_argument(
+        "--commons",
+        type=Path,
+        help="commons checkout (default: env COMMONS_ROOT, then divelog.yaml)",
     )
     fetch.set_defaults(run=cmd_fetch)
 

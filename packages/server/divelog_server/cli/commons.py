@@ -17,7 +17,11 @@ def register(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") ->
         "pull", help="git pull --ff-only the commons, pin divelog.yaml, list stale sites"
     )
     parser.add_argument("--log", type=Path, help="log repository (default: DATA_ROOT)")
-    parser.add_argument("--commons", type=Path, help="commons checkout (default: divelog.yaml)")
+    parser.add_argument(
+        "--commons",
+        type=Path,
+        help="commons checkout (default: env COMMONS_ROOT, then divelog.yaml)",
+    )
     parser.add_argument("--ref", help="pin this commit instead of the new head")
     parser.add_argument("--author", help="commit author (default: OWNER_NAME)")
     parser.set_defaults(run=run)

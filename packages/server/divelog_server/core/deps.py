@@ -6,7 +6,7 @@ from fastapi import Depends, HTTPException, Request, status
 from divelog_server.core.config import get_settings
 from divelog_server.services import auth as auth_service
 from divelog_server.store.git import GitRepo
-from divelog_server.store.manifest import commons_root_for, read_manifest
+from divelog_server.store.manifest import locate_commons, read_manifest
 from divelog_server.store.sources import CommonsSource
 from divelog_server.store.state import AdminSession, AuthState
 from divelog_server.store.store import Store
@@ -44,25 +44,22 @@ def get_store() -> Store:
 def build_commons() -> CommonsSource | None:
     """The read-only site commons, or None when there is none.
 
-    ``COMMONS_ROOT`` wins; else the ``path`` of the first commons source in the log's
+    Found as :func:`~divelog_server.store.manifest.locate_commons` describes, like the CLI:
+    ``COMMONS_ROOT``, else the ``path`` of the first commons source in the log's
     ``divelog.yaml``, relative to ``DATA_ROOT``.
     """
     settings = get_settings()
-    name: str | None = None
-    if settings.COMMONS_ROOT:
-        root = Path(settings.COMMONS_ROOT)
-    else:
-        log_root = Path(settings.DATA_ROOT)
-        try:
-            manifest = read_manifest(log_root)
-        except ValueError:
-            return None
-        found = commons_root_for(log_root, manifest)
-        if found is None or manifest is None:
-            return None
-        root = found
-        source = manifest.commons_source()
-        name = source.name if source else None
+    log_root = Path(settings.DATA_ROOT)
+    try:
+        manifest = read_manifest(log_root)
+    except ValueError:
+        manifest = None
+    location = locate_commons(log_root, manifest)
+    if location is None:
+        return None
+    root = location.root
+    source = manifest.commons_source() if manifest and location.via == "divelog.yaml" else None
+    name = source.name if source else None
     git = GitRepo(
         root,
         author_name="",

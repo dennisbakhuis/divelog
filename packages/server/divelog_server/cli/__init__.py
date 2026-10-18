@@ -13,10 +13,10 @@ from pydantic import BaseModel
 from divelog_server.cli import commons as commons_cli
 from divelog_server.cli import sites_propose
 from divelog_server.core.config import get_settings
+from divelog_server.store.commons_sync import PullError, resolve_commons
 from divelog_server.store.manifest import (
     Manifest,
     MediaManifestEntry,
-    commons_root_for,
     read_manifest,
 )
 from divelog_server.store.models import (
@@ -51,6 +51,8 @@ from divelog_server.tools import (
     tiles,
 )
 
+COMMONS_HELP = "commons checkout (default: env COMMONS_ROOT, then divelog.yaml)"
+
 SCHEMAS: dict[str, type[BaseModel]] = {
     "site-core": SiteCore,
     "site-overlay": SiteOverlayRecord,
@@ -76,6 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--kind", choices=("log", "sites"), help="default: divelog.yaml kind")
     validate.add_argument("--base", help="sites: also check the changes since this git ref")
     validate.add_argument("--strict", action="store_true", help="fail on warnings too")
+    validate.add_argument("--commons", type=Path, help=f"log: {COMMONS_HELP}")
     validate.add_argument("root", type=Path)
 
     schema = commands.add_parser("schema", help="JSON Schema of the data files, OpenAPI document")
@@ -96,6 +99,7 @@ def build_parser() -> argparse.ArgumentParser:
     split.add_argument("--no-git", action="store_true", help="do not git init and commit")
     split.add_argument("log_root", type=Path)
     status = site_commands.add_parser("status", help="origin, revision and pin of every site")
+    status.add_argument("--commons", type=Path, help=COMMONS_HELP)
     status.add_argument("log_root", type=Path)
     access.register(site_commands)
     sites_propose.register(site_commands)
@@ -121,7 +125,9 @@ def main(argv: Sequence[str] | None = None, out: TextIO | None = None) -> int:
         code: int = args.run(args, stream)
         return code
     if args.command == "validate":
-        return cmd_validate(args.root, args.kind, stream, base=args.base, strict=args.strict)
+        return cmd_validate(
+            args.root, args.kind, stream, base=args.base, strict=args.strict, commons=args.commons
+        )
     if args.command == "schema" and args.schema_command == "openapi":
         return cmd_schema_openapi(args.file, stream)
     if args.command == "schema":
@@ -139,7 +145,7 @@ def main(argv: Sequence[str] | None = None, out: TextIO | None = None) -> int:
             git=not args.no_git,
         )
         return cmd_split(options, args.dry_run, stream)
-    return cmd_status(args.log_root, stream)
+    return cmd_status(args.log_root, stream, args.commons)
 
 
 def print_problems(problems: list[Problem], out: TextIO, strict: bool = False) -> int:
@@ -151,12 +157,19 @@ def print_problems(problems: list[Problem], out: TextIO, strict: bool = False) -
 
 
 def cmd_validate(
-    root: Path, kind: str | None, out: TextIO, *, base: str | None = None, strict: bool = False
+    root: Path,
+    kind: str | None,
+    out: TextIO,
+    *,
+    base: str | None = None,
+    strict: bool = False,
+    commons: Path | None = None,
 ) -> int:
     """``divelog validate``: every problem of the repository, exit 1 on errors.
 
     ``base`` adds the history rules against that git ref (commons only); ``strict`` fails on
-    warnings as well.
+    warnings as well. A log is merged with its commons, found as
+    :func:`~divelog_server.store.commons_sync.resolve_commons` describes (``commons`` first).
     """
     try:
         manifest = read_manifest(root)
@@ -167,7 +180,12 @@ def cmd_validate(
     if kind == "sites":
         problems = validate_commons(root, base)
     else:
-        problems = validate_log(root, commons_root_for(root, manifest))
+        try:
+            commons_root = resolve_commons(root, commons, required=False)
+        except PullError as exc:
+            print(exc, file=out)
+            return 1
+        problems = validate_log(root, commons_root)
     code = print_problems(problems, out, strict)
     found = len(errors(problems))
     warned = len(problems) - found
@@ -240,14 +258,13 @@ def cmd_split(options: SplitOptions, dry_run: bool, out: TextIO) -> int:
     return 0
 
 
-def cmd_status(log_root: Path, out: TextIO) -> int:
+def cmd_status(log_root: Path, out: TextIO, commons: Path | None = None) -> int:
     """``divelog sites status``: origin, revision, pin and staleness of every site."""
     try:
-        manifest = read_manifest(log_root)
-    except ValueError as exc:
-        print(f"divelog.yaml: {exc}", file=out)
+        commons_root = resolve_commons(log_root, commons, required=False)
+    except PullError as exc:
+        print(exc, file=out)
         return 1
-    commons_root = commons_root_for(log_root, manifest)
     store = Store(log_root, commons=CommonsSource(commons_root) if commons_root else None)
     store.load()
     origins: Counter[str] = Counter()

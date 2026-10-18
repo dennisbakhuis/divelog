@@ -46,7 +46,11 @@ def register(site_commands: "argparse._SubParsersAction[argparse.ArgumentParser]
     target.add_argument("site_id", nargs="?")
     target.add_argument("--all", action="store_true", help="every site this log proposed")
     adopt.add_argument("--log", type=Path, help="log repository (default: DATA_ROOT)")
-    adopt.add_argument("--commons", type=Path, help="commons checkout (default: divelog.yaml)")
+    adopt.add_argument(
+        "--commons",
+        type=Path,
+        help="commons checkout (default: env COMMONS_ROOT, then divelog.yaml)",
+    )
     adopt.add_argument("--keep-maps", action="store_true", help="keep copied maps as personal")
     adopt.add_argument("--author", help="commit author (default: OWNER_NAME)")
     adopt.set_defaults(run=run_adopt_command)

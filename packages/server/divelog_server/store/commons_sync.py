@@ -9,8 +9,9 @@ allowed, see :mod:`~divelog_server.store.site_search`) and/or distance.
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal, overload
 
-from divelog_server.store.manifest import commons_root_for, read_manifest, write_manifest
+from divelog_server.store.manifest import locate_commons, read_manifest, write_manifest
 from divelog_server.store.proposals import commit_all, is_git_repo, run_git, short_head
 from divelog_server.store.site_search import match, words
 from divelog_server.store.sources import CommonsSource
@@ -83,24 +84,62 @@ def pin_manifest(log_root: Path, head: str) -> bool:
     return True
 
 
-def resolve_commons(log_root: Path, commons: Path | None) -> Path:
-    """The commons checkout of a log: ``commons`` when given, else the manifest source path.
+SET_COMMONS = (
+    "set it with --commons PATH, the COMMONS_ROOT environment variable, "
+    "or the path of the commons source in divelog.yaml"
+)
+NAMED_BY = {
+    "--commons": "--commons",
+    "COMMONS_ROOT": "the COMMONS_ROOT environment variable",
+    "divelog.yaml": "the commons source path in divelog.yaml",
+}
+
+
+@overload
+def resolve_commons(
+    log_root: Path, commons: Path | None, *, required: Literal[True] = True
+) -> Path: ...
+
+
+@overload
+def resolve_commons(log_root: Path, commons: Path | None, *, required: bool) -> Path | None: ...
+
+
+def resolve_commons(log_root: Path, commons: Path | None, *, required: bool = True) -> Path | None:
+    """The existing commons checkout of a log, found as :func:`locate_commons` describes.
+
+    Parameters
+    ----------
+    log_root
+        The log repository; its ``divelog.yaml`` is read.
+    commons
+        The ``--commons`` option, None when not given.
+    required
+        Whether a log that names no commons anywhere is an error; when False it gives None.
 
     Raises
     ------
     PullError
-        The log names no commons source with a path, and none was given.
+        ``divelog.yaml`` does not parse, the commons path that was found does not exist, or
+        (``required``) nothing names a commons.
     """
     try:
         manifest = read_manifest(log_root)
     except ValueError as exc:
         raise PullError(f"divelog.yaml: {exc}") from exc
-    if commons is not None:
-        return commons
-    found = commons_root_for(log_root, manifest)
-    if found is None:
-        raise PullError(f"{log_root}/divelog.yaml names no commons source with a path")
-    return found
+    location = locate_commons(log_root, manifest, commons)
+    if location is None:
+        if not required:
+            return None
+        raise PullError(
+            f"{log_root}/divelog.yaml names no commons source with a path; {SET_COMMONS}"
+        )
+    if not location.root.is_dir():
+        raise PullError(
+            f"the commons checkout {location.root} does not exist "
+            f"(named by {NAMED_BY[location.via]}); {SET_COMMONS}"
+        )
+    return location.root
 
 
 def pull(
@@ -121,7 +160,7 @@ def pull(
     log_root
         The log repository; its manifest is rewritten and committed.
     commons
-        The commons checkout; the manifest source path when None.
+        The commons checkout; when None, ``COMMONS_ROOT``, then the manifest source path.
     ref
         Pin this commit instead of the new head (it must exist in the commons).
     author, email

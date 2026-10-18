@@ -5,11 +5,14 @@ is one (``kind: sites``). ``media/manifest.json`` records where each publishable
 and under which licence.
 """
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
+
+from divelog_server.core.config import get_settings
 
 MANIFEST_FILE = "divelog.yaml"
 MEDIA_MANIFEST = "media/manifest.json"
@@ -96,6 +99,40 @@ def commons_root_for(log_root: Path, manifest: Manifest | None) -> Path | None:
     if source is None or not source.path:
         return None
     return (log_root / source.path).resolve()
+
+
+CommonsVia = Literal["--commons", "COMMONS_ROOT", "divelog.yaml"]
+
+
+@dataclass(frozen=True)
+class CommonsLocation:
+    """Where the commons checkout of a log is, and which setting named it."""
+
+    root: Path
+    via: CommonsVia
+
+
+def locate_commons(
+    log_root: Path, manifest: Manifest | None, commons: Path | None = None
+) -> CommonsLocation | None:
+    """The commons checkout of a log, as the server and every CLI command find it.
+
+    The order is: ``commons`` (the ``--commons`` option), else the ``COMMONS_ROOT`` setting
+    when it is non-empty, else the ``path`` of the manifest's commons source, relative to the
+    log root. The path is not checked.
+
+    Returns
+    -------
+    CommonsLocation or None
+        None when none of the three names a commons.
+    """
+    if commons is not None:
+        return CommonsLocation(commons, "--commons")
+    configured = get_settings().COMMONS_ROOT.strip()
+    if configured:
+        return CommonsLocation(Path(configured), "COMMONS_ROOT")
+    found = commons_root_for(log_root, manifest)
+    return CommonsLocation(found, "divelog.yaml") if found is not None else None
 
 
 LICENCE_ALLOWLIST = frozenset(

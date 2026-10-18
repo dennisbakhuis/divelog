@@ -95,6 +95,18 @@ An empty log repository needs only a `divelog.yaml` (see [FORMAT.md](FORMAT.md))
 come in through the admin import (Subsurface XML, Shearwater XML) or as files. Sign in by
 requesting a magic link for `OWNER_EMAIL`.
 
+The `divelog` commands in the image (`validate`, `sites status|adopt`, `commons pull`, `tiles`,
+`sitemap-osm fetch`) find the commons the way the server does: `--commons PATH` when given,
+else `COMMONS_ROOT`, else the source `path` in the log's `divelog.yaml`. The compose file sets
+`COMMONS_ROOT`, so no flag is needed inside the container, even when `divelog.yaml` names a path
+on your own machine (`../divelog-sites`); a commons path that does not exist is an error that
+names it.
+
+```sh
+docker compose exec divelog-server divelog validate /data/repo
+docker compose exec divelog-server divelog sites status /data/repo
+```
+
 ## Edits and backups
 
 Every admin edit is written to the log checkout and committed; with `GIT_ENABLED=true` the

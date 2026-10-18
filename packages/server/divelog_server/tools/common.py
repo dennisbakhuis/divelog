@@ -9,7 +9,7 @@ from typing import Any
 from PIL import ImageFont
 
 from divelog_server.core.config import get_settings
-from divelog_server.store.manifest import commons_root_for, read_manifest
+from divelog_server.store.commons_sync import resolve_commons
 from divelog_server.store.sources import CommonsSource
 from divelog_server.store.store import Store
 
@@ -100,18 +100,26 @@ def log_root(path: Path | None) -> Path:
     return path if path is not None else Path(get_settings().DATA_ROOT)
 
 
-def commons_root(root: Path) -> Path | None:
-    """The commons of a log: from its ``divelog.yaml``, else env ``COMMONS_ROOT``, else None."""
-    found = commons_root_for(root, read_manifest(root))
-    if found is not None:
-        return found
-    configured = get_settings().COMMONS_ROOT
-    return Path(configured) if configured else None
+def commons_root(root: Path, commons: Path | None = None) -> Path | None:
+    """The commons of a log: ``--commons``, else env ``COMMONS_ROOT``, else its ``divelog.yaml``.
+
+    Raises
+    ------
+    PullError
+        The commons that was named does not exist, or ``divelog.yaml`` does not parse.
+    """
+    return resolve_commons(root, commons, required=False)
 
 
-def open_store(root: Path) -> Store:
-    """The merged read view of a log and its commons, loaded from disk without git."""
-    commons = commons_root(root)
-    store = Store(root, commons=CommonsSource(commons) if commons else None)
+def open_store(root: Path, commons: Path | None = None) -> Store:
+    """The merged read view of a log and its commons, loaded from disk without git.
+
+    Raises
+    ------
+    PullError
+        As :func:`commons_root`.
+    """
+    found = commons_root(root, commons)
+    store = Store(root, commons=CommonsSource(found) if found else None)
     store.load()
     return store
