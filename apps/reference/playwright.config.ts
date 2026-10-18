@@ -10,7 +10,12 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['github']] : 'list',
-  use: { baseURL: `http://localhost:${APP_PORT}`, trace: 'retain-on-failure' },
+  use: {
+    baseURL: `http://localhost:${APP_PORT}`,
+    trace: 'retain-on-failure',
+    locale: 'en-GB',
+    timezoneId: 'Europe/Amsterdam',
+  },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {

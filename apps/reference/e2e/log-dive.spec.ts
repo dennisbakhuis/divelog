@@ -62,10 +62,12 @@ test.describe('logging a dive', () => {
     await page.waitForLoadState('networkidle');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('New dive');
 
+    // Typing into <input type=time> depends on the OS clock format (a 12-hour
+    // runner wants AM/PM too), so the times are filled; tabbing still proves the order.
     await tabTo(page, 'dl-dive-time_in');
-    await page.keyboard.type('0915');
+    await page.locator('#dl-dive-time_in').fill('09:15');
     await tabTo(page, 'dl-dive-time_out');
-    await page.keyboard.type('1003');
+    await page.locator('#dl-dive-time_out').fill('10:03');
     await expect(page.getByLabel('Duration (min)')).toHaveValue('48');
 
     await tabTo(page, 'dl-dive-max_depth_m');
