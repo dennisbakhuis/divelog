@@ -3,6 +3,14 @@
 `@divelog/kit` and `divelog-server` share version numbers. API major and data format stay at 1
 unless a section says otherwise.
 
+## 0.4.2 — the CLI finds the commons inside the container (18 October 2026)
+
+- `divelog validate`, `sites status|adopt`, `commons pull`, `tiles` and `sitemap-osm fetch` find
+  the commons like the server: `--commons`, else `COMMONS_ROOT`, else the `divelog.yaml` source
+  path. In the image they no longer report every overlay as lacking a commons record because
+  `divelog.yaml` names a path on the operator's machine; a commons path that does not exist is
+  an error naming it and the three ways to set it.
+
 ## 0.4.1 — git identity in containers (18 October 2026)
 
 - The server sets the owner as git author *and* committer for every commit, pull and rebase.
