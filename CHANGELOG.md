@@ -3,7 +3,10 @@
 `@divelog/kit` and `divelog-server` share version numbers. API major and data format stay at 1
 unless a section says otherwise.
 
-## Unreleased
+## 0.4.0 — commons search, near me, optional atlas (18 October 2026)
+
+Finding a site in the commons is forgiving and location-aware, and an instance can list the
+commons sites you have not dived yet; every server change is additive.
 
 - Searching the commons from the admin takes several words, each matching a name, alias or
   area ("blue hole dahab"), and forgives small typos ("tortuge" finds Tortuga); exact and
