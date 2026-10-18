@@ -8,7 +8,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from divelog_server.api.v1 import media_router
 from divelog_server.api.v1 import router as v1_router
-from divelog_server.core.config import get_settings
+from divelog_server.core.config import check_session_secret, get_settings
 from divelog_server.core.deps import get_store
 from divelog_server.core.logging import configure_logging
 from divelog_server.store.store import CommonsEditError
@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.DEBUG)
+    check_session_secret(settings)
     store = get_store()
     if not store.dives and not store.sites:
         logger.warning("store is empty: is DATA_ROOT=%s a checkout of the data repo?", store.root)

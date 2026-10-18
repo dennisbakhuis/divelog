@@ -17,6 +17,8 @@ unless a section says otherwise.
   marks them "not dived" (badge, hollow marker) and the sites list gets an "Only my dives"
   toggle. Region site lists carry a `dives` count, and an undived `MapSite` has 0 dives and
   null years.
+- The server logs a warning at startup while `SESSION_SECRET` is the shipped default, and
+  refuses to start on it when `COOKIE_SECURE` is true.
 
 ## 0.3.0 — the UX rework (10 October 2026)
 

@@ -1,9 +1,14 @@
+import logging
 from functools import lru_cache
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEFAULT_SESSION_SECRET = "dev-only-session-secret-change-me-please"
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -34,7 +39,7 @@ class Settings(BaseSettings):
     TRUSTED_PROXY_IPS: str = ""
 
     OWNER_EMAIL: str = ""
-    SESSION_SECRET: str = "dev-only-session-secret-change-me-please"
+    SESSION_SECRET: str = DEFAULT_SESSION_SECRET
     SESSION_COOKIE_NAME: str = "divelog_session"
     SESSION_DAYS: int = 30
     MAGIC_LINK_MINUTES: int = 15
@@ -82,3 +87,33 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Cached settings instance; cleared in tests after setting env vars."""
     return Settings()
+
+
+class InsecureSettingsError(RuntimeError):
+    """Settings that are unsafe to serve in production."""
+
+
+def check_session_secret(settings: Settings) -> None:
+    """Warn about the default ``SESSION_SECRET``; refuse it when ``COOKIE_SECURE`` is on.
+
+    Parameters
+    ----------
+    settings
+        The runtime settings to check.
+
+    Raises
+    ------
+    InsecureSettingsError
+        When ``SESSION_SECRET`` is the shipped default and ``COOKIE_SECURE`` is true.
+    """
+    if settings.SESSION_SECRET != DEFAULT_SESSION_SECRET:
+        return
+    if settings.COOKIE_SECURE:
+        raise InsecureSettingsError(
+            "SESSION_SECRET is the shipped default while COOKIE_SECURE is true; "
+            "set SESSION_SECRET (example: output of `openssl rand -hex 32`) before serving"
+        )
+    logger.warning(
+        "SESSION_SECRET is the shipped default: fine for development, "
+        "set your own before serving this anywhere public"
+    )

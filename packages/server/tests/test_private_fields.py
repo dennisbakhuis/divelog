@@ -19,7 +19,7 @@ async def test_public_dive_hides_private_material(client: AsyncClient) -> None:
     assert body["private"] is None
     assert body["attachments"] == []
     assert body["site"]["private"] is None
-    assert "Bakhuis" not in response.text
+    assert "de Boer" not in response.text
     assert "PADI" not in response.text
     assert "kim@example.com" not in response.text
 
@@ -29,7 +29,7 @@ async def test_owner_sees_private_material_uncached(owner_client: AsyncClient) -
     assert response.status_code == 200
     assert response.headers["cache-control"] == "private, no-store"
     body = response.json()
-    assert body["private"]["people"][0]["last_name"] == "Bakhuis"
+    assert body["private"]["people"][0]["last_name"] == "de Boer"
     assert body["private"]["people"][0]["email"] == "kim@example.com"
     assert body["private"]["operator"] == "Some Guide, PADI 123"
     assert [a["kind"] for a in body["attachments"]] == ["scan"]
@@ -52,8 +52,8 @@ async def test_person_page(client: AsyncClient, owner_client: AsyncClient) -> No
     assert public["person"]["stats"]["dives"] == 1
     assert [d["number"] for d in public["dives"]] == [1]
     private = (await owner_client.get("/api/v1/dive/people/kim")).json()
-    assert private["person"]["private"]["last_name"] == "Bakhuis"
-    assert private["person"]["bio_md"].startswith("Dives with me")
+    assert private["person"]["private"]["last_name"] == "de Boer"
+    assert private["person"]["bio_md"].startswith("Regular buddy")
 
 
 async def test_reference_maps_are_owner_only(
@@ -86,10 +86,10 @@ async def test_search_text_carries_private_names_only_for_owner(
     public = (await client.get("/api/v1/dive/dives")).json()["dives"]
     first = next(d for d in public if d["number"] == 1)
     assert "Zeelandbrug" in first["search_text"]
-    assert "Bakhuis" not in first["search_text"]
+    assert "de Boer" not in first["search_text"]
     private = (await owner_client.get("/api/v1/dive/dives")).json()["dives"]
     first = next(d for d in private if d["number"] == 1)
-    assert "Bakhuis" in first["search_text"]
+    assert "de Boer" in first["search_text"]
 
 
 def test_haversine() -> None:

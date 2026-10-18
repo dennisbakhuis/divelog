@@ -2,7 +2,7 @@
 id: kim_de_boer
 slug: kim
 first_name: Kim
-last_name: Bakhuis
+last_name: de Boer
 aliases:
 - Kim Jansen
 email: kim@example.com
@@ -10,4 +10,4 @@ display: alias-or-first
 notes: private note
 ---
 
-Dives with me most.
+Regular buddy on the Zeeland shore dives.

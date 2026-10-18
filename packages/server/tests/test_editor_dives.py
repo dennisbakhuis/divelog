@@ -16,7 +16,7 @@ from divelog_server.store.store import Store
 ADMIN = "/api/v1/admin"
 FIXTURES = Path(__file__).parent / "fixtures"
 SUBSURFACE = FIXTURES / "subsurface.xml"
-PERDIX = FIXTURES / "perdix_11.xml"
+PERDIX = FIXTURES / "perdix_sample.xml"
 
 
 def record_commits(store: Store, monkeypatch: pytest.MonkeyPatch) -> list[str]:
@@ -464,7 +464,7 @@ def subsurface_file() -> dict[str, tuple[str, bytes, str]]:
 
 def perdix_files() -> list[tuple[str, tuple[str, bytes, str]]]:
     """The Perdix fixture as an upload."""
-    return [("files", ("perdix_11.xml", PERDIX.read_bytes(), "application/xml"))]
+    return [("files", ("perdix_sample.xml", PERDIX.read_bytes(), "application/xml"))]
 
 
 async def test_subsurface_dry_run_reports_without_writing(
@@ -513,14 +513,14 @@ async def test_shearwater_dry_run_reports_without_writing(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["dry_run"] is True and body["created"] == [5]
-    assert body["dives_in_file"] == 1 and body["first_date"] == "2020-07-03"
+    assert body["dives_in_file"] == 1 and body["first_date"] == "2019-05-14"
     assert commits == [] and 5 not in store.dives and store.imports == {}
 
 
 async def test_shearwater_dry_run_names_the_dive_it_would_update(
     owner_client: AsyncClient, store: Store
 ) -> None:
-    dive = store.dives[1].model_copy(update={"date": date(2020, 7, 3), "time_in": "14:20"})
+    dive = store.dives[1].model_copy(update={"date": date(2019, 5, 14), "time_in": "10:10"})
     await store.save_dive(dive, "move dive 1 to the perdix day")
     response = await owner_client.post(
         f"{ADMIN}/import/shearwater", params={"dry_run": "true"}, files=perdix_files()
@@ -533,4 +533,4 @@ async def test_shearwater_import_lists_created_numbers(owner_client: AsyncClient
     response = await owner_client.post(f"{ADMIN}/import/shearwater", files=perdix_files())
     body = response.json()
     assert body["created"] == [5] and body["dry_run"] is False
-    assert body["last_date"] == "2020-07-03"
+    assert body["last_date"] == "2019-05-14"

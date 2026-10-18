@@ -575,7 +575,7 @@ async def test_markdown_bodies_have_html_siblings(
     assert "body_html" in dive
     assert "description_html" in dive["site"]
     person = (await owner_client.get("/api/v1/dive/people/kim")).json()["person"]
-    assert person["bio_html"].startswith("<p>Dives with me")
+    assert person["bio_html"].startswith("<p>Regular buddy")
     await owner_client.post(
         "/api/v1/admin/gear/items",
         json={"name": "Perdix", "category": "computer", "notes_md": "**Bright** screen"},

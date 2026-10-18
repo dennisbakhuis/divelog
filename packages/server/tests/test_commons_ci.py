@@ -1,5 +1,6 @@
 """The commons CI as a pull request sees it: one bad change per test against a committed base."""
 
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -15,7 +16,7 @@ SITE = "fra-commons-only"
 SECOND = "fra-second"
 MAP = f"maps/drawn/{SITE}-1.json"
 SITE_PATH = f"sites/{SITE}.md"
-REAL_COMMONS = Path("/Users/dennis/repos/divelog-sites")
+REAL_COMMONS = Path(os.environ.get("DIVELOG_COMMONS_PATH", ""))
 
 
 def git(root: Path, *args: str) -> str:
@@ -322,6 +323,9 @@ def test_git_tree_reads_a_subdirectory(tmp_path: Path) -> None:
         GitTree(repo / "commons", "nope")
 
 
-@pytest.mark.skipif(not (REAL_COMMONS / ".git").exists(), reason="real commons not checked out")
+@pytest.mark.skipif(
+    not os.environ.get("DIVELOG_COMMONS_PATH") or not (REAL_COMMONS / ".git").exists(),
+    reason="DIVELOG_COMMONS_PATH unset or not a git checkout",
+)
 def test_real_commons_has_no_errors() -> None:
     assert errors(validate_commons(REAL_COMMONS, base="HEAD")) == []
