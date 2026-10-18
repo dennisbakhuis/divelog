@@ -4,7 +4,7 @@ A dive log you can add to your own website: a FastAPI server over a git reposito
 and JSON files, a SvelteKit kit with the public pages, the admin and the map tooling, and a
 reference app that doubles as the standalone deployment.
 
-**Status:** 0.4.0 (`divelog-server` and `@divelog/kit`; commons search, near me and the
+**Status:** 0.4.1 (`divelog-server` and `@divelog/kit`; commons search, near me and the
 optional atlas, see [CHANGELOG.md](CHANGELOG.md)), not yet published to PyPI, npm or a
 public registry; consumers build the server image from `packages/server` and vendor the kit as a
 packed tarball (`pnpm --filter @divelog/kit build && pnpm pack`). API major 1, data format 1.

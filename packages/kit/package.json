@@ -1,6 +1,6 @@
 {
   "name": "@divelog/kit",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "SvelteKit components, page routes and server helpers for a divelog server",
   "license": "AGPL-3.0-only",
   "type": "module",

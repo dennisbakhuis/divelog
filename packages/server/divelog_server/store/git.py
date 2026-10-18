@@ -34,6 +34,8 @@ class GitRepo:
         readonly: bool = False,
     ) -> None:
         self.root = root
+        self.author_name = author_name
+        self.author_email = author_email
         self.author = f"{author_name} <{author_email}>"
         self.enabled = enabled
         self.readonly = readonly
@@ -45,7 +47,16 @@ class GitRepo:
         self._pending: asyncio.Task[bool] | None = None
 
     def _env(self) -> dict[str, str]:
+        """Environment for git: the owner as author and committer, and the deploy key for SSH.
+
+        A container has no ``user.name`` or ``user.email`` configured, and git refuses to
+        commit or rebase without a committer identity.
+        """
         env = dict(os.environ)
+        env["GIT_AUTHOR_NAME"] = self.author_name
+        env["GIT_AUTHOR_EMAIL"] = self.author_email
+        env["GIT_COMMITTER_NAME"] = self.author_name
+        env["GIT_COMMITTER_EMAIL"] = self.author_email
         if self.ssh_key_path and Path(self.ssh_key_path).exists():
             env["GIT_SSH_COMMAND"] = (
                 f"ssh -i {self.ssh_key_path} -o IdentitiesOnly=yes "

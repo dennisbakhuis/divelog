@@ -3,6 +3,12 @@
 `@divelog/kit` and `divelog-server` share version numbers. API major and data format stay at 1
 unless a section says otherwise.
 
+## 0.4.1 — git identity in containers (18 October 2026)
+
+- The server sets the owner as git author *and* committer for every commit, pull and rebase.
+  A container has no `user.name` or `user.email`, and git refused to commit without one, so
+  admin edits were written to disk but never committed or pushed.
+
 ## 0.4.0 — commons search, near me, optional atlas (18 October 2026)
 
 Finding a site in the commons is forgiving and location-aware, and an instance can list the
