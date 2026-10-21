@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from divelog_server.core.config import get_settings
 from divelog_server.core.deps import OwnerDep, StateDep
-from divelog_server.schemas.auth import MagicLinkRequest, Me
+from divelog_server.schemas.auth import MagicLinkRequest, MagicLinkSent, Me
 from divelog_server.services import auth as auth_service
 
 router = APIRouter()
@@ -59,13 +59,17 @@ async def _redeem(token: str, request: Request, state: StateDep) -> Response:
     return response
 
 
-@router.post("/magic-link", status_code=status.HTTP_202_ACCEPTED)
-async def magic_link(body: MagicLinkRequest, request: Request, state: StateDep) -> dict[str, str]:
+@router.post("/magic-link", status_code=status.HTTP_202_ACCEPTED, response_model=MagicLinkSent)
+async def magic_link(body: MagicLinkRequest, request: Request, state: StateDep) -> MagicLinkSent:
+    """Mail a sign-in link to the owner and say how many minutes it works.
+
+    The answer is the same for any address, so it does not reveal the owner's.
+    """
     ip = request.client.host if request.client else "unknown"
     if auth_service.is_rate_limited(ip):
         raise HTTPException(status_code=429, detail="Too many requests, try again later")
     await auth_service.request_magic_link(state, str(body.email))
-    return {"status": "sent"}
+    return MagicLinkSent(valid_minutes=get_settings().MAGIC_LINK_MINUTES)
 
 
 @router.get("/verify")

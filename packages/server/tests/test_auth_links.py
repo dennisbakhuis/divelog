@@ -1,7 +1,9 @@
 """The mailed sign-in link survives scanners, and a session in use keeps its cookie."""
 
+from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from httpx import AsyncClient
 
 from divelog_server.core.config import get_settings
@@ -79,3 +81,57 @@ async def test_a_sliding_session_issues_the_cookie_again(
     assert cookie.startswith(f"{name}={token};")
     assert "Max-Age=2592000" in cookie
     assert session.expires_at > datetime.now(UTC) + timedelta(days=29)
+
+
+async def redeem_at(
+    client: AsyncClient, state: AuthState, monkeypatch: pytest.MonkeyPatch, after: timedelta
+) -> str:
+    start = datetime.now(UTC)
+    monkeypatch.setattr(auth_service, "_now", lambda: start)
+    token = await link_token(state)
+    monkeypatch.setattr(auth_service, "_now", lambda: start + after)
+    response = await client.post(VERIFY, data={"token": token})
+    return str(response.headers["location"])
+
+
+async def test_a_link_works_for_two_minutes(
+    client: AsyncClient, state: AuthState, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert get_settings().MAGIC_LINK_MINUTES == 2
+    late = timedelta(minutes=1, seconds=59)
+    assert await redeem_at(client, state, monkeypatch, late) == "/admin"
+
+
+async def test_a_link_has_expired_after_two_minutes(
+    client: AsyncClient, state: AuthState, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    late = timedelta(minutes=2, seconds=1)
+    assert await redeem_at(client, state, monkeypatch, late) == "/admin/login?error=expired"
+
+
+async def test_the_request_says_how_many_minutes_the_link_works(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sent: list[str] = []
+
+    async def fake_send(to: str, subject: str, text: str) -> None:
+        sent.append(text)
+
+    monkeypatch.setattr(auth_service, "send_mail", fake_send)
+    monkeypatch.setattr(auth_service, "_recent_requests", defaultdict(list))
+    for email in ("owner@example.com", "stranger@example.com"):
+        response = await client.post("/api/v1/auth/magic-link", json={"email": email})
+        assert response.status_code == 202
+        assert response.json()["valid_minutes"] == 2
+    assert len(sent) == 1
+    assert "valid 2 minutes" in sent[0]
+
+
+async def test_the_lifetime_stays_a_setting(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MAGIC_LINK_MINUTES", "3")
+    get_settings.cache_clear()
+    monkeypatch.setattr(auth_service, "_recent_requests", defaultdict(list))
+    response = await client.post("/api/v1/auth/magic-link", json={"email": "x@example.com"})
+    assert response.json()["valid_minutes"] == 3
