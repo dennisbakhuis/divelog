@@ -1,8 +1,10 @@
 """Owner-only endpoints behind the session cookie: everything that writes."""
 
+import asyncio
 import logging
 import re
 import unicodedata
+from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Literal
 from uuid import uuid4
@@ -57,7 +59,7 @@ from divelog_server.schemas.dive import (
 from divelog_server.schemas.gear import GearItemIn, GearItemOut, GearSetupIn, GearSetupOut
 from divelog_server.services import admin_views
 from divelog_server.services import dives as dive_service
-from divelog_server.services.images import IMAGE_MIMES, process_image
+from divelog_server.services.images import IMAGE_MIMES, image_format, process_image
 from divelog_server.services.markdown import render
 from divelog_server.services.overpass import OverpassClient, OverpassError, get_overpass_client
 from divelog_server.services.storage import (
@@ -192,11 +194,22 @@ async def admin_get_dive(number: int, store: StoreDep) -> DiveAdminOut:
 
 @router.put("/dives/{number}", response_model=DiveAdminOut)
 async def admin_update_dive(number: int, body: DiveIn, store: StoreDep) -> DiveAdminOut:
-    dive = _dive_or_404(store, number)
-    if body.number != number and body.number in store.dives:
-        raise HTTPException(status_code=409, detail=f"Dive #{body.number} already exists")
-    record = _apply_dive(store, dive, body)
-    await store.save_dive(record, f"Update dive #{record.number}", previous_number=number)
+    """Replace a dive with the form's fields, over the dive as stored at the moment of writing.
+
+    Attachments come from the stored dive, so a photo uploaded while the form was open stays.
+    A ``cover_attachment_id`` that names none of the dive's attachments keeps the stored cover.
+    """
+
+    def change(dive: DiveRecord) -> DiveRecord:
+        if body.number != number and body.number in store.dives:
+            raise HTTPException(status_code=409, detail=f"Dive #{body.number} already exists")
+        record = _apply_dive(store, dive, body)
+        if record.cover is not None and all(m.id != record.cover for m in record.media):
+            logger.warning("dive #%d: cover %s is not one of its attachments", number, record.cover)
+            record.cover = dive.cover
+        return record
+
+    record = await _update_dive(store, number, change, f"Update dive #{body.number}")
     return dive_service.dive_admin_out(store, record)
 
 
@@ -217,15 +230,19 @@ async def admin_patch_dive(number: int, body: DivePatch, store: StoreDep) -> Div
     Only the fields present in the body are written; ``cover_attachment_id`` must name one of
     the dive's attachments, or be ``null`` for no cover.
     """
-    dive = _dive_or_404(store, number).model_copy(deep=True)
+    dive = _dive_or_404(store, number)
     if "cover_attachment_id" not in body.model_fields_set:
         return dive_service.dive_admin_out(store, dive)
     cover = body.cover_attachment_id
-    if cover is not None and all(m.id != cover for m in dive.media):
-        raise HTTPException(status_code=422, detail=f"Dive #{number} has no attachment {cover}")
-    dive.cover = cover
-    await store.save_dive(dive, f"Set cover of dive #{number}")
-    return dive_service.dive_admin_out(store, dive)
+
+    def change(dive: DiveRecord) -> DiveRecord:
+        if cover is not None and all(m.id != cover for m in dive.media):
+            raise HTTPException(status_code=422, detail=f"Dive #{number} has no attachment {cover}")
+        dive.cover = cover
+        return dive
+
+    saved = await _update_dive(store, number, change, f"Set cover of dive #{number}")
+    return dive_service.dive_admin_out(store, saved)
 
 
 def _apply_dive(store: Store, dive: DiveRecord | None, body: DiveIn) -> DiveRecord:
@@ -240,6 +257,16 @@ def _dive_or_404(store: Store, number: int) -> DiveRecord:
     if dive is None:
         raise HTTPException(status_code=404, detail="Dive not found")
     return dive
+
+
+async def _update_dive(
+    store: Store, number: int, change: Callable[[DiveRecord], DiveRecord], message: str
+) -> DiveRecord:
+    """:meth:`Store.update_dive`, with a dive that is gone answered as 404."""
+    try:
+        return await store.update_dive(number, change, message)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Dive not found") from None
 
 
 # ── Attachments ─────────────────────────────────────────────────────────────
@@ -257,13 +284,26 @@ async def admin_upload_attachment(
     kind: str = "photo",
     public: bool | None = None,
 ) -> AttachmentOut:
-    dive = _dive_or_404(store, number)
-    media = await _store_upload(file, kind, public if public is not None else kind != "scan")
-    media.sort = len(dive.media)
-    dive.media.append(media)
-    if kind == "photo" and dive.cover is None:
-        dive.cover = media.id
-    await store.save_dive(dive, f"Attach {kind} to dive #{number}")
+    """Store a file and attach it to a dive; the first photo becomes the cover.
+
+    Photos are recognised by their bytes, whatever type was declared. Without ``public`` a
+    photo is public unless it is a scan; a file that is not a photo is private.
+    """
+    _dive_or_404(store, number)
+    media = await _store_upload(file, kind, public, image_public=kind != "scan")
+
+    def change(dive: DiveRecord) -> DiveRecord:
+        media.sort = len(dive.media)
+        dive.media.append(media)
+        if kind == "photo" and dive.cover is None:
+            dive.cover = media.id
+        return dive
+
+    try:
+        await store.update_dive(number, change, f"Attach {kind} to dive #{number}")
+    except KeyError:
+        await _delete_files(get_storage(), media)
+        raise HTTPException(status_code=404, detail="Dive not found") from None
     return dive_service.attachment_out(media)
 
 
@@ -277,13 +317,22 @@ async def admin_upload_site_attachment(
     store: StoreDep,
     file: UploadFile = File(...),
     kind: str = "photo",
-    public: bool = True,
+    public: bool | None = None,
 ) -> AttachmentOut:
-    site = _site_or_404(store, site_id)
-    media = await _store_upload(file, kind, public)
-    media.sort = len(site.media)
-    site.media.append(media)
-    await store.save_site(site, f"Attach {kind} to site {site_id}")
+    """Store a file and attach it to a site; without ``public`` only a photo is public."""
+    _site_or_404(store, site_id)
+    media = await _store_upload(file, kind, public, image_public=True)
+
+    def change(site: SiteRecord) -> SiteRecord:
+        media.sort = len(site.media)
+        site.media.append(media)
+        return site
+
+    try:
+        await store.update_site(site_id, change, f"Attach {kind} to site {site_id}")
+    except KeyError:
+        await _delete_files(get_storage(), media)
+        raise HTTPException(status_code=404, detail="Site not found") from None
     return dive_service.attachment_out(media)
 
 
@@ -296,15 +345,17 @@ async def admin_order_site_attachments(
     Unknown ids are ignored; attachments left out keep their relative order after the listed
     ones.
     """
-    site = _site_or_404(store, site_id).model_copy(deep=True)
-    position = {media_id: i for i, media_id in enumerate(body)}
-    current = sorted(site.media, key=lambda m: m.sort)
-    ordered = sorted(current, key=lambda m: position.get(m.id, len(body)))
-    for i, media in enumerate(ordered):
-        media.sort = i
-    site.media = ordered
-    await store.save_site(site, f"Reorder attachments of site {site_id}")
-    return [dive_service.attachment_out(m) for m in ordered]
+    _site_or_404(store, site_id)
+
+    def change(site: SiteRecord) -> SiteRecord:
+        site.media = _in_order(site.media, body)
+        return site
+
+    try:
+        saved = await store.update_site(site_id, change, f"Reorder attachments of site {site_id}")
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Site not found") from None
+    return [dive_service.attachment_out(m) for m in sorted(saved.media, key=lambda m: m.sort)]
 
 
 @router.post(
@@ -320,7 +371,7 @@ async def admin_upload_avatar(
     for old in [m for m in person.media if m.kind == "avatar"]:
         await _delete_files(storage, old)
         person.media.remove(old)
-    media = await _store_upload(file, "avatar", True)
+    media = await _store_upload(file, "avatar", True, image_only=True)
     person.media.append(media)
     person.avatar = media.id
     await store.save_person(person, f"Set avatar for {person.id}")
@@ -341,7 +392,7 @@ async def admin_upload_gear_photo(
     storage = get_storage()
     for old in list(item.media):
         await _delete_files(storage, old)
-    item.media = [await _store_upload(file, "photo", True)]
+    item.media = [await _store_upload(file, "photo", True, image_only=True)]
     await store.save_gear(f"Set photo for gear item {item_id}")
     return dive_service.attachment_out(item.media[0])
 
@@ -355,14 +406,24 @@ async def admin_order_attachments(
     Unknown ids are ignored; attachments left out keep their relative order after the listed
     ones.
     """
-    dive = _dive_or_404(store, number).model_copy(deep=True)
-    position = {media_id: i for i, media_id in enumerate(body)}
-    current = sorted(dive.media, key=lambda m: m.sort)
-    ordered = sorted(current, key=lambda m: position.get(m.id, len(body)))
-    for i, media in enumerate(ordered):
-        media.sort = i
-    await store.save_dive(dive, f"Reorder attachments of dive #{number}")
-    return [dive_service.attachment_out(m) for m in ordered]
+    _dive_or_404(store, number)
+
+    def change(dive: DiveRecord) -> DiveRecord:
+        _in_order(dive.media, body)
+        return dive
+
+    saved = await _update_dive(store, number, change, f"Reorder attachments of dive #{number}")
+    return [dive_service.attachment_out(m) for m in sorted(saved.media, key=lambda m: m.sort)]
+
+
+def _in_order(media: list[MediaRef], ids: list[str]) -> list[MediaRef]:
+    """Renumber ``sort`` to follow ``ids``; the unlisted keep their order after the listed."""
+    position = {media_id: i for i, media_id in enumerate(ids)}
+    current = sorted(media, key=lambda m: m.sort)
+    ordered = sorted(current, key=lambda m: position.get(m.id, len(ids)))
+    for i, item in enumerate(ordered):
+        item.sort = i
+    return ordered
 
 
 CREDIT_FIELDS = ("licence", "author", "source")
@@ -374,19 +435,50 @@ async def admin_patch_attachment(
 ) -> AttachmentOut:
     """Change caption, credit, kind, order, visibility or the licence, author and source."""
     owner, record, media = _media_or_404(store, media_id)
+    message = f"Update attachment on {owner[0]} {owner[1]}"
+    if isinstance(record, DiveRecord):
+
+        def change(dive: DiveRecord) -> DiveRecord:
+            _patch_media(_dive_media_or_404(dive, media_id), body)
+            return dive
+
+        saved = await _update_dive(store, record.number, change, message)
+        return dive_service.attachment_out(_dive_media_or_404(saved, media_id))
+    _patch_media(media, body)
+    await _save_owner(store, owner, record, message)
+    return dive_service.attachment_out(media)
+
+
+def _patch_media(media: MediaRef, body: AttachmentPatch) -> None:
     for key, value in body.model_dump(exclude_none=True).items():
         if key in CREDIT_FIELDS:
             value = value.strip() or None
         setattr(media, key, value)
-    await _save_owner(store, owner, record, f"Update attachment on {owner[0]} {owner[1]}")
-    return dive_service.attachment_out(media)
+
+
+def _dive_media_or_404(dive: DiveRecord, media_id: str) -> MediaRef:
+    media = next((m for m in dive.media if m.id == media_id), None)
+    if media is None:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    return media
 
 
 @router.delete("/attachments/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def admin_delete_attachment(media_id: str, store: StoreDep) -> None:
     owner, record, media = _media_or_404(store, media_id)
-    if isinstance(record, DiveRecord) and record.cover == media.id:
-        record.cover = None
+    if isinstance(record, DiveRecord):
+
+        def change(dive: DiveRecord) -> DiveRecord:
+            dive.media.remove(_dive_media_or_404(dive, media_id))
+            if dive.cover == media_id:
+                dive.cover = None
+            return dive
+
+        message = f"Remove attachment from {owner[0]} {owner[1]}"
+        await _update_dive(store, record.number, change, message)
+        if not store.media_referrers(media.key):
+            await _delete_files(get_storage(), media)
+        return
     if isinstance(record, PersonRecord) and record.avatar == media.id:
         record.avatar = None
     record.media.remove(media)
@@ -435,7 +527,21 @@ async def _save_owner(
         await store.save_gear(message)
 
 
-async def _store_upload(file: UploadFile, kind: str, public: bool) -> MediaRef:
+async def _store_upload(
+    file: UploadFile,
+    kind: str,
+    public: bool | None,
+    *,
+    image_public: bool = True,
+    image_only: bool = False,
+) -> MediaRef:
+    """Store an upload: a photo processed into a clean original and variants, anything else as is.
+
+    A photo is recognised by its bytes; the declared type only decides that bytes Pillow cannot
+    read are an error (400). Without ``public`` a photo gets ``image_public`` and any other
+    file stays private, since only photos lose their metadata here. ``image_only`` refuses a
+    file that is not a photo.
+    """
     settings = get_settings()
     data = await file.read()
     if len(data) > settings.MAX_UPLOAD_BYTES:
@@ -449,10 +555,13 @@ async def _store_upload(file: UploadFile, kind: str, public: bool) -> MediaRef:
     variants: list[str] = []
     width = height = None
     taken_at = None
+    is_image = image_format(data) is not None
+    if not is_image and (image_only or mime in IMAGE_MIMES):
+        raise HTTPException(status_code=400, detail="Could not read image")
 
-    if mime in IMAGE_MIMES:
+    if is_image:
         try:
-            processed = process_image(data, square=kind == "avatar")
+            processed = await asyncio.to_thread(process_image, data, square=kind == "avatar")
         except Exception as exc:
             raise HTTPException(status_code=400, detail="Could not read image") from exc
         ext = "png" if processed.original_mime == "image/png" else "jpg"
@@ -482,7 +591,7 @@ async def _store_upload(file: UploadFile, kind: str, public: bool) -> MediaRef:
         width=width,
         height=height,
         taken_at=taken_at,
-        public=public,
+        public=public if public is not None else is_image and image_public,
         variants=variants,
         original_name=(file.filename or "")[:255],
     )
