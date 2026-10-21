@@ -35,6 +35,7 @@ from divelog_server.schemas.dive import (
     TripRef,
 )
 from divelog_server.schemas.sitemap import DiveMapAnnotation
+from divelog_server.services import buddy_notes as notes_service
 from divelog_server.services import stats as stats_service
 from divelog_server.services.cylinders import sac_from_tanks, sac_rate, tank_volume_l
 from divelog_server.services.profile import profile_stats
@@ -728,12 +729,15 @@ def dive_out(
         day_index=day_index,
         same_day=day_others,
         context_facts=stats_service.context_facts(dive, list(store.dives.values()), store.sites),
+        buddy_notes=notes_service.public_notes(store, dive),
         private=private,
     )
 
 
 def dive_admin_out(store: Store, dive: DiveRecord) -> DiveAdminOut:
+    """The editor's view of ``dive``: every buddy note and where each sign request stands."""
     base = dive_out(store, dive, owner=True).model_dump(by_alias=True)
+    base["buddy_notes"] = notes_service.all_notes(store, dive)
     return DiveAdminOut(
         **base,
         id=dive.number,
@@ -742,6 +746,7 @@ def dive_admin_out(store: Store, dive: DiveRecord) -> DiveAdminOut:
         trip_id=dive.trip,
         gear_setup_id=dive.gear_setup,
         country=dive.country,
+        sign_requests=notes_service.sign_requests(store, dive),
     )
 
 
@@ -925,6 +930,7 @@ def apply_dive_in(store: Store, dive: DiveRecord | None, data: DiveIn) -> DiveRe
             "trip_id",
             "gear_setup_id",
             "cover_attachment_id",
+            "buddy_notes",
             *unsent,
         }
     )
@@ -940,6 +946,9 @@ def apply_dive_in(store: Store, dive: DiveRecord | None, data: DiveIn) -> DiveRe
     payload["gear_setup"] = data.gear_setup_id
     payload["cover"] = data.cover_attachment_id
     payload["people"] = [pid for pid in data.people_ids if pid in store.people]
+    payload["buddy_notes"] = notes_service.apply_note_edits(
+        store, dive.buddy_notes if dive else [], data.buddy_notes, payload["people"]
+    )
     if data.site_id and data.site_id not in store.sites:
         raise ValueError(f"Unknown site {data.site_id!r}")
     site = store.sites.get(data.site_id) if data.site_id else None

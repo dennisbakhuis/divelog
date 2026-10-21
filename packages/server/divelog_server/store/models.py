@@ -130,6 +130,59 @@ class TankRecord(BaseModel):
     role: Literal["back", "stage", "deco", "bailout"] = "back"
 
 
+SIGNATURE_WIDTH = 1000
+SIGNATURE_HEIGHT = 400
+MAX_STROKES = 60
+MAX_STROKE_POINTS = 4000
+MAX_NOTE_COMMENT = 200
+
+Stroke = list[tuple[int, int]]
+
+
+def strokes_problem(strokes: list[Stroke]) -> str | None:
+    """Why ``strokes`` is not a valid signature drawing, or None when it is.
+
+    A drawing has at most ``MAX_STROKES`` polylines of at least one point each and at most
+    ``MAX_STROKE_POINTS`` points in total, every point inside the 1000 x 400 box.
+    """
+    if len(strokes) > MAX_STROKES:
+        return f"a signature has at most {MAX_STROKES} strokes"
+    if sum(len(stroke) for stroke in strokes) > MAX_STROKE_POINTS:
+        return f"a signature has at most {MAX_STROKE_POINTS} points"
+    for stroke in strokes:
+        if not stroke:
+            return "a stroke has at least one point"
+        for x, y in stroke:
+            if not (0 <= x <= SIGNATURE_WIDTH and 0 <= y <= SIGNATURE_HEIGHT):
+                return f"point {x},{y} is outside the {SIGNATURE_WIDTH} x {SIGNATURE_HEIGHT} box"
+    return None
+
+
+class BuddyNoteRecord(BaseModel):
+    """A buddy's note on a dive: a short comment, a drawn signature, or both.
+
+    ``person`` is the id of one of the dive's people. ``strokes`` are polylines of integer
+    points in a 1000 x 400 box. ``public`` shows the note on the public dive page.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    person: str = Field(min_length=1)
+    comment: str | None = Field(default=None, max_length=MAX_NOTE_COMMENT)
+    strokes: list[Stroke] | None = None
+    signed_at: datetime
+    public: bool = True
+
+    @model_validator(mode="after")
+    def _has_content(self) -> Self:
+        if not (self.comment and self.comment.strip()) and not self.strokes:
+            raise ValueError("a buddy note has a comment, strokes or both")
+        problem = strokes_problem(self.strokes or [])
+        if problem:
+            raise ValueError(problem)
+        return self
+
+
 class DiveRecord(Record):
     KEEP_NULL: ClassVar[tuple[str, ...]] = ("gas",)
     """Keys written as ``null``: a missing ``gas`` key reads as air, a ``null`` one as unknown."""
@@ -191,8 +244,16 @@ class DiveRecord(Record):
     visibility: Visibility = "public"
     notes_nl: str | None = None
     map_annotation: dict[str, Any] | None = None
+    buddy_notes: list[BuddyNoteRecord] = Field(default_factory=list)
     import_id: str | None = None
     body_md: str = Field(default="", exclude=True)
+
+    @model_validator(mode="after")
+    def _one_note_per_person(self) -> Self:
+        persons = [note.person for note in self.buddy_notes]
+        if len(persons) != len(set(persons)):
+            raise ValueError("a dive has at most one buddy note per person")
+        return self
 
 
 SITE_KEY_ORDER = (

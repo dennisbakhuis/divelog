@@ -60,14 +60,16 @@ def _logged_before(dive: DiveRecord, anchor: DiveRecord) -> bool:
 
 
 def dive_input(dive: DiveRecord) -> DiveTemplateDive:
-    """A stored dive as the form's input, without its profile.
+    """A stored dive as the form's input, without its profile and its buddies' notes.
 
     Values a hand-edited file holds outside the input's ranges are dropped (or, for the
     required duration and depth, clamped) so the result always validates.
     """
     record = dive.model_dump(mode="json")
     payload: dict[str, Any] = {
-        name: record[name] for name in DiveIn.model_fields if name in record and name != "profile"
+        name: record[name]
+        for name in DiveIn.model_fields
+        if name in record and name not in ("profile", "buddy_notes")
     }
     for stored, field in RENAMED.items():
         payload[field] = record.get(stored)
