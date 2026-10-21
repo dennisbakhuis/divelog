@@ -99,13 +99,18 @@
         ? 'Your note is on the dive page.'
         : `Your note is kept for ${owner}; visitors of the dive page do not see it.`}
     </p>
-  {:else if linkState === 'used'}
+  {:else if linkState === 'used' && note}
     <h2 id="dl-sign-box-title" class="title">
-      You signed this dive{note ? ` on ${signedOn(note.signed_at)}` : ''}.
+      You signed this dive on {signedOn(note.signed_at)}.
     </h2>
-    {#if note && !note.public}
+    {#if !note.public}
       <p class="line">Your note is kept for {owner}; visitors of the dive page do not see it.</p>
     {/if}
+  {:else if linkState === 'used'}
+    <h2 id="dl-sign-box-title" class="title">This sign link was already used.</h2>
+    <p class="line">
+      The note is no longer on the dive. Ask {owner} for a new link if you want to sign again.
+    </p>
   {:else}
     <h2 id="dl-sign-box-title" class="title">
       Hi {signer.first_name}, {owner} logged this dive with you. Sign it:

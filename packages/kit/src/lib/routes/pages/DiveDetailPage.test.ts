@@ -259,6 +259,25 @@ describe('the dive page opened from a mailed sign link', () => {
     expect(target.querySelector('textarea')).toBeNull();
   });
 
+  it('says the link was used and the note is gone when the owner deleted the note', () => {
+    const target = mountPage({ ...open, state: 'used', note: null });
+    const text = box(target)!.textContent!;
+    expect(text).toContain('This sign link was already used.');
+    expect(text).toContain('The note is no longer on the dive');
+    expect(text).toContain('Ask Diver for a new link');
+    expect(text).not.toContain('You signed this dive');
+    expect(target.querySelector('textarea')).toBeNull();
+    expect(signButton(target)).toBeUndefined();
+    expect(target.querySelector('.dl-buddy-notes')).toBeNull();
+  });
+
+  it('names the private note of a used link and the day it was signed', () => {
+    const target = mountPage({ ...open, state: 'used', note: { ...note, public: false } });
+    const text = box(target)!.textContent!;
+    expect(text).toContain('You signed this dive on 27 October.');
+    expect(text).toContain('Your note is kept for Diver');
+  });
+
   it('shows no box for a link that belongs to another dive', () => {
     const target = mountPage({ ...open, number: 8 });
     expect(box(target)).toBeNull();
