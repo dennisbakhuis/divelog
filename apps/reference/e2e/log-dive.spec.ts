@@ -154,7 +154,7 @@ test.describe('logging a dive', () => {
     await expect(
       signing.getByText('Hi Alex, Sam logged this dive with you. Sign it:'),
     ).toBeVisible();
-    await expect(signing).toHaveURL(new RegExp(`/dive/${number}$`));
+    await expect(signing).toHaveURL(new RegExp(`/dive/${number}\\?sign=`));
     await signing.getByLabel('Comment').fill('Cold feet, great vis.');
     const signed = signing.waitForResponse(
       (r) => r.request().method() === 'POST' && r.url().includes('/api/v1/dive/sign/'),

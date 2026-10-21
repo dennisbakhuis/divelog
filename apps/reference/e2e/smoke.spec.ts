@@ -49,7 +49,7 @@ test('an unknown sign token on a public dive is still the dive page', async ({ p
   await expect(page.getByRole('heading', { level: 1 })).toContainText(SITE_NAME);
   await expect(page.getByText('This sign link has expired; ask Sam for a new one.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sign the dive' })).toHaveCount(0);
-  await expect(page).toHaveURL(/\/dive\/1$/);
+  await expect(page).toHaveURL(/\/dive\/1\?sign=e2e-unknown-token$/);
   await page.waitForLoadState('networkidle');
   expect(errors).toEqual([]);
 });
