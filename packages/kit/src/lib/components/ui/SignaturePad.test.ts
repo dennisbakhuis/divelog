@@ -284,6 +284,98 @@ describe('SignaturePad', () => {
     destroy();
   });
 
+  describe('from the keyboard', () => {
+    const drawTwo = (svg: SVGSVGElement) => {
+      stroke(svg, [
+        [10, 20],
+        [60, 70],
+      ]);
+      stroke(svg, [
+        [110, 20],
+        [160, 70],
+      ]);
+    };
+
+    it('reaches Undo and Clear by Tab, after the drawing, and has no key trap', () => {
+      const { target, svg, destroy } = mountPad();
+      drawTwo(svg);
+      const tools = [button(target, 'Undo'), button(target, 'Clear')];
+      for (const tool of tools) {
+        expect(tool.tabIndex).toBe(0);
+        expect(tool.type).toBe('button');
+      }
+      expect(svg.compareDocumentPosition(tools[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(svg.tabIndex).toBe(-1);
+      destroy();
+    });
+
+    it('keeps focus on Undo while strokes remain', () => {
+      const { target, svg, destroy } = mountPad();
+      drawTwo(svg);
+      const undo = button(target, 'Undo');
+      undo.focus();
+      undo.click();
+      flushSync();
+      expect(document.activeElement).toBe(undo);
+      expect(undo.disabled).toBe(false);
+      destroy();
+    });
+
+    it('moves focus to the pad when Undo or Clear empties it, so focus is not lost', () => {
+      const { target, svg, destroy } = mountPad();
+      stroke(svg, [
+        [10, 20],
+        [60, 70],
+      ]);
+      const undo = button(target, 'Undo');
+      undo.focus();
+      undo.click();
+      flushSync();
+      expect(undo.disabled).toBe(true);
+      expect(document.activeElement).toBe(svg);
+
+      drawTwo(svg);
+      const clear = button(target, 'Clear');
+      clear.focus();
+      clear.click();
+      flushSync();
+      expect(document.activeElement).toBe(svg);
+      destroy();
+    });
+
+    it('does not take focus when the buttons were not what the user was on', () => {
+      const { target, svg, destroy } = mountPad();
+      const elsewhere = document.createElement('input');
+      document.body.append(elsewhere);
+      stroke(svg, [
+        [10, 20],
+        [60, 70],
+      ]);
+      elsewhere.focus();
+      button(target, 'Clear').click();
+      flushSync();
+      expect(document.activeElement).toBe(elsewhere);
+      elsewhere.remove();
+      destroy();
+    });
+  });
+
+  it('puts a stroke on the corner, not NaN, when the pad has no size yet', () => {
+    const { svg, onchange, destroy } = mountPad();
+    svg.getBoundingClientRect = () => ({ left: 0, top: 0, width: 0, height: 0 }) as DOMRect;
+    stroke(svg, [
+      [10, 20],
+      [60, 70],
+    ]);
+    expect(onchange.mock.lastCall![0]).toEqual([
+      [
+        [0, 0],
+        [0, 0],
+      ],
+    ]);
+    destroy();
+  });
+
   it('keeps the page from scrolling under the finger and sizes its buttons for touch', () => {
     const src = readFileSync(
       join(process.cwd(), 'src/lib/components/ui/SignaturePad.svelte'),

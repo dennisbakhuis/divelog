@@ -32,6 +32,7 @@
   const descriptionId = `${uid}-description`;
 
   let svg = $state<SVGSVGElement>();
+  let tools = $state<HTMLElement>();
   let current = $state<number[][] | null>(null);
   let pointerId: number | null = null;
 
@@ -101,12 +102,21 @@
     if (room > 0) commit([...value, stroke.slice(0, room)]);
   }
 
+  /** Both tools switch off on an empty pad; focus moves to the pad so a keyboard user keeps their place. */
+  function keepFocus() {
+    if (value.length === 0 && tools?.contains(document.activeElement)) svg?.focus();
+  }
+
   function undo() {
-    if (value.length) commit(value.slice(0, -1));
+    if (!value.length) return;
+    commit(value.slice(0, -1));
+    keepFocus();
   }
 
   function clear() {
-    if (value.length) commit([]);
+    if (!value.length) return;
+    commit([]);
+    keepFocus();
   }
 </script>
 
@@ -118,6 +128,7 @@
     role="img"
     aria-label={label}
     aria-describedby={descriptionId}
+    tabindex="-1"
     {onpointerdown}
     {onpointermove}
     onpointerup={onpointerend}
@@ -134,7 +145,7 @@
   </svg>
   <div class="dl-signature-foot">
     <p class="dl-signature-hint" id={descriptionId}>{description} {status}</p>
-    <div class="dl-signature-tools">
+    <div class="dl-signature-tools" bind:this={tools}>
       <button
         type="button"
         class="dl-btn dl-btn-ghost dl-btn-sm"
