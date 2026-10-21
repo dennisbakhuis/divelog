@@ -71,3 +71,20 @@ async def test_two_creates_waiting_on_a_write_make_one_site(
     assert sorted([first.status_code, second.status_code]) == [201, 409]
     winner = first if first.status_code == 201 else second
     assert store.sites["deu-hemmoor"].name == winner.json()["name"]
+
+
+async def test_nearby_keeps_an_exact_name_ahead_of_nearer_sites(owner_client: AsyncClient) -> None:
+    for slug, lat in (("alpha-pit", 53.6950), ("beta-pit", 53.6951), ("gamma-pit", 53.6952)):
+        site = {"site_id": f"deu-{slug}", "name": slug.replace("-", " ").title(), "country": "DEU"}
+        created = await owner_client.post(SITES, json=site | {"lat": lat, "lon": 9.15})
+        assert created.status_code == 201, created.text
+    far = {"site_id": "deu-kreidesee-hemmoor", "name": "Kreidesee Hemmoor", "country": "DEU"}
+    assert (await owner_client.post(SITES, json=far | {"lat": 53.7, "lon": 9.2})).status_code == 201
+    found = await owner_client.get(
+        f"{SITES}/nearby",
+        params={"name": "kreidesee hemmoor", "lat": 53.695, "lon": 9.15, "limit": 2},
+    )
+    assert found.status_code == 200
+    ids = [hit["site_id"] for hit in found.json()["log"]]
+    assert len(ids) == 2
+    assert ids[1] == "deu-kreidesee-hemmoor", "the nearest first, the exact name kept"
