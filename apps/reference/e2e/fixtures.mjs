@@ -1167,6 +1167,17 @@ const longDate = (day) =>
 
 /** A sign page's comment and strokes, cleaned like the server does, or the 422 detail. */
 function cleanNote(body) {
+  const wellFormed =
+    (body?.comment === undefined || body.comment === null || typeof body.comment === 'string') &&
+    (body?.strokes === undefined ||
+      body.strokes === null ||
+      (Array.isArray(body.strokes) &&
+        body.strokes.every(
+          (stroke) =>
+            Array.isArray(stroke) &&
+            stroke.every((point) => Array.isArray(point) && point.every((c) => Number.isFinite(c))),
+        )));
+  if (!wellFormed) return { error: 'comment must be text and strokes lists of numeric points' };
   const comment = typeof body?.comment === 'string' ? body.comment.trim() || null : null;
   const strokes = Array.isArray(body?.strokes)
     ? body.strokes.map((stroke) => stroke.map((point) => point.map((c) => Math.round(c))))
