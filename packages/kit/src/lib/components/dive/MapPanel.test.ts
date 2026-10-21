@@ -181,6 +181,46 @@ describe('MapPanel dive overlays', () => {
     target.remove();
   });
 
+  it('overlays every free-drawn track with all dives, and only the chosen one otherwise', () => {
+    const lake: SiteMapOut = { ...drawn, id: 'lake', kind: 'sitemap', edges: [] };
+    const track = (number: number, path: { x: number; y: number }[]): SiteDiveRoute => ({
+      number,
+      date: '2026-10-24',
+      title: '',
+      annotation: { ...routes[0].annotation, map_id: 'lake', route: [], turn: null, path },
+    });
+    const target = document.createElement('div');
+    const app = mount(MapPanel, {
+      target,
+      props: {
+        maps: [{ ...maps[0], ref: 'drawn:lake', drawn: lake }],
+        siteName: 'Lake',
+        routes: [
+          track(8, [
+            { x: 0, y: 0 },
+            { x: 20, y: 0 },
+            { x: 20, y: 20 },
+          ]),
+          track(9, [
+            { x: 0, y: 0 },
+            { x: 0, y: 30 },
+          ]),
+        ],
+      },
+    });
+    flushSync();
+    expect(target.querySelectorAll('.track-leg.all')).toHaveLength(3);
+    expect(target.querySelector('svg.sitemap.routed')).toBeNull();
+    expect(target.querySelectorAll('.node.off-route')).toHaveLength(0);
+
+    (target.querySelectorAll('.dives button')[2] as HTMLButtonElement).click();
+    flushSync();
+    expect(target.querySelectorAll('.track-leg.all')).toHaveLength(0);
+    expect(target.querySelectorAll('.track-leg')).toHaveLength(1);
+    expect(target.querySelector('svg.sitemap.routed')).toBeNull();
+    unmount(app);
+  });
+
   it('offers no dive chips when no logged dive touches the shown map', () => {
     const target = document.createElement('div');
     const app = mount(MapPanel, { target, props: { maps, siteName: 'Site', routes: [routes[2]] } });
