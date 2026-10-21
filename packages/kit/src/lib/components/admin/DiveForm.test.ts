@@ -17,7 +17,12 @@ import type {
   PersonPrivate,
   Trip,
 } from '$lib/core/dive/types.js';
-import { backupKey, emptyDiveInput, serializeBackup } from '$lib/core/admin/dive-input.js';
+import {
+  backupKey,
+  emptyDiveInput,
+  emptyTank,
+  serializeBackup,
+} from '$lib/core/admin/dive-input.js';
 import { drawnRef, fakeMap, fakeSite } from '$lib/testing/sharing.js';
 import { fakeDiveAdmin } from './__fixtures__/dive.js';
 
@@ -1027,6 +1032,117 @@ describe('DiveForm on a phone', () => {
     kind.dispatchEvent(new Event('change', { bubbles: true }));
     flushSync();
     expect(inputs().map((i) => [i.accept, i.getAttribute('capture')])).toEqual([['', null]]);
+    unmount(app);
+  });
+});
+
+describe('DiveForm errors and site changes', () => {
+  it('lists an error without a control of its own and focuses its section', async () => {
+    fakeFetch({
+      'PUT /api/v1/admin/dives/7': json(
+        { detail: [{ loc: ['body', 'tags', 0], msg: 'Unknown tag' }] },
+        422,
+      ),
+    });
+    const { target, app } = render({ dive: fakeDiveAdmin() });
+    saveButton(target).click();
+    await settle();
+    expect(sectionOpen(target, 'Conditions')).toBe(true);
+    expect(document.activeElement?.tagName).toBe('SUMMARY');
+    expect(document.activeElement?.textContent).toContain('Conditions');
+    expect(target.querySelector('.save-bar')?.textContent).toContain('tags.0: Unknown tag');
+    unmount(app);
+  });
+
+  it('asks for the cylinder of a filled tank row and drops a blank one', async () => {
+    const calls = fakeFetch();
+    const filled = { ...emptyTank('back'), cylinder: '', pressure_in_bar: 200 };
+    const blank = { ...emptyTank('stage'), cylinder: '', volume_l: null };
+    const { target, app } = render({ dive: fakeDiveAdmin({ tanks: [blank, filled] }) });
+    saveButton(target).click();
+    await settle();
+    expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
+    expect(target.querySelectorAll('fieldset.tank')).toHaveLength(1);
+    const cylinder = target.querySelector<HTMLInputElement>('#dl-dive-tanks-0-cylinder')!;
+    expect(cylinder.getAttribute('aria-invalid')).toBe('true');
+    expect(document.activeElement).toBe(cylinder);
+    expect(target.textContent).toContain('Cylinder required');
+    unmount(app);
+  });
+
+  it('drops the section and the route of the old site when another site is picked', async () => {
+    globalThis.ResizeObserver ??= class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    const calls = fakeFetch();
+    const map = fakeMap({ id: 'm1' });
+    const sites = [
+      fakeSite({ id: 'mex-tortuga', slug: 'tortuga', name: 'Cenote Tortuga', maps: [drawnRef(map)] }),
+      hemmoor(),
+    ];
+    const annotation = {
+      map_id: 'm1',
+      revision: 1,
+      route: [{ from: 'a', to: 'b' }],
+      turn: null,
+      pins: [],
+      path: [],
+      turn_at: null,
+      note: '',
+    };
+    const dive = fakeDiveAdmin({
+      site_id: 'mex-tortuga',
+      section: 'upstream',
+      map_annotation: annotation,
+    });
+    const { target, app } = render({ dive, sites });
+    pickSite(target, 'Hemmoor');
+    expect(control(target, 'Section / line')!.value).toBe('');
+    saveButton(target).click();
+    await settle();
+    const put = calls.find((c) => c.method === 'PUT')!;
+    expect(put.body).toMatchObject({ site_id: 'deu-hemmoor', section: null, map_annotation: null });
+    unmount(app);
+  });
+
+  it('keeps the section the template fills in with the site', () => {
+    fakeFetch();
+    const { target, app } = render({
+      dive: null,
+      sites: [tortuga()],
+      template: template(),
+      prefill: { date: '2026-02-08' },
+    });
+    button(target, 'Same as previous dive').click();
+    flushSync();
+    expect(control(target, 'Section / line')!.value).toBe('upstream');
+    unmount(app);
+  });
+
+  it('adds a person once, however often the button is tapped', async () => {
+    const created = deferred<Response>();
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init: RequestInit = {}) => {
+        calls.push(`${init.method ?? 'GET'} ${url}`);
+        return created.promise;
+      }),
+    );
+    const { target, app } = render({ dive: null });
+    const add = footerButton(target, 'Buddies', 'Jan Peters', 'Add person');
+    add.click();
+    flushSync();
+    add.click();
+    created.resolve(
+      new Response(
+        JSON.stringify({ ...anna, id: 'jan', slug: 'jan', name: 'Jan', first_name: 'Jan' }),
+      ),
+    );
+    await settle();
+    expect(calls.filter((c) => c.startsWith('POST'))).toHaveLength(1);
     unmount(app);
   });
 });

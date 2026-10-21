@@ -18,6 +18,7 @@
     fieldId,
     filledCount,
     formSnapshot,
+    isBlankTank,
     normalizeInterval,
     orderedErrors,
     presetsFor,
@@ -389,10 +390,13 @@
       })),
   );
 
+  let addingPerson = $state(false);
+
   async function addPerson(name: string, close: () => void) {
     const text = name.trim();
-    if (!text) return;
+    if (!text || addingPerson) return;
     const [first, ...rest] = text.split(/\s+/);
+    addingPerson = true;
     try {
       const person = await adminJson<PersonPrivate>(adminApi('people'), 'POST', {
         first_name: first,
@@ -407,7 +411,36 @@
         kind: 'error',
         message: err instanceof AdminApiError ? err.message : 'Could not add the person',
       });
+    } finally {
+      addingPerson = false;
     }
+  }
+
+  let siteBefore = untrack(() => initial.site_id);
+  $effect(() => {
+    siteBefore = form.site_id;
+  });
+
+  /**
+   * The owner picked another site: the section and a route drawn on the old site's map
+   * belong to that site, so they go (a section the new site also knows stays).
+   */
+  function siteChanged() {
+    const from = siteBefore;
+    siteBefore = form.site_id;
+    if (from === null || from === form.site_id) return;
+    const next = sites.find((s) => s.id === form.site_id);
+    const cleared: string[] = [];
+    if (form.section && !(next?.section_vocabulary ?? []).includes(form.section)) {
+      form.section = null;
+      cleared.push('section');
+    }
+    const maps = (next?.maps ?? []).flatMap((m) => (m.drawn ? [m.drawn.id] : []));
+    if (form.map_annotation && !maps.includes(form.map_annotation.map_id)) {
+      form.map_annotation = null;
+      cleared.push('route on the map');
+    }
+    if (cleared.length) announce(`Cleared the ${cleared.join(' and ')} of the previous site`);
   }
 
   // ── Gear setup ──
@@ -464,6 +497,12 @@
     return true;
   }
 
+  /** The summary of a section, to focus when an error has no control of its own. */
+  function sectionSummary(section: DiveSection): HTMLElement | null {
+    const body = formEl?.querySelector(`[data-section="${section}"]`);
+    return body?.closest('details')?.querySelector<HTMLElement>(':scope > summary') ?? null;
+  }
+
   async function showErrors(errors: Record<string, string>) {
     fieldErrors = errors;
     const order = orderedErrors(errors);
@@ -473,9 +512,10 @@
     open[section] = true;
     if (section === 'transcription') open.story = true;
     await tick();
-    const control =
-      document.getElementById(fieldId(first)) ??
-      document.querySelector<HTMLElement>(`[data-section="${section}"] summary`);
+    unplaced = order
+      .filter((path) => !document.getElementById(fieldId(path)))
+      .map((path) => [path, errors[path]]);
+    const control = document.getElementById(fieldId(first)) ?? sectionSummary(section);
     control?.scrollIntoView?.({ block: 'center' });
     control?.focus();
     announce(
@@ -484,14 +524,14 @@
     );
   }
 
-  const unplaced = $derived(
-    Object.entries(fieldErrors).filter(([path]) => !KNOWN_CONTROLS.has(path.split('.')[0])),
-  );
-  const KNOWN_CONTROLS = new Set(Object.keys(initial));
+  /** Errors on paths without a control of their own (tags, the map, a whole tank). */
+  let unplaced = $state<[string, string][]>([]);
 
   type After = 'stay' | 'new' | 'next';
 
   async function persist(after: After = 'stay'): Promise<boolean> {
+    unplaced = [];
+    if (form.tanks.some(isBlankTank)) form.tanks = form.tanks.filter((t) => !isBlankTank(t));
     const missing = validateEssentials(form);
     if (Object.keys(missing).length) {
       error = '';
@@ -719,6 +759,7 @@
   function useNewSite(created: Site) {
     sites = [...sites.filter((s) => s.id !== created.id), created];
     form.site_id = created.id;
+    siteChanged();
     siteDialogOpen = false;
   }
 
@@ -739,6 +780,7 @@
       const adopted = await adminJson<Site>(adminApi('sites', hit.id));
       sites = [...sites.filter((s) => s.id !== adopted.id), adopted];
       form.site_id = adopted.id;
+      siteChanged();
       adopting = false;
       toast.show({ kind: 'success', message: `${adopted.name} from the commons` });
     } catch (err) {
@@ -983,6 +1025,7 @@
               bind:value={form.site_id}
               options={siteOptions}
               placeholder="Type to find a site…"
+              onchange={siteChanged}
             >
               {#snippet footer({ query, close })}
                 <button
@@ -1058,6 +1101,7 @@
                 <button
                   type="button"
                   class="dl-btn dl-btn-ghost dl-btn-sm"
+                  disabled={addingPerson}
                   onclick={() => addPerson(query, close)}>Add person “{query.trim()}”</button
                 >
               {:else}
