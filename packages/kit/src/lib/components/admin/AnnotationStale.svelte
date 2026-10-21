@@ -67,4 +67,9 @@
     color: var(--dl-color-text-muted);
     font-size: 13px;
   }
+  @media (pointer: coarse) {
+    .stale button {
+      min-height: 44px;
+    }
+  }
 </style>
