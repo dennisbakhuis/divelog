@@ -55,6 +55,7 @@
     enabled.some((t) => t.value === value) ? value : (enabled[0]?.value ?? ''),
   );
   let buttons: Record<string, HTMLButtonElement> = {};
+  const hintId = (index: number) => `${uid}-hint-${index}`;
 
   function select(next: string) {
     if (next === value) return;
@@ -90,7 +91,7 @@
   tabindex="-1"
   {onkeydown}
 >
-  {#each items as t (t.value)}
+  {#each items as t, i (t.value)}
     {@const selected = t.value === value}
     <button
       bind:this={buttons[t.value]}
@@ -101,7 +102,7 @@
       role={mode === 'radio' ? 'radio' : undefined}
       aria-checked={mode === 'radio' ? selected : undefined}
       aria-pressed={mode === 'pressed' ? selected : undefined}
-      aria-describedby={t.hint ? `${uid}-${t.value}-hint` : undefined}
+      aria-describedby={t.hint ? hintId(i) : undefined}
       aria-keyshortcuts={t.shortcut || undefined}
       title={t.hint}
       tabindex={t.value === focusable ? 0 : -1}
@@ -118,8 +119,8 @@
       {/if}
     </button>
   {/each}
-  {#each items as t (t.value)}
-    {#if t.hint}<span class="dl-visually-hidden" id="{uid}-{t.value}-hint">{t.hint}</span>{/if}
+  {#each items as t, i (t.value)}
+    {#if t.hint}<span class="dl-visually-hidden" id={hintId(i)}>{t.hint}</span>{/if}
   {/each}
 </div>
 
@@ -147,6 +148,11 @@
     color: var(--dl-color-text-muted);
     font-size: var(--dl-text-md);
     cursor: pointer;
+  }
+  @media (pointer: coarse) {
+    .dl-tool {
+      min-height: var(--dl-tap-min, 44px);
+    }
   }
   .dl-tool:hover {
     color: var(--dl-color-text);
