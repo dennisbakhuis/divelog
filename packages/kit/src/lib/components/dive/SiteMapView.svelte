@@ -259,16 +259,27 @@
     view = zoomAt(view, toView(e.clientX, e.clientY), factor);
   }
 
+  /** Screen pixels a press may wander and still be a tap; a finger needs more than a mouse. */
+  function slopOf(e: PointerEvent): number {
+    return e.pointerType === 'touch' ? 10 : 4;
+  }
+
   const pointers: Record<number, Point> = {};
-  let panning: { moved: boolean } | null = null;
+  let panning: { moved: boolean; from: Point; client: Point; slop: number } | null = null;
   let panned = false;
+  // A press on a station that only clicks (no `onNodeMove`): it pans like the canvas and
+  // counts as a click on the station when it ends without moving.
+  let nodeTap: (Drag & { id: string }) | null = null;
 
   function viewDown(e: PointerEvent) {
     // Stop the browser starting a text selection or moving focus on a drag;
     // keyboard users still reach the map with Tab.
     if (e.button === 0) e.preventDefault();
-    active = true;
     pointers[e.pointerId] = toView(e.clientX, e.clientY);
+    if (Object.keys(pointers).length > 1) {
+      nodeTap = null;
+      if (panning) panning.moved = true;
+    }
     if (
       alignUnderlay &&
       editable &&
@@ -282,11 +293,17 @@
         pointerId: e.pointerId,
         start: { x: e.clientX, y: e.clientY },
         from: at,
+        slop: slopOf(e),
       };
       return;
     }
     if (Object.keys(pointers).length === 1 && (e.button === 0 || e.button === 1)) {
-      panning = { moved: false };
+      panning = {
+        moved: false,
+        from: pointers[e.pointerId],
+        client: { x: e.clientX, y: e.clientY },
+        slop: slopOf(e),
+      };
       panned = false;
     }
   }
@@ -326,13 +343,19 @@
     }
     pointers[e.pointerId] = next;
     if (!panning) return;
-    const dx = next.x - previous.x;
-    const dy = next.y - previous.y;
-    if (!panning.moved && Math.hypot(dx, dy) * (clientWidth / width) < 4) return;
-    if (!panning.moved) capture(e);
-    panning.moved = true;
+    if (!panning.moved) {
+      // Measured from the press, so a slow drag of many tiny steps still pans.
+      const far = Math.hypot(e.clientX - panning.client.x, e.clientY - panning.client.y);
+      if (far < panning.slop) return;
+      capture(e);
+      panning.moved = true;
+      nodeTap = null;
+      panned = true;
+      view = pan(view, next.x - panning.from.x, next.y - panning.from.y);
+      return;
+    }
     panned = true;
-    view = pan(view, dx, dy);
+    view = pan(view, next.x - previous.x, next.y - previous.y);
   }
 
   function viewUp(e: PointerEvent) {
@@ -341,6 +364,24 @@
     if (underlayDrag) underlayUp(e);
     if (drag) nodeUp(e);
     if (pointDrag) pointUp(e);
+    const tapped =
+      e.type === 'pointerup' &&
+      !!panning &&
+      !panning.moved &&
+      Object.keys(pointers).length === 1 &&
+      e.pointerId in pointers;
+    if (nodeTap && e.pointerId === nodeTap.pointerId) {
+      const current = nodeTap;
+      nodeTap = null;
+      if (tapped) {
+        // The click that follows is the station's, not the canvas's.
+        panned = true;
+        onNodeClick?.(current.id, e.shiftKey);
+      }
+    }
+    // Only a deliberate tap hands wheel and touch gestures to the map; a press that
+    // scrolled the page or panned the map leaves the page scrolling.
+    if (tapped) active = true;
     delete pointers[e.pointerId];
     if (Object.keys(pointers).length === 0) panning = null;
   }
@@ -397,8 +438,11 @@
     const change = (e: Event) => {
       e.preventDefault();
       const g = e as GestureLike;
-      const at = toView(g.clientX, g.clientY);
-      view = rotateAt(zoomAt(view, at, g.scale / last.scale), at, g.rotation - last.rotation);
+      // A touch pinch in Safari also arrives as two pointers, which already zoom.
+      if (Object.keys(pointers).length < 2) {
+        const at = toView(g.clientX, g.clientY);
+        view = rotateAt(zoomAt(view, at, g.scale / last.scale), at, g.rotation - last.rotation);
+      }
       last = { scale: g.scale, rotation: g.rotation };
     };
     el.addEventListener('gesturestart', start);
@@ -408,15 +452,15 @@
       el.removeEventListener('gesturechange', change);
     };
   });
-  type Drag = { moved: boolean; pointerId: number; start: Point };
+  type Drag = { moved: boolean; pointerId: number; start: Point; slop: number };
   let drag: (Drag & { id: string }) | null = null;
   let pointDrag: (Drag & { id: string; index: number; shape: 'line' | 'area' }) | null = null;
   let underlayDrag: (Drag & { from: Point }) | null = null;
   let rotating: { pointerId: number; centre: Point } | null = null;
 
-  /** A press only becomes a drag after a few screen pixels; a click may jitter by one. */
+  /** A press only becomes a drag after a few screen pixels; a click may jitter, a tap more. */
   function stillAClick(d: Drag, e: PointerEvent): boolean {
-    return !d.moved && Math.hypot(e.clientX - d.start.x, e.clientY - d.start.y) < 3;
+    return !d.moved && Math.hypot(e.clientX - d.start.x, e.clientY - d.start.y) < d.slop;
   }
 
   function toMap(e: PointerEvent | MouseEvent): { x: number; y: number } {
@@ -441,15 +485,21 @@
   }
 
   function nodeDown(e: PointerEvent, node: MapNode) {
-    if (!editable || alignUnderlay) return;
-    e.stopPropagation();
-    if (e.button === 0) e.preventDefault();
-    drag = {
+    if (!editable || alignUnderlay || !(onNodeMove || onNodeClick)) return;
+    const press = {
       id: node.id,
       moved: false,
       pointerId: e.pointerId,
       start: { x: e.clientX, y: e.clientY },
+      slop: slopOf(e),
     };
+    if (!onNodeMove) {
+      nodeTap = press;
+      return;
+    }
+    e.stopPropagation();
+    if (e.button === 0) e.preventDefault();
+    drag = press;
   }
 
   function nodeMove(e: PointerEvent) {
@@ -490,6 +540,7 @@
       moved: false,
       pointerId: e.pointerId,
       start: { x: e.clientX, y: e.clientY },
+      slop: slopOf(e),
     };
   }
 
@@ -591,6 +642,7 @@
       timer: setTimeout(() => {
         press = null;
         drag = null;
+        nodeTap = null;
         pointDrag = null;
         underlayDrag = null;
         panning = null;
@@ -1024,7 +1076,9 @@
             tabindex={editable ? 0 : undefined}
             aria-label={node.label || node.type}
             onpointerdown={(e) => nodeDown(e, node)}
-            onclick={(e) => e.stopPropagation()}
+            onclick={(e) => {
+              if (editable && (onNodeClick || onNodeMove)) e.stopPropagation();
+            }}
             onkeydown={(e) => {
               if (editable && (e.key === 'Enter' || e.key === ' ')) {
                 e.preventDefault();
