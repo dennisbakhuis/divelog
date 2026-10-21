@@ -257,23 +257,53 @@
     tripAuto = flags.trip;
   }
 
-  $effect(() => {
-    if (!durationAuto || form.duration_min === derivedDuration) return;
-    form.duration_min = derivedDuration;
-  });
-  $effect(() => {
-    if (!intervalAuto || (form.surface_interval || null) === derivedInterval) return;
-    form.surface_interval = derivedInterval;
-  });
-  $effect(() => {
-    if (!waterAuto || form.water_temp_c === derivedWater) return;
-    form.water_temp_c = derivedWater;
-  });
-  $effect(() => {
+  /**
+   * A derived field follows its derivation while its auto flag is on: a value is written, and
+   * the field is emptied only when the derivation itself goes away. A derivation that was
+   * already empty leaves the field alone, so typing into it is never undone by the effect
+   * that runs between the binding and the input handler.
+   */
+  function follow<T>(
+    auto: boolean,
+    derived: T | null,
+    last: { value: T | null },
+    current: T | null,
+    set: (value: T | null) => void,
+  ) {
+    const gone = last.value !== null && derived === null;
+    last.value = derived;
+    if (!auto) return;
+    if (derived !== null ? current !== derived : gone) set(derived);
+  }
+
+  const lastDuration = { value: untrack(() => derivedDuration) };
+  const lastInterval = { value: untrack(() => derivedInterval) };
+  const lastWater = { value: untrack(() => derivedWater) };
+  const derivedTrip = $derived.by(() => {
     const slug = tpl?.trip_for_date?.slug;
-    const trip = slug && trips.some((t) => t.slug === slug) ? slug : null;
-    if (!tripAuto || (form.trip_id || null) === trip) return;
-    form.trip_id = trip;
+    return slug && trips.some((t) => t.slug === slug) ? slug : null;
+  });
+  const lastTrip = { value: untrack(() => derivedTrip) };
+
+  $effect(() => {
+    follow(durationAuto, derivedDuration, lastDuration, form.duration_min, (v) => {
+      form.duration_min = v;
+    });
+  });
+  $effect(() => {
+    follow(intervalAuto, derivedInterval, lastInterval, form.surface_interval || null, (v) => {
+      form.surface_interval = v;
+    });
+  });
+  $effect(() => {
+    follow(waterAuto, derivedWater, lastWater, form.water_temp_c, (v) => {
+      form.water_temp_c = v;
+    });
+  });
+  $effect(() => {
+    follow(tripAuto, derivedTrip, lastTrip, form.trip_id || null, (v) => {
+      form.trip_id = v;
+    });
   });
 
   /** Typing in a derived field takes it over; emptying it hands it back to the derivation. */
