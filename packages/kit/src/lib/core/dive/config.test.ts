@@ -31,6 +31,7 @@ describe('createUrls with the default config', () => {
     expect(urls.filter({ tag: 'cave', site: null, year: undefined })).toBe('/dive?tag=cave');
     expect(urls.dive(650)).toBe('/dive/650');
     expect(urls.dive('654')).toBe('/dive/654');
+    expect(urls.dive(650, 'map')).toBe('/dive/650#map');
     expect(urls.sites()).toBe('/dive/sites');
     expect(urls.site('fra-ressel')).toBe('/dive/sites/fra-ressel');
     expect(urls.trips()).toBe('/dive/trips');
@@ -42,6 +43,15 @@ describe('createUrls with the default config', () => {
     expect(urls.gear('sidemount')).toBe('/dive/gear#sidemount');
     expect(urls.og('dive', 409)).toBe('/dive/og/dive/409.png');
     expect(urls.og('site', 'mex-mayan-blue')).toBe('/dive/og/site/mex-mayan-blue.png');
+  });
+
+  it('opens a dive page with a sign token from a mailed link', () => {
+    expect(urls.dive(675, { sign: 'abc_DEF-123' })).toBe('/dive/675?sign=abc_DEF-123');
+    expect(urls.dive(675, { sign: 'a/b+c' })).toBe('/dive/675?sign=a%2Fb%2Bc');
+    expect(urls.dive(675, { sign: 'tok', hash: 'notes' })).toBe('/dive/675?sign=tok#notes');
+    expect(urls.dive(675, { sign: null })).toBe('/dive/675');
+    expect(urls.dive(675, {})).toBe('/dive/675');
+    expect(urls.api('/dive/sign/tok')).toBe('/api/v1/dive/sign/tok');
   });
 
   it('builds the editor paths the site has always used', () => {

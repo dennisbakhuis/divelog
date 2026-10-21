@@ -1,4 +1,4 @@
-import type { DiveAdmin, Tank, TankGas } from '$lib/core/dive/types.js';
+import type { BuddyNoteInput, DiveAdmin, Tank, TankGas } from '$lib/core/dive/types.js';
 import type { DiveMapAnnotation } from '$lib/core/dive/sitemap.js';
 import type { CylinderPreset, DivelogConfig, GasPreset } from '$lib/core/dive/config.js';
 import { todayLocal } from '$lib/core/dive/format.js';
@@ -71,6 +71,8 @@ export type DiveInput = {
   flags: string[];
   sketch: string | null;
   map_annotation: DiveMapAnnotation | null;
+  /** The buddies' notes on the dive: the owner sets `public` and may delete one. */
+  buddy_notes: BuddyNoteInput[];
 };
 
 /** The editable input a stored dive corresponds to, for PUT round-trips. */
@@ -127,7 +129,13 @@ export function diveToInput(dive: DiveAdmin): DiveInput {
     flags: [...(dive.private?.flags ?? [])],
     sketch: dive.private?.sketch ?? null,
     map_annotation: dive.map_annotation,
+    buddy_notes: notesOf(dive),
   };
+}
+
+/** A stored dive's notes as the form holds them; none on a server without notes. */
+function notesOf(dive: DiveAdmin): BuddyNoteInput[] {
+  return (dive.buddy_notes ?? []).map((note) => ({ person: note.person, public: note.public }));
 }
 
 /** A blank dive: today's local date and nothing assumed about depth, time or gas. */
@@ -184,6 +192,7 @@ export function emptyDiveInput(number: number): DiveInput {
     flags: [],
     sketch: null,
     map_annotation: null,
+    buddy_notes: [],
   };
 }
 
@@ -320,13 +329,51 @@ export function liveFields(dive: DiveAdmin | null): LiveFields {
   };
 }
 
-/** The body a save sends: the form's payload over the live fields of the stored dive. */
+/** A save's body: `buddy_notes` is null when the save leaves the notes as they are. */
+export type SavePayload = Omit<DivePayload, 'buddy_notes'> & {
+  buddy_notes: BuddyNoteInput[] | null;
+};
+
+/**
+ * The `buddy_notes` a save sends. The API takes a list as the full set (a missing buddy's note
+ * is deleted), while buddies sign while the form is open; so a save starts from the notes
+ * stored now, drops only those the owner deleted (in `opened`, the notes the form opened
+ * with, but no longer in the form) and applies the form's `public` choices. A note the form
+ * never saw is kept, and a save that changes nothing sends null. A new dive sends `[]`.
+ */
+export function buddyNotesPayload(
+  notes: readonly BuddyNoteInput[],
+  dive: DiveAdmin | null,
+  opened: readonly BuddyNoteInput[] = notes,
+): BuddyNoteInput[] | null {
+  if (!dive) return [];
+  const stored = notesOf(dive);
+  const chosen = new Map(notes.map((note) => [note.person, note.public]));
+  const deleted = new Set(opened.map((note) => note.person).filter((p) => !chosen.has(p)));
+  const next = stored
+    .filter((note) => !deleted.has(note.person))
+    .map((note) => ({ person: note.person, public: chosen.get(note.person) ?? note.public }));
+  const unchanged =
+    next.length === stored.length && next.every((note, i) => note.public === stored[i].public);
+  return unchanged ? null : next;
+}
+
+/**
+ * The body a save sends: the form's payload over the live fields of the stored dive, with the
+ * buddy notes merged as `buddyNotesPayload` does. `opened` is the notes the form opened with;
+ * without it a save deletes no note.
+ */
 export function savePayload(
   form: DiveInput,
   computerText: string,
   dive: DiveAdmin | null,
-): DivePayload {
-  return { ...formPayload(form, computerText), ...liveFields(dive) };
+  opened?: readonly BuddyNoteInput[],
+): SavePayload {
+  return {
+    ...formPayload(form, computerText),
+    ...liveFields(dive),
+    buddy_notes: buddyNotesPayload(form.buddy_notes ?? [], dive, opened ?? form.buddy_notes ?? []),
+  };
 }
 
 /** A comparable fingerprint of the form; unequal fingerprints mean unsaved changes. */
@@ -395,6 +442,7 @@ export function inputFromDiveIn(dive: DiveInLike): DiveInput {
   out.tanks = tanks.map((t) => ({ ...emptyTankRow(), ...t }));
   for (const key of ['tags', 'people_ids', 'computer', 'flags'] as const)
     out[key] = Array.isArray(out[key]) ? [...(out[key] as unknown[])] : [];
+  out.buddy_notes = [];
   return out as DiveInput;
 }
 

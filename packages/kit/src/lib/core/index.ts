@@ -12,6 +12,7 @@ export * from './dive/people.js';
 export * from './dive/profile-view.js';
 export * from './dive/revision.js';
 export * from './dive/sharing.js';
+export * from './dive/signature.js';
 export * from './dive/sites-filter.js';
 export * from './dive/site-types.js';
 export * from './dive/sitemap.js';

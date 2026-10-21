@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Tank } from '$lib/core/dive/types.js';
+import type { BuddyNote, Tank } from '$lib/core/dive/types.js';
 import { DEFAULT_CONFIG } from '$lib/core/dive/config.js';
 import { todayLocal } from '$lib/core/dive/format.js';
 import { fakeDiveAdmin } from '$lib/components/admin/__fixtures__/dive.js';
@@ -15,6 +15,7 @@ import {
   applyGearSetup,
   applyTemplate,
   backupKey,
+  buddyNotesPayload,
   cleanInput,
   clearBackup,
   diveTemplate,
@@ -104,6 +105,130 @@ describe('savePayload', () => {
   it('starts a new dive with no cover and no flags', () => {
     expect(liveFields(null)).toEqual({ cover_attachment_id: null, flags: [] });
     expect(savePayload(emptyDiveInput(1), '', null).cover_attachment_id).toBeNull();
+  });
+});
+
+describe('buddy notes', () => {
+  const note = (person: string, isPublic = true): BuddyNote => ({
+    person,
+    comment: 'Great vis',
+    strokes: [
+      [
+        [12, 300],
+        [18, 290],
+      ],
+    ],
+    signed_at: '2026-10-27T19:40:00+02:00',
+    public: isPublic,
+  });
+
+  it('opens a stored dive with each note as person and public only', () => {
+    const dive = fakeDiveAdmin({ buddy_notes: [note('alex'), note('kim', false)] });
+    expect(diveToInput(dive).buddy_notes).toEqual([
+      { person: 'alex', public: true },
+      { person: 'kim', public: false },
+    ]);
+  });
+
+  it('opens a dive from a server without notes with none', () => {
+    const dive = fakeDiveAdmin();
+    delete dive.buddy_notes;
+    expect(diveToInput(dive).buddy_notes).toEqual([]);
+  });
+
+  it('starts a new dive with no notes and sends an empty list for it', () => {
+    expect(emptyDiveInput(4).buddy_notes).toEqual([]);
+    expect(savePayload(emptyDiveInput(4), '', null).buddy_notes).toEqual([]);
+  });
+
+  it('never takes the previous dive’s notes into a new one', () => {
+    const input = inputFromDiveIn({
+      number: 9,
+      date: '2026-10-25',
+      buddy_notes: [{ person: 'alex', public: true }],
+    });
+    expect(input.buddy_notes).toEqual([]);
+  });
+
+  it('sends null when the save leaves the notes as they are', () => {
+    const dive = fakeDiveAdmin({ buddy_notes: [note('alex')] });
+    const form = diveToInput(dive);
+    expect(savePayload(form, '', dive, form.buddy_notes).buddy_notes).toBeNull();
+    expect(savePayload(form, '', dive).buddy_notes).toBeNull();
+  });
+
+  it('sends the public choice the owner changed', () => {
+    const dive = fakeDiveAdmin({ buddy_notes: [note('alex'), note('kim')] });
+    const opened = diveToInput(dive).buddy_notes;
+    const form = { ...diveToInput(dive), buddy_notes: [...opened] };
+    form.buddy_notes[1] = { person: 'kim', public: false };
+    expect(savePayload(form, '', dive, opened).buddy_notes).toEqual([
+      { person: 'alex', public: true },
+      { person: 'kim', public: false },
+    ]);
+  });
+
+  it('sends the set without a note the owner deleted', () => {
+    const dive = fakeDiveAdmin({ buddy_notes: [note('alex'), note('kim')] });
+    const opened = diveToInput(dive).buddy_notes;
+    const form = { ...diveToInput(dive), buddy_notes: opened.filter((n) => n.person !== 'alex') };
+    expect(savePayload(form, '', dive, opened).buddy_notes).toEqual([
+      { person: 'kim', public: true },
+    ]);
+    expect(savePayload(form, '', dive).buddy_notes).toBeNull();
+  });
+
+  it('keeps a note signed after the form opened', () => {
+    const opened = fakeDiveAdmin({ buddy_notes: [note('alex')] });
+    const form = diveToInput(opened);
+    const openedNotes = form.buddy_notes;
+    const now = fakeDiveAdmin({ buddy_notes: [note('alex'), note('kim')] });
+    expect(savePayload(form, '', now, openedNotes).buddy_notes).toBeNull();
+    form.buddy_notes = [{ person: 'alex', public: false }];
+    expect(savePayload(form, '', now, openedNotes).buddy_notes).toEqual([
+      { person: 'alex', public: false },
+      { person: 'kim', public: true },
+    ]);
+  });
+
+  it('does not bring back a note deleted elsewhere since the form opened', () => {
+    const opened = [
+      { person: 'alex', public: true },
+      { person: 'kim', public: true },
+    ];
+    const now = fakeDiveAdmin({ buddy_notes: [note('kim')] });
+    expect(buddyNotesPayload(opened, now, opened)).toBeNull();
+    expect(
+      buddyNotesPayload(
+        [
+          { person: 'alex', public: true },
+          { person: 'kim', public: false },
+        ],
+        now,
+        opened,
+      ),
+    ).toEqual([{ person: 'kim', public: false }]);
+  });
+
+  it('marks the form unsaved when a public choice or a deletion changes', () => {
+    const form = diveToInput(fakeDiveAdmin({ buddy_notes: [note('alex')] }));
+    const before = formSnapshot(form, '');
+    expect(
+      formSnapshot({ ...form, buddy_notes: [{ person: 'alex', public: false }] }, ''),
+    ).not.toBe(before);
+    expect(formSnapshot({ ...form, buddy_notes: [] }, '')).not.toBe(before);
+    expect(formSnapshot({ ...form, buddy_notes: [{ person: 'alex', public: true }] }, '')).toBe(
+      before,
+    );
+  });
+
+  it('reads an older backup without notes as having none', () => {
+    const old = JSON.stringify({
+      v: 1,
+      savedAt: 'x',
+      form: { number: 3, date: 'd', tanks: [], people_ids: [] },
+    });
+    expect(parseBackup(old)!.form.buddy_notes).toEqual([]);
   });
 });
 
