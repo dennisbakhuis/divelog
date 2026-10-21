@@ -159,16 +159,19 @@
   );
 
   let lastKey = untrack(() => `${initial.site_id ?? ''}|${initial.date}`);
+  let tplRequest = 0;
   $effect(() => {
     const site = form.site_id;
     const date = form.date;
     const key = `${site ?? ''}|${date}`;
     if (!live || key === lastKey || !date) return;
+    const request = tplRequest;
     const timer = setTimeout(async () => {
-      lastKey = key;
       try {
         const self = dive?.number ?? null;
         const next = await adminJson<DiveTemplateOut>(templatePath(site, date, self));
+        if (request !== tplRequest) return;
+        lastKey = key;
         tpl = {
           ...next,
           previous: next.previous?.number === self ? (tpl?.previous ?? null) : next.previous,
@@ -178,7 +181,10 @@
         // the form works without the template; derivations just stay empty
       }
     }, 250);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      tplRequest++;
+    };
   });
 
   // ── Derivations: shown with a "from …" hint, overridden by typing ──
@@ -189,33 +195,57 @@
   );
   const derivedWater = $derived(atSite?.water_temp_c ?? null);
 
-  let durationAuto = $state(
-    untrack(
-      () =>
-        initial.duration_min === null ||
-        initial.duration_min === durationFromTimes(initial.time_in, initial.time_out),
-    ),
+  type AutoFlags = { duration: boolean; interval: boolean; water: boolean; trip: boolean };
+
+  /**
+   * Which derived fields of `input` still follow their derivation: the empty ones, and a
+   * duration equal to the times. Only a new dive or a draft derives; a published dive is
+   * shown as stored. `tripFromDate` says the trip was filled from the date, not chosen.
+   */
+  function autoFlags(input: DiveInput, tripFromDate: boolean): AutoFlags {
+    return {
+      duration:
+        live &&
+        (input.duration_min === null ||
+          input.duration_min === durationFromTimes(input.time_in, input.time_out)),
+      interval: live && !input.surface_interval,
+      water: live && input.water_temp_c === null,
+      trip: live && (!input.trip_id || tripFromDate),
+    };
+  }
+
+  const initialAuto = untrack(() =>
+    autoFlags(initial, isNew && !!initial.trip_id && initial.trip_id !== prefill?.trip),
   );
-  let intervalAuto = $state(untrack(() => !initial.surface_interval));
-  let waterAuto = $state(untrack(() => initial.water_temp_c === null));
-  let tripAuto = $state(untrack(() => live && !initial.trip_id));
+  let durationAuto = $state(initialAuto.duration);
+  let intervalAuto = $state(initialAuto.interval);
+  let waterAuto = $state(initialAuto.water);
+  let tripAuto = $state(initialAuto.trip);
+
+  function useAutoFlags(flags: AutoFlags) {
+    durationAuto = flags.duration;
+    intervalAuto = flags.interval;
+    waterAuto = flags.water;
+    tripAuto = flags.trip;
+  }
 
   $effect(() => {
-    if (durationAuto && derivedDuration !== null && form.duration_min !== derivedDuration)
-      form.duration_min = derivedDuration;
+    if (!durationAuto || form.duration_min === derivedDuration) return;
+    form.duration_min = derivedDuration;
   });
   $effect(() => {
-    if (intervalAuto && derivedInterval !== null && form.surface_interval !== derivedInterval)
-      form.surface_interval = derivedInterval;
+    if (!intervalAuto || (form.surface_interval || null) === derivedInterval) return;
+    form.surface_interval = derivedInterval;
   });
   $effect(() => {
-    if (waterAuto && derivedWater !== null && form.water_temp_c !== derivedWater)
-      form.water_temp_c = derivedWater;
+    if (!waterAuto || form.water_temp_c === derivedWater) return;
+    form.water_temp_c = derivedWater;
   });
   $effect(() => {
-    const trip = tpl?.trip_for_date?.slug;
-    if (tripAuto && trip && form.trip_id !== trip && trips.some((t) => t.slug === trip))
-      form.trip_id = trip;
+    const slug = tpl?.trip_for_date?.slug;
+    const trip = slug && trips.some((t) => t.slug === slug) ? slug : null;
+    if (!tripAuto || (form.trip_id || null) === trip) return;
+    form.trip_id = trip;
   });
 
   /** Typing in a derived field takes it over; emptying it hands it back to the derivation. */
@@ -573,6 +603,7 @@
   onMount(() => {
     const backup = readBackup(storageKey);
     if (backup && formSnapshot(backup.form, backup.computerText) !== saved) {
+      useAutoFlags(autoFlags(backup.form, tripAuto && backup.form.trip_id === initial.trip_id));
       form = backup.form;
       computerText = backup.computerText;
       restoredAt = backup.savedAt;
@@ -589,6 +620,7 @@
   function discardRestored() {
     form = structuredClone(initial);
     computerText = initial.computer.join(', ');
+    useAutoFlags(initialAuto);
     clearBackup(storageKey);
     restoredAt = null;
     announce('Restored changes discarded');

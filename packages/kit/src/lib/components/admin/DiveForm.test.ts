@@ -10,7 +10,13 @@ vi.mock('$app/state', () => ({ page: { url: new URL('http://localhost/admin/dive
 
 import { goto } from '$app/navigation';
 import DiveForm from './DiveForm.svelte';
-import type { DiveAdmin, DiveTemplateOut, GearSetup, PersonPrivate } from '$lib/core/dive/types.js';
+import type {
+  DiveAdmin,
+  DiveTemplateOut,
+  GearSetup,
+  PersonPrivate,
+  Trip,
+} from '$lib/core/dive/types.js';
 import { backupKey, emptyDiveInput, serializeBackup } from '$lib/core/admin/dive-input.js';
 import { drawnRef, fakeMap, fakeSite } from '$lib/testing/sharing.js';
 import { fakeDiveAdmin } from './__fixtures__/dive.js';
@@ -55,13 +61,22 @@ type Props = {
   dive: DiveAdmin | null;
   template?: DiveTemplateOut | null;
   sites?: ReturnType<typeof fakeSite>[];
+  trips?: Trip[];
   setups?: GearSetup[];
   drafts?: number[];
   prefill?: { site?: string; date?: string; person?: string; trip?: string } | null;
 };
 
 /** Mount the editor on a dive the test can swap, the way a reload hands the page a new one. */
-function render({ dive, template = null, sites, setups = [], drafts = [], prefill = null }: Props) {
+function render({
+  dive,
+  template = null,
+  sites,
+  trips = [],
+  setups = [],
+  drafts = [],
+  prefill = null,
+}: Props) {
   let current = dive;
   const target = document.createElement('div');
   document.body.append(target);
@@ -71,7 +86,7 @@ function render({ dive, template = null, sites, setups = [], drafts = [], prefil
     },
     nextNumber: 8,
     sites: sites ?? [fakeSite()],
-    trips: [],
+    trips,
     people: [anna],
     setups,
     regions: [],
@@ -551,3 +566,166 @@ describe('DiveForm map', () => {
     unmount(app);
   });
 });
+
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+const tortuga = () => fakeSite({ id: 'mex-tortuga', slug: 'tortuga', name: 'Cenote Tortuga' });
+const hemmoor = () =>
+  fakeSite({ id: 'deu-hemmoor', slug: 'hemmoor', name: 'Kreidesee Hemmoor', country: 'DEU' });
+
+const atTortuga = (water: number) =>
+  template({
+    at_site: {
+      number: 4,
+      date: '2026-01-02',
+      section: 'downstream',
+      map_id: null,
+      water_temp_c: water,
+      surface_temp_c: null,
+      air_temp_c: null,
+      visibility_m: null,
+    },
+  });
+
+const trip = (slug: string) =>
+  ({ slug, name: slug, start_date: '2026-02-01', end_date: '2026-02-14' }) as unknown as Trip;
+
+function pickSite(target: HTMLElement, text: string) {
+  const search = control(target, 'Site')!;
+  type(search, text);
+  key(search, { key: 'Enter' });
+  flushSync();
+}
+
+describe('DiveForm derivations', () => {
+  it('leaves a published dive as stored: no guessed interval or water, nothing unsaved', async () => {
+    const calls = fakeFetch();
+    const dive = fakeDiveAdmin({
+      site_id: 'mex-tortuga',
+      surface_interval: null,
+      water_temp_c: null,
+      time_in: '10:05',
+    });
+    const { target, app } = render({ dive, sites: [tortuga()], template: atTortuga(25.5) });
+    await settle();
+    expect(control(target, 'Surface interval')!.value).toBe('');
+    expect(control(target, 'Water temp (°C)')!.value).toBe('');
+    expect(target.querySelector('.save-bar .unsaved')).toBeNull();
+    saveButton(target).click();
+    await settle();
+    const put = calls.find((c) => c.method === 'PUT')!;
+    expect(put.body?.surface_interval).toBeNull();
+    expect(put.body?.water_temp_c).toBeNull();
+    unmount(app);
+  });
+
+  it('clears a derived interval and water temperature when their source goes away', () => {
+    fakeFetch();
+    const { target, app } = render({
+      dive: null,
+      sites: [tortuga(), hemmoor()],
+      template: atTortuga(25.5),
+      prefill: { site: 'mex-tortuga', date: '2026-02-08' },
+    });
+    type(control(target, 'Time in')!, '10:05');
+    expect(control(target, 'Surface interval')!.value).toBe('1:15');
+    type(control(target, 'Time in')!, '');
+    expect(control(target, 'Surface interval')!.value).toBe('');
+    expect(control(target, 'Water temp (°C)')!.value).toBe('25.5');
+    pickSite(target, 'Hemmoor');
+    expect(control(target, 'Water temp (°C)')!.value).toBe('');
+    unmount(app);
+  });
+
+  it('keeps the values of a restored backup instead of deriving over them', async () => {
+    fakeFetch();
+    const backup = {
+      ...emptyDiveInput(8),
+      date: '2026-02-08',
+      site_id: 'mex-tortuga',
+      time_in: '10:05',
+      water_temp_c: 18,
+      surface_interval: '0:30',
+    };
+    sessionStorage.setItem(backupKey(null), serializeBackup(backup, ''));
+    const { target, app } = render({
+      dive: null,
+      sites: [tortuga()],
+      template: atTortuga(25.5),
+      prefill: { site: 'mex-tortuga', date: '2026-02-08' },
+    });
+    await settle();
+    expect(control(target, 'Water temp (°C)')!.value).toBe('18');
+    expect(control(target, 'Surface interval')!.value).toBe('0:30');
+    expect(button(target, 'Use 1:15')).toBeDefined();
+    unmount(app);
+  });
+
+  it('follows the trip of the date, and drops it when the date leaves the trip', async () => {
+    fakeFetch({
+      'GET /api/v1/admin/dives/template?date=2026-03-01': json(template({ trip_for_date: null })),
+    });
+    const { target, app } = render({
+      dive: null,
+      trips: [trip('mexico')],
+      template: template({ trip_for_date: trip('mexico') }),
+      prefill: { date: '2026-02-08' },
+    });
+    expect(control(target, 'Trip')!.value).toBe('mexico');
+    expect(target.textContent).toContain('from the date');
+    type(control(target, 'Date')!, '2026-03-01');
+    await wait(300);
+    await settle();
+    expect(control(target, 'Trip')!.value).toBe('');
+    unmount(app);
+  });
+
+  it('keeps a trip given in the link when the date leaves it', async () => {
+    fakeFetch({
+      'GET /api/v1/admin/dives/template?date=2026-03-01': json(template({ trip_for_date: null })),
+    });
+    const { target, app } = render({
+      dive: null,
+      trips: [trip('mexico')],
+      template: template({ trip_for_date: trip('mexico') }),
+      prefill: { date: '2026-02-08', trip: 'mexico' },
+    });
+    type(control(target, 'Date')!, '2026-03-01');
+    await wait(300);
+    await settle();
+    expect(control(target, 'Trip')!.value).toBe('mexico');
+    unmount(app);
+  });
+
+  it('ignores a template answer that arrives after a newer one', async () => {
+    let answerSlow: (r: Response) => void = () => {};
+    const slow = new Promise<Response>((resolve) => (answerSlow = resolve));
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        calls.push(url);
+        if (url.endsWith('date=2026-02-10')) return slow;
+        return new Response(JSON.stringify(template({ trip_for_date: null })), { status: 200 });
+      }),
+    );
+    const { target, app } = render({
+      dive: null,
+      trips: [trip('mexico'), trip('stale')],
+      template: template({ trip_for_date: trip('mexico') }),
+      prefill: { date: '2026-02-08' },
+    });
+    type(control(target, 'Date')!, '2026-02-10');
+    await wait(300);
+    type(control(target, 'Date')!, '2026-03-01');
+    await wait(300);
+    await settle();
+    expect(control(target, 'Trip')!.value).toBe('');
+    answerSlow(new Response(JSON.stringify(template({ trip_for_date: trip('stale') }))));
+    await settle();
+    expect(control(target, 'Trip')!.value).toBe('');
+    expect(calls).toHaveLength(2);
+    unmount(app);
+  });
+});
+
