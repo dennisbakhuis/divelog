@@ -1303,11 +1303,39 @@ export interface paths {
      * Admin Import Shearwater
      * @description Attach Perdix profiles to the dives they belong to, or create drafts for new ones.
      *
-     *     A dive matches when it starts within ten minutes of the computer's start time, or already
-     *     lists the computer's dive number. Every file is kept as-is in storage. With
+     *     A dive matches when it already lists the computer's dive number, or starts within ten
+     *     minutes of the computer's start time. Every file is kept as-is in storage. With
      *     ``dry_run=true`` nothing is stored or written; the result says what would happen.
      */
     post: operations['admin_import_shearwater_api_v1_admin_import_shearwater_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/import/shearwater-cloud': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Admin Import Shearwater Cloud
+     * @description Import the dives of a Shearwater Cloud export as drafts, or attach their profiles.
+     *
+     *     The upload is the database the mobile app exports (Export (*.db)), the desktop
+     *     ``dive_data.db``, or a ZIP holding either.
+     *     Every dive in it is listed in ``dives`` with its status; by default the ``new`` and
+     *     ``attach`` dives are imported, ``only`` (comma-separated computer dive numbers) limits that.
+     *     ``clock_offset_min`` corrects the computer's clock before matching and writing, and the
+     *     dives written with it carry a flag naming the correction. Each imported dive's raw logs are
+     *     kept in storage. With ``dry_run=true`` nothing is stored or written.
+     */
+    post: operations['admin_import_shearwater_cloud_api_v1_admin_import_shearwater_cloud_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -1575,6 +1603,11 @@ export interface components {
     Body_admin_import_shearwater_api_v1_admin_import_shearwater_post: {
       /** Files */
       files: string[];
+    };
+    /** Body_admin_import_shearwater_cloud_api_v1_admin_import_shearwater_cloud_post */
+    Body_admin_import_shearwater_cloud_api_v1_admin_import_shearwater_cloud_post: {
+      /** File */
+      file: string;
     };
     /** Body_admin_import_subsurface_api_v1_admin_import_subsurface_post */
     Body_admin_import_subsurface_api_v1_admin_import_subsurface_post: {
@@ -2790,7 +2823,13 @@ export interface components {
     };
     /**
      * ImportDiveOut
-     * @description One dive in a Shearwater Cloud export and what the import does or did with it.
+     * @description One dive of a dive computer export and how it relates to the log.
+     *
+     *     ``start`` is the local start after the clock offset, ``computer_start`` as the computer
+     *     logged it, both ISO 8601 without a zone. ``status`` is ``new`` (not in the log),
+     *     ``attach`` (a log dive without this profile), ``have`` (already imported) or ``error``
+     *     (the log could not be read; ``error`` says why). ``dive_number`` is the log dive it
+     *     matches, or the number a new dive gets (on a dry run) or got.
      */
     ImportDiveOut: {
       /** Computer No */
@@ -2845,6 +2884,7 @@ export interface components {
      *     get), ``updated`` the dives a profile was attached to, ``skipped`` the dives already
      *     complete. ``dives_in_file`` counts the dives read, ``first_date``/``last_date`` span them.
      *     On a dry run ``import_id`` is empty and ``sites`` lists the sites that would be created.
+     *     A dive computer export lists its dives in ``dives``, oldest first.
      */
     ImportResult: {
       /** Import Id */
@@ -2878,10 +2918,7 @@ export interface components {
       first_date: string | null;
       /** Last Date */
       last_date: string | null;
-      /**
-       * Dives
-       * @default []
-       */
+      /** Dives */
       dives: components['schemas']['ImportDiveOut'][];
     };
     /**
@@ -3930,7 +3967,8 @@ export interface components {
      * SignIn
      * @description A buddy's note: a comment, a drawing, or both, and whether visitors may see it.
      *
-     *     Points are rounded to whole numbers; an empty comment or drawing counts as none.
+     *     Points are rounded to whole numbers, a lone surrogate (which no file can hold) becomes a
+     *     question mark, and an empty comment or drawing counts as none.
      */
     SignIn: {
       /** Comment */
@@ -7391,6 +7429,43 @@ export interface operations {
     requestBody: {
       content: {
         'multipart/form-data': components['schemas']['Body_admin_import_shearwater_api_v1_admin_import_shearwater_post'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportResult'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  admin_import_shearwater_cloud_api_v1_admin_import_shearwater_cloud_post: {
+    parameters: {
+      query?: {
+        dry_run?: boolean;
+        only?: string | null;
+        clock_offset_min?: number;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'multipart/form-data': components['schemas']['Body_admin_import_shearwater_cloud_api_v1_admin_import_shearwater_cloud_post'];
       };
     };
     responses: {

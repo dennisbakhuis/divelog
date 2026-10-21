@@ -863,6 +863,28 @@ class ImportSiteOut(ApiModel):
     origin: Literal["log", "commons", "fork"]
 
 
+class ImportDiveOut(ApiModel):
+    """One dive of a dive computer export and how it relates to the log.
+
+    ``start`` is the local start after the clock offset, ``computer_start`` as the computer
+    logged it, both ISO 8601 without a zone. ``status`` is ``new`` (not in the log),
+    ``attach`` (a log dive without this profile), ``have`` (already imported) or ``error``
+    (the log could not be read; ``error`` says why). ``dive_number`` is the log dive it
+    matches, or the number a new dive gets (on a dry run) or got.
+    """
+
+    computer_no: int
+    serial: str
+    model: str | None = None
+    start: str
+    computer_start: str
+    max_depth_m: float
+    duration_min: float
+    status: Literal["new", "attach", "have", "error"]
+    dive_number: int | None = None
+    error: str | None = None
+
+
 class ImportResult(ApiModel):
     """What an import did, or with ``dry_run`` what it would do; nothing is written then.
 
@@ -870,6 +892,7 @@ class ImportResult(ApiModel):
     get), ``updated`` the dives a profile was attached to, ``skipped`` the dives already
     complete. ``dives_in_file`` counts the dives read, ``first_date``/``last_date`` span them.
     On a dry run ``import_id`` is empty and ``sites`` lists the sites that would be created.
+    A dive computer export lists its dives in ``dives``, oldest first.
     """
 
     import_id: str
@@ -883,6 +906,7 @@ class ImportResult(ApiModel):
     dives_in_file: int = 0
     first_date: date | None = None
     last_date: date | None = None
+    dives: list[ImportDiveOut] = Field(default_factory=list)
 
 
 class ImportRecordOut(ApiModel):
