@@ -8,7 +8,7 @@ vi.mock('$app/navigation', () => ({
 }));
 vi.mock('$app/state', () => ({ page: { url: new URL('http://localhost/admin/dives/7') } }));
 
-import { goto } from '$app/navigation';
+import { beforeNavigate, goto } from '$app/navigation';
 import DiveForm from './DiveForm.svelte';
 import type {
   DiveAdmin,
@@ -76,7 +76,8 @@ function render({
   setups = [],
   drafts = [],
   prefill = null,
-}: Props) {
+  onSavedNew,
+}: Props & { onSavedNew?: () => void }) {
   let current = dive;
   const target = document.createElement('div');
   document.body.append(target);
@@ -93,6 +94,7 @@ function render({
     template,
     drafts,
     prefill,
+    onSavedNew,
   };
   const app = mount(DiveForm, { target, props });
   flushSync();
@@ -316,7 +318,7 @@ describe('DiveForm save', () => {
       max_depth_m: 18,
       date: '2026-02-08',
     });
-    expect(goto).toHaveBeenCalledWith('/admin/dives/new?date=2026-02-08');
+    expect(goto).toHaveBeenCalledWith('/admin/dives/new?date=2026-02-08', { invalidateAll: true });
     unmount(app);
   });
 
@@ -725,6 +727,158 @@ describe('DiveForm derivations', () => {
     await settle();
     expect(control(target, 'Trip')!.value).toBe('');
     expect(calls).toHaveLength(2);
+    unmount(app);
+  });
+});
+
+function deferred<T>() {
+  let resolve: (value: T) => void = () => {};
+  const promise = new Promise<T>((r) => (resolve = r));
+  return { promise, resolve };
+}
+
+function chooseFile(target: HTMLElement, name: string) {
+  const input = target.querySelector<HTMLInputElement>('.photos input[type=file]')!;
+  const file = new File(['x'], name, { type: 'image/jpeg' });
+  Object.defineProperty(input, 'files', { value: [file], configurable: true });
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  flushSync();
+}
+
+describe('DiveForm save flow', () => {
+  it('tells the page after Save & new reloaded the new-dive page', async () => {
+    fakeFetch({ 'POST /api/v1/admin/dives': json(fakeDiveAdmin({ number: 8 })) });
+    const onSavedNew = vi.fn();
+    const { target, app } = render({ dive: null, onSavedNew });
+    type(control(target, 'Duration (min)')!, '45');
+    type(control(target, 'Max depth (m)')!, '18');
+    button(target, 'Save & new').click();
+    await settle();
+    expect(onSavedNew).toHaveBeenCalledOnce();
+    unmount(app);
+  });
+
+  it('keeps edits typed during the upload after a create, under the new dive', async () => {
+    const upload = deferred<Response>();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.includes('/attachments')
+          ? upload.promise
+          : new Response(JSON.stringify(fakeDiveAdmin({ number: 8 })), { status: 200 }),
+      ),
+    );
+    const { target, app } = render({ dive: null });
+    chooseFile(target, 'reef.jpg');
+    type(control(target, 'Duration (min)')!, '45');
+    type(control(target, 'Max depth (m)')!, '18');
+    saveButton(target).click();
+    await settle();
+    type(control(target, 'Title')!, 'Typed while uploading');
+    upload.resolve(new Response('{}', { status: 200 }));
+    await settle();
+    expect(goto).toHaveBeenCalledWith('/admin/dives/8', { invalidateAll: true });
+    expect(sessionStorage.getItem(backupKey(null))).toBeNull();
+    expect(JSON.parse(sessionStorage.getItem(backupKey(8))!).form.title).toBe(
+      'Typed while uploading',
+    );
+    unmount(app);
+  });
+
+  it('keeps the visibility when a Save as draft does not go through', async () => {
+    const calls = fakeFetch();
+    const { target, app } = render({ dive: null });
+    button(target, 'Save as draft').click();
+    await settle();
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0);
+    expect((control(target, 'Published as') as unknown as HTMLSelectElement).value).toBe('public');
+    unmount(app);
+  });
+
+  it('disables Delete while a save runs', async () => {
+    const put = deferred<Response>();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => put.promise),
+    );
+    const { target, app } = render({ dive: fakeDiveAdmin() });
+    saveButton(target).click();
+    await settle();
+    expect(button(target, 'Delete').disabled).toBe(true);
+    put.resolve(new Response(JSON.stringify(fakeDiveAdmin()), { status: 200 }));
+    await settle();
+    expect(button(target, 'Delete').disabled).toBe(false);
+    unmount(app);
+  });
+
+  it('re-pins without saving the other edits still open in the form', async () => {
+    globalThis.ResizeObserver ??= class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    const calls = fakeFetch();
+    const map = fakeMap({ id: 'm1', revision: 2 });
+    const site = fakeSite({ id: 'mex-tortuga', maps: [drawnRef(map)] });
+    const annotation = {
+      map_id: 'm1',
+      revision: 1,
+      route: [{ from: 'a', to: 'b' }],
+      turn: null,
+      pins: [],
+      path: [],
+      turn_at: null,
+      note: '',
+    };
+    const { target, app } = render({
+      dive: fakeDiveAdmin({ site_id: 'mex-tortuga', map_annotation: annotation }),
+      sites: [site],
+    });
+    type(control(target, 'Title')!, 'Not ready yet');
+    button(target, 'Re-pin route to the current map').click();
+    await settle();
+    expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
+    expect(target.querySelector('.save-bar .unsaved')).not.toBeNull();
+    unmount(app);
+  });
+
+  it('leaves on the back button by going back, not by adding a history entry', async () => {
+    fakeFetch();
+    vi.mocked(beforeNavigate).mockClear();
+    vi.stubGlobal('confirm', () => true);
+    const back = vi.spyOn(history, 'go').mockImplementation(() => {});
+    const { target, app } = render({ dive: fakeDiveAdmin() });
+    type(control(target, 'Title')!, 'Unsaved');
+    const guard = vi.mocked(beforeNavigate).mock.calls[0][0];
+    const cancel = vi.fn();
+    guard({
+      type: 'popstate',
+      delta: -1,
+      to: { url: new URL('http://localhost/admin/dives') },
+      cancel,
+    } as never);
+    await settle();
+    expect(cancel).toHaveBeenCalled();
+    expect(back).toHaveBeenCalledWith(-1);
+    expect(goto).not.toHaveBeenCalled();
+    back.mockRestore();
+    unmount(app);
+  });
+
+  it('writes the backup at once when the page is hidden or left', () => {
+    fakeFetch();
+    const { target, app } = render({ dive: fakeDiveAdmin() });
+    type(control(target, 'Title')!, 'Before the lock screen');
+    expect(sessionStorage.getItem(backupKey(7))).toBeNull();
+    const state = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    document.dispatchEvent(new Event('visibilitychange'));
+    expect(JSON.parse(sessionStorage.getItem(backupKey(7))!).form.title).toBe(
+      'Before the lock screen',
+    );
+    state.mockRestore();
+    type(control(target, 'Title')!, 'Before leaving');
+    window.dispatchEvent(new Event('pagehide'));
+    expect(JSON.parse(sessionStorage.getItem(backupKey(7))!).form.title).toBe('Before leaving');
     unmount(app);
   });
 });

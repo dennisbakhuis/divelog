@@ -7,7 +7,8 @@
 
   let { data }: { data: AdminDataFor<'dive-new'> } = $props();
 
-  const formKey = $derived(`${data.nextNumber}|${JSON.stringify(data.prefill)}`);
+  let created = $state(0);
+  const formKey = $derived(`${JSON.stringify(data.prefill)}|${created}`);
 </script>
 
 <p class="crumbs"><a href={urls.admin.dives()}>Dives</a> › new</p>
@@ -23,6 +24,7 @@
     regions={data.regions}
     template={data.template}
     prefill={data.prefill}
+    onSavedNew={() => created++}
   />
 {/key}
 

@@ -83,6 +83,7 @@
     prefill = null,
     drafts = [],
     attachments,
+    onSavedNew,
   }: {
     dive: DiveAdmin | null;
     nextNumber: number;
@@ -99,6 +100,8 @@
     drafts?: number[];
     /** The attachments panel of a saved dive, shown as the "Photos & files" section. */
     attachments?: Snippet;
+    /** Save & new reached the new-dive page; the page starts a blank form for the next dive. */
+    onSavedNew?: () => void;
   } = $props();
 
   /** A new dive: today (or the prefilled day), the prefilled site, trip and buddy. */
@@ -117,7 +120,7 @@
   const isNew = untrack(() => !dive);
   const isDraft = $derived(dive?.visibility === 'draft');
   const live = untrack(() => !dive || dive.visibility === 'draft');
-  const storageKey = untrack(() => backupKey(dive ? dive.number : null));
+  let storageKey = $state(untrack(() => backupKey(dive ? dive.number : null)));
 
   let form = $state(structuredClone(initial));
   let computerText = $state(initial.computer.join(', '));
@@ -135,6 +138,20 @@
   let queuePublic = $state(true);
 
   const dirty = $derived(formSnapshot(form, computerText) !== saved || queue.length > 0);
+
+  let numberFrom = untrack(() => nextNumber);
+  $effect(() => {
+    const next = nextNumber;
+    untrack(() => {
+      if (!isNew || next === numberFrom) return;
+      if (Number(form.number) === numberFrom) {
+        const clean = !dirty;
+        form.number = next;
+        if (clean) saved = formSnapshot(form, computerText);
+      }
+      numberFrom = next;
+    });
+  });
 
   let open = $state<Record<DiveSection, boolean>>({
     essentials: true,
@@ -424,10 +441,17 @@
 
   const neighbours = $derived(dive && isDraft ? draftNeighbours(drafts, dive.number) : null);
 
-  function markSaved() {
-    saved = formSnapshot(form, computerText);
+  function markSaved(snapshot = formSnapshot(form, computerText)) {
+    saved = snapshot;
     clearBackup(storageKey);
     restoredAt = null;
+  }
+
+  /** Keep what was typed but not saved in the session backup, at once. */
+  function flushBackup(): boolean {
+    if (leaving || formSnapshot(form, computerText) === saved) return false;
+    writeBackup(storageKey, form, computerText);
+    return true;
   }
 
   async function showErrors(errors: Record<string, string>) {
@@ -467,6 +491,7 @@
     busy = true;
     error = '';
     fieldErrors = {};
+    const sent = formSnapshot(form, computerText);
     try {
       let number: number;
       if (dive) {
@@ -486,20 +511,31 @@
       }
       const uploads = queue;
       queue = [];
-      markSaved();
+      markSaved(sent);
+      if (!dive) storageKey = backupKey(number);
       savedAt = new Date();
       announce(`Dive #${number} ${dive ? 'saved' : 'created'}`);
       if (uploads.length) await uploadQueued(number, uploads);
+      const date = form.date;
       if (after === 'new') {
+        if (flushBackup())
+          toast.show({
+            kind: 'info',
+            message: `Changes made while saving are kept as unsaved changes on dive #${number}`,
+          });
         leaving = true;
-        await goto(urls.admin.newDive({ date: form.date }));
+        await goto(urls.admin.newDive({ date }), { invalidateAll: true });
+        onSavedNew?.();
       } else if (after === 'next' && neighbours?.next) {
+        flushBackup();
         leaving = true;
         await goto(urls.admin.dive(neighbours.next));
       } else if (!dive || number !== dive.number) {
+        flushBackup();
         leaving = true;
         await goto(urls.admin.dive(number), { invalidateAll: true });
       } else await invalidateAll();
+      leaving = false;
       return true;
     } catch (err) {
       if (err instanceof AdminApiError && Object.keys(err.fieldErrors).length) {
@@ -623,13 +659,18 @@
 
   $effect(() => {
     const snapshot = formSnapshot(form, computerText);
+    const key = storageKey;
     if (snapshot === saved) return;
-    const timer = setTimeout(() => writeBackup(storageKey, form, computerText), 400);
+    const timer = setTimeout(() => writeBackup(key, form, computerText), 400);
     return () => clearTimeout(timer);
   });
 
+  function onVisibility() {
+    if (document.visibilityState === 'hidden') flushBackup();
+  }
+
   function discardRestored() {
-    form = structuredClone(initial);
+    form = { ...structuredClone(initial), number: isNew ? numberFrom : initial.number };
     computerText = initial.computer.join(', ');
     useAutoFlags(initialAuto);
     clearBackup(storageKey);
@@ -789,7 +830,8 @@
   );
 </script>
 
-<svelte:window onbeforeunload={beforeUnload} onkeydown={saveShortcut} />
+<svelte:window onbeforeunload={beforeUnload} onpagehide={flushBackup} onkeydown={saveShortcut} />
+<svelte:document onvisibilitychange={onVisibility} />
 
 {#if restoredAt}
   <div class="notice" role="status">
