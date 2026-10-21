@@ -37,6 +37,8 @@
   } from '$lib/core/admin/dive-input';
   import { draftNeighbours } from '$lib/core/admin/dive-list';
   import { slugify } from '$lib/core/admin/slug';
+  import type { SiteDraft } from '$lib/core/admin/site-create';
+  import { DEFAULT_SITE_TYPE, waterDefault } from '$lib/core/dive/site-types';
   import type {
     Attachment,
     CommonsSiteHit,
@@ -56,6 +58,7 @@
   import { announce } from '$lib/core/ui/announce.js';
   import type { ComboOption } from '$lib/core/ui/combobox.js';
   import Combobox from '$lib/components/ui/Combobox.svelte';
+  import Dialog from '$lib/components/ui/Dialog.svelte';
   import Disclosure from '$lib/components/ui/Disclosure.svelte';
   import Field from '$lib/components/ui/Field.svelte';
   import DiveRouteEditor from './DiveRouteEditor.svelte';
@@ -680,8 +683,7 @@
 
   // ── New site, commons, new trip, map refresh (dialogs unchanged) ──
 
-  let siteDialog = $state<HTMLDialogElement>();
-  let newSite = $state({ name: '', country: '', type: 'sea', region: '' });
+  let newSite = $state<Partial<SiteDraft>>({});
   let siteDialogOpen = $state(false);
   const recentSite = $derived(
     sites.reduce<Site | undefined>(
@@ -690,22 +692,27 @@
       undefined,
     ),
   );
+  /**
+   * The new-site dialog starts like the site in the form (or the last one dived): its
+   * country and region as a suggestion the pin may override, its type and water.
+   */
   function openSiteDialog(name = '') {
     const like = site ?? recentSite;
+    const type = like?.site_type || DEFAULT_SITE_TYPE;
     newSite = {
       name: name.trim(),
       country: like?.country ?? '',
-      type: 'sea',
       region: like?.region ?? '',
+      type,
+      water: like?.water ?? waterDefault(type) ?? 'salt',
     };
     siteDialogOpen = true;
-    siteDialog?.showModal();
   }
 
   function useNewSite(created: Site) {
     sites = [...sites.filter((s) => s.id !== created.id), created];
     form.site_id = created.id;
-    siteDialog?.close();
+    siteDialogOpen = false;
   }
 
   let adopting = $state(false);
@@ -735,7 +742,7 @@
     }
   }
 
-  let tripDialog = $state<HTMLDialogElement>();
+  let tripDialogOpen = $state(false);
   let newTrip = $state({ name: '', start_date: '', end_date: '' });
   let tripError = $state('');
   let tripBusy = $state(false);
@@ -743,7 +750,7 @@
   function openTripDialog(name = '') {
     newTrip = { name: name.trim(), start_date: form.date, end_date: form.date };
     tripError = '';
-    tripDialog?.showModal();
+    tripDialogOpen = true;
   }
 
   async function createTrip(e: SubmitEvent) {
@@ -761,7 +768,7 @@
       trips = [...trips.filter((t) => t.slug !== created.slug), created];
       form.trip_id = created.slug;
       tripAuto = false;
-      tripDialog?.close();
+      tripDialogOpen = false;
       toast.show({ kind: 'success', message: `Trip ${created.name} created` });
     } catch (err) {
       tripError = err instanceof AdminApiError ? err.message : 'Could not create the trip';
@@ -803,11 +810,11 @@
 
   const NON_TEXT_INPUTS = new Set(['submit', 'button', 'reset', 'image']);
 
-  /** Ctrl/⌘-S saves the dive. */
+  /** Ctrl/⌘-S saves the dive, unless a dialog (new site, new trip, a confirm) is open. */
   function saveShortcut(e: KeyboardEvent) {
     if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 's') return;
     e.preventDefault();
-    if (busy || siteDialog?.open || tripDialog?.open) return;
+    if (busy || document.querySelector('dialog[open]')) return;
     formEl?.requestSubmit();
   }
 
@@ -1724,30 +1731,20 @@
   </div>
 </form>
 
-<dialog
-  class="mini"
-  bind:this={siteDialog}
-  aria-labelledby="new-site-title"
-  style="width: min(880px, calc(100vw - 24px))"
-  onclose={() => (siteDialogOpen = false)}
->
-  <h2 id="new-site-title">New site</h2>
-  {#if siteDialogOpen}
-    <SiteCreate
-      compact
-      {regions}
-      near={nearSite}
-      initial={{ name: newSite.name, country: newSite.country, region: newSite.region }}
-      onCreated={useNewSite}
-      onUse={useNewSite}
-      onCancel={() => siteDialog?.close()}
-    />
-  {/if}
-</dialog>
+<Dialog bind:open={siteDialogOpen} title="New site" size="lg">
+  <SiteCreate
+    compact
+    {regions}
+    near={nearSite}
+    initial={newSite}
+    onCreated={useNewSite}
+    onUse={useNewSite}
+    onCancel={() => (siteDialogOpen = false)}
+  />
+</Dialog>
 
-<dialog class="mini" bind:this={tripDialog} aria-labelledby="new-trip-title">
-  <form onsubmit={createTrip}>
-    <h2 id="new-trip-title">New trip</h2>
+<Dialog bind:open={tripDialogOpen} title="New trip" size="sm">
+  <form class="mini" onsubmit={createTrip}>
     <label>Name<input type="text" bind:value={newTrip.name} required maxlength="200" /></label>
     <div class="field-row">
       <label>Start<input type="date" bind:value={newTrip.start_date} /></label>
@@ -1762,11 +1759,11 @@
       <button
         type="button"
         class="dl-btn dl-btn-ghost dl-btn-sm"
-        onclick={() => tripDialog?.close()}>Cancel</button
+        onclick={() => (tripDialogOpen = false)}>Cancel</button
       >
     </div>
   </form>
-</dialog>
+</Dialog>
 
 <style>
   .dive-form {
@@ -2009,26 +2006,10 @@
   .danger:hover {
     color: var(--dl-color-danger);
   }
-  dialog.mini {
-    width: min(460px, calc(100vw - 32px));
-    padding: 20px;
-    border: 1px solid var(--dl-color-border-strong);
-    border-radius: var(--dl-radius);
-    background: var(--dl-color-bg-elevated);
-    color: var(--dl-color-text);
-    box-shadow: var(--dl-shadow-md);
-  }
-  dialog.mini::backdrop {
-    background: rgb(0 0 0 / 0.55);
-  }
-  dialog.mini form {
+  form.mini {
     display: flex;
     flex-direction: column;
     gap: 12px;
-  }
-  dialog.mini h2 {
-    margin: 0;
-    font-size: var(--dl-text-xl);
   }
   .mini-actions {
     display: flex;

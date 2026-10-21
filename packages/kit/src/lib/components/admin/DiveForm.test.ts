@@ -883,3 +883,96 @@ describe('DiveForm save flow', () => {
   });
 });
 
+/** A button in the list footer of a combobox, after typing `query` into it. */
+function footerButton(target: HTMLElement, label: string, query: string, text: string) {
+  const search = control(target, label)!;
+  search.focus();
+  type(search, query);
+  return [...target.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
+    b.textContent?.trim().startsWith(text),
+  )!;
+}
+
+const openDialog = () => document.querySelector<HTMLDialogElement>('dialog[open]');
+
+describe('DiveForm dialogs', () => {
+  it('opens the new-site dialog like the site in the form: name, country, type and water', async () => {
+    fakeFetch();
+    const like = fakeSite({
+      id: 'deu-hemmoor',
+      name: 'Kreidesee Hemmoor',
+      country: 'DEU',
+      country_name: 'Germany',
+      region: 'niedersachsen',
+      site_type: 'quarry lake',
+      water: 'fresh',
+    });
+    const { target, app } = render({
+      dive: null,
+      sites: [like],
+      prefill: { site: 'deu-hemmoor' },
+    });
+    footerButton(target, 'Site', 'Hemmoor Nord', '+ New site').click();
+    await settle();
+    const dialog = openDialog()!;
+    expect(dialog.querySelector('h2')?.textContent).toBe('New site');
+    const select = (label: string) =>
+      [...dialog.querySelectorAll('label')]
+        .find((l) => l.textContent?.replace('*', '').trim() === label)
+        ?.htmlFor;
+    const value = (label: string) =>
+      (document.getElementById(select(label)!) as HTMLInputElement | HTMLSelectElement).value;
+    expect(value('Name')).toBe('Hemmoor Nord');
+    expect(value('Country')).toBe('DEU');
+    expect(value('Type')).toBe('quarry lake');
+    expect(value('Water')).toBe('fresh');
+    unmount(app);
+  });
+
+  it('starts a new site as a sea site when there is nothing to go by', async () => {
+    fakeFetch();
+    const { target, app } = render({ dive: null, sites: [] });
+    footerButton(target, 'Site', 'Somewhere', '+ New site').click();
+    await settle();
+    const dialog = openDialog()!;
+    const type = dialog.querySelector<HTMLSelectElement>('select[id$="-type"]')!;
+    const water = dialog.querySelector<HTMLSelectElement>('select[id$="-water"]')!;
+    expect(type.value).toBe('sea');
+    expect(water.value).toBe('salt');
+    unmount(app);
+  });
+
+  it('does not save with Ctrl-S while a dialog is open, and closes the dialog with Escape', async () => {
+    const calls = fakeFetch();
+    const { target, app } = render({ dive: fakeDiveAdmin() });
+    footerButton(target, 'Site', 'Hemmoor', '+ New site').click();
+    await settle();
+    expect(openDialog()).not.toBeNull();
+    key(document.body, { key: 's', ctrlKey: true });
+    await settle();
+    expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
+    key(openDialog()!, { key: 'Escape' });
+    await settle();
+    expect(openDialog()).toBeNull();
+    unmount(app);
+  });
+
+  it('opens the new-trip dialog prefilled with the name and the day of the dive', async () => {
+    fakeFetch();
+    const { target, app } = render({ dive: null, prefill: { date: '2026-02-08' } });
+    footerButton(target, 'Trip', 'Hemmoor weekend', '+ New trip').click();
+    await settle();
+    const dialog = openDialog()!;
+    expect(dialog.querySelector('h2')?.textContent).toBe('New trip');
+    const [name, start, end] = [...dialog.querySelectorAll<HTMLInputElement>('input')];
+    expect(name.value).toBe('Hemmoor weekend');
+    expect(start.value).toBe('2026-02-08');
+    expect(end.value).toBe('2026-02-08');
+    expect(document.activeElement).toBe(name);
+    button(dialog as unknown as HTMLElement, 'Cancel').click();
+    await settle();
+    expect(openDialog()).toBeNull();
+    unmount(app);
+  });
+});
+
