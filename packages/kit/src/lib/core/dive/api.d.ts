@@ -2789,6 +2789,35 @@ export interface components {
       detail?: components['schemas']['ValidationError'][];
     };
     /**
+     * ImportDiveOut
+     * @description One dive in a Shearwater Cloud export and what the import does or did with it.
+     */
+    ImportDiveOut: {
+      /** Computer No */
+      computer_no: number;
+      /** Serial */
+      serial: string;
+      /** Model */
+      model: string | null;
+      /** Start */
+      start: string;
+      /** Computer Start */
+      computer_start: string;
+      /** Max Depth M */
+      max_depth_m: number;
+      /** Duration Min */
+      duration_min: number;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: 'new' | 'attach' | 'have' | 'error';
+      /** Dive Number */
+      dive_number: number | null;
+      /** Error */
+      error: string | null;
+    };
+    /**
      * ImportRecordOut
      * @description One past import as the import page lists it; ``created_at`` is ISO 8601 as stored.
      */
@@ -2849,6 +2878,11 @@ export interface components {
       first_date: string | null;
       /** Last Date */
       last_date: string | null;
+      /**
+       * Dives
+       * @default []
+       */
+      dives: components['schemas']['ImportDiveOut'][];
     };
     /**
      * ImportSiteOut

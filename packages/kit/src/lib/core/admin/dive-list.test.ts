@@ -79,6 +79,7 @@ describe('importLines', () => {
     dives_in_file: 4,
     first_date: '2026-02-07',
     last_date: '2026-02-08',
+    dives: [],
   };
 
   it('says what a dry run would do', () => {

@@ -1032,6 +1032,71 @@ const when = (d) => `${d.date} ${d.time_in ?? ''} ${String(d.number).padStart(6,
  * memory: `handle(method, path, query, body)` answers `{ status, body }`, or undefined for a
  * path it leaves to `ownerFixtures` (the form's lists and the fixture dives).
  */
+/** The Shearwater Cloud export the stub "reads": computer start, depth, minutes, status. */
+const CLOUD_DIVES = [
+  [118, '2026-10-16T09:05:00', 24.3, 52, 'have'],
+  [119, '2026-10-16T13:40:00', 18.6, 61, 'attach'],
+  [120, '2026-10-17T08:55:00', 0, 0, 'error'],
+  [121, '2026-10-17T14:10:00', 31.2, 47, 'new'],
+  [122, '2026-10-18T09:20:00', 27.8, 55, 'new'],
+];
+
+/** `start` moved by `minutes`, both local ISO date-times without a zone. */
+function shiftLocal(start, minutes) {
+  const at = new Date(`${start}Z`);
+  at.setUTCMinutes(at.getUTCMinutes() + minutes);
+  return at.toISOString().slice(0, 19);
+}
+
+/**
+ * `POST /admin/import/shearwater-cloud` from its query alone (the upload is not read): five
+ * dives, two new, one attaching a profile to dive 3, one logged and one unreadable; `only`
+ * picks among the new and attach ones, `clock_offset_min` moves the starts.
+ */
+export function cloudImport(query, nextNumber) {
+  const offset = Number(query.get('clock_offset_min') ?? 0);
+  if (!Number.isInteger(offset) || Math.abs(offset) > 1440)
+    return [
+      422,
+      { detail: [{ loc: ['query', 'clock_offset_min'], msg: 'Input should be at most 1440' }] },
+    ];
+  const dryRun = query.get('dry_run') === 'true';
+  const only = query.get('only')?.split(',').map(Number);
+  let number = nextNumber;
+  const dives = CLOUD_DIVES.map(([n, computerStart, depth, minutes, status]) => ({
+    computer_no: n,
+    serial: '344FDE85',
+    model: 'Perdix AI',
+    start: shiftLocal(computerStart, offset),
+    computer_start: computerStart,
+    max_depth_m: depth,
+    duration_min: minutes,
+    status,
+    dive_number: status === 'have' ? 2 : status === 'attach' ? 3 : null,
+    error: status === 'error' ? 'Log 120 ends early' : null,
+  }));
+  const picked = (d) => !only || only.includes(d.computer_no);
+  for (const d of dives) if (d.status === 'new' && picked(d)) d.dive_number = number++;
+  const starts = dives.map((d) => d.start.slice(0, 10));
+  return [
+    200,
+    {
+      import_id: dryRun ? '' : 'cloud-e2e',
+      created: dives.filter((d) => d.status === 'new' && picked(d)).map((d) => d.dive_number),
+      updated: dives.filter((d) => d.status === 'attach' && picked(d)).map((d) => d.dive_number),
+      skipped: dives.filter((d) => d.status === 'have').length,
+      sites_created: 0,
+      sites_matched: 0,
+      sites: [],
+      dry_run: dryRun,
+      dives_in_file: dives.length,
+      first_date: starts[0],
+      last_date: starts.at(-1),
+      dives,
+    },
+  ];
+}
+
 export function ownerEditor() {
   const saved = new Map();
   const all = () => {
@@ -1090,6 +1155,10 @@ export function ownerEditor() {
       const ok = (value, status = 200) => ({ status, body: value });
       const key = `${method} ${path}`;
       if (key === 'GET /admin/imports') return ok([]);
+      if (key === 'POST /admin/import/shearwater-cloud') {
+        const [status, value] = cloudImport(query, Math.max(...all().map((d) => d.number)) + 1);
+        return ok(value, status);
+      }
       if (key === 'GET /admin/dives/next-number')
         return ok({ number: Math.max(...all().map((d) => d.number)) + 1 });
       if (key === 'GET /admin/dives/template')

@@ -242,6 +242,9 @@ export type RepoStatus = Schemas['RepoStatus'];
 /** What an import did (or, as a dry run, would do): dives created or updated, sites resolved. */
 export type ImportResult = Schemas['ImportResult'];
 
+/** One dive of a Shearwater Cloud export: new, attaching a profile, already logged, or unreadable. */
+export type ImportDive = Schemas['ImportDiveOut'];
+
 /** One imported site: matched to a site in the log or the commons, or created as personal. */
 export type ImportSite = Schemas['ImportSiteOut'];
 

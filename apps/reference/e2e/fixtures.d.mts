@@ -15,6 +15,7 @@ export function ownerEditor(): {
     body: unknown,
   ): { status: number; body: unknown } | undefined;
 };
+export function cloudImport(query: URLSearchParams, nextNumber: number): [number, unknown];
 export function adminSite(id: string): Record<string, unknown> | null;
 export function mapSeed(id: string): Record<string, unknown> | null;
 export interface StubMail {

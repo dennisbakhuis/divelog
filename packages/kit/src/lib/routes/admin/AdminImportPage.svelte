@@ -4,20 +4,39 @@
   import { invalidateAll } from '$app/navigation';
   import { adminUpload, adminUploadMany, AdminApiError } from '$lib/core/admin/client';
   import { importLines } from '$lib/core/admin/dive-list';
+  import {
+    CLOUD_EXPORT_HELP,
+    carryTicks,
+    cloudErrorMessage,
+    cloudFields,
+    cloudLines,
+    nothingNew,
+    onlyParam,
+    parseClockOffset,
+    previewAnnouncement,
+    previewRows,
+    selectionLine,
+    setTick,
+    tickedCount,
+    type CloudPreview,
+  } from '$lib/core/admin/cloud-import';
   import { getDivelog } from '$lib/core/dive/context';
   import type { ImportResult } from '$lib/core/dive/types';
   import { announce } from '$lib/core/ui/announce.js';
   import ImportSites from '$lib/components/admin/ImportSites.svelte';
+  import Field from '$lib/components/ui/Field.svelte';
 
   const { urls } = getDivelog();
 
   let { data }: { data: AdminDataFor<'import'> } = $props();
 
-  type Format = 'shearwater' | 'subsurface';
+  type Format = 'shearwater' | 'subsurface' | 'cloud';
   const LABELS: Record<Format, string> = {
     shearwater: 'Shearwater Perdix',
     subsurface: 'Subsurface',
+    cloud: 'Shearwater Cloud export',
   };
+  const OFFSET_DELAY_MS = 500;
 
   let busy = $state(false);
   let pending = $state<{ format: Format; files: File[] } | null>(null);
@@ -26,8 +45,30 @@
   let error = $state('');
   let outcome = $state<HTMLElement>();
 
+  let cloud = $state<CloudPreview | null>(null);
+  let ticked = $state<number[]>([]);
+  let offsetText = $state('');
+  let offsetMin = $state(0);
+  let offsetError = $state('');
+  let checking = $state(false);
+  let offsetTimer: ReturnType<typeof setTimeout> | undefined;
+  let runs = 0;
+  const offsetDirty = $derived(parseClockOffset(offsetText) !== offsetMin);
+
+  $effect(() => () => clearTimeout(offsetTimer));
+
+  function sendCloud(file: File, dryRun: boolean, clockOffsetMin: number): Promise<ImportResult> {
+    const only = !dryRun && cloud ? onlyParam(cloud.rows, ticked) : undefined;
+    return adminUpload<ImportResult>(
+      '/admin/import/shearwater-cloud',
+      file,
+      cloudFields({ dryRun, only, clockOffsetMin }),
+    );
+  }
+
   function send(format: Format, files: File[], dryRun: boolean): Promise<ImportResult> {
     const fields: Record<string, string> = dryRun ? { dry_run: 'true' } : {};
+    if (format === 'cloud') return sendCloud(files[0], dryRun, offsetMin);
     return format === 'subsurface'
       ? adminUpload<ImportResult>('/admin/import/subsurface', files[0], fields)
       : adminUploadMany<ImportResult>('/admin/import/shearwater', files, fields);
@@ -40,14 +81,24 @@
     preview = null;
     result = null;
     error = '';
+    resetCloud();
     busy = true;
     try {
       preview = await send(format, files, true);
-      announce(`Preview ready: ${importLines(preview).join('; ')}`);
+      if (format === 'cloud') {
+        cloud = previewRows(preview);
+        ticked = cloud.ticked;
+        announce(`Preview ready: ${previewAnnouncement(preview, cloud)}`);
+      } else announce(`Preview ready: ${importLines(preview).join('; ')}`);
       await tick();
       outcome?.focus();
     } catch (err) {
-      error = err instanceof AdminApiError ? err.message : 'Could not read the file';
+      error =
+        format === 'cloud'
+          ? cloudErrorMessage(err, 'Could not read the file')
+          : err instanceof AdminApiError
+            ? err.message
+            : 'Could not read the file';
       pending = null;
     } finally {
       busy = false;
@@ -62,12 +113,18 @@
       result = await send(pending.format, pending.files, false);
       preview = null;
       pending = null;
+      resetCloud();
       announce(`Imported: ${importLines(result).join('; ')}`);
       await invalidateAll();
       await tick();
       outcome?.focus();
     } catch (err) {
-      error = err instanceof AdminApiError ? err.message : 'Import failed';
+      error =
+        pending?.format === 'cloud'
+          ? cloudErrorMessage(err, 'Import failed')
+          : err instanceof AdminApiError
+            ? err.message
+            : 'Import failed';
     } finally {
       busy = false;
     }
@@ -76,7 +133,54 @@
   function cancel() {
     pending = null;
     preview = null;
+    resetCloud();
     announce('Import cancelled');
+  }
+
+  function resetCloud() {
+    clearTimeout(offsetTimer);
+    runs++;
+    cloud = null;
+    ticked = [];
+    offsetText = '';
+    offsetMin = 0;
+    offsetError = '';
+    checking = false;
+  }
+
+  /** The dry run again with another clock offset; the ticks carry over, focus stays put. */
+  async function recheck(min: number) {
+    if (!pending || pending.format !== 'cloud' || !cloud) return;
+    const run = ++runs;
+    checking = true;
+    error = '';
+    try {
+      const next = await sendCloud(pending.files[0], true, min);
+      if (run !== runs || !cloud) return;
+      const rows = previewRows(next);
+      ticked = carryTicks(rows.rows, cloud.rows, ticked);
+      cloud = rows;
+      preview = next;
+      offsetMin = min;
+      announce(`Clock offset applied: ${previewAnnouncement(next, rows)}`);
+    } catch (err) {
+      if (run === runs) error = cloudErrorMessage(err, 'Could not read the file');
+    } finally {
+      if (run === runs) checking = false;
+    }
+  }
+
+  function applyOffset() {
+    clearTimeout(offsetTimer);
+    const min = parseClockOffset(offsetText);
+    offsetError = min === null ? 'Use a form like +7 h, -30 min or +1:30, at most a day' : '';
+    if (min !== null && min !== offsetMin) void recheck(min);
+  }
+
+  function typeOffset(text: string) {
+    offsetText = text;
+    clearTimeout(offsetTimer);
+    offsetTimer = setTimeout(applyOffset, OFFSET_DELAY_MS);
   }
 </script>
 
@@ -89,6 +193,23 @@
 </p>
 
 <div class="drops">
+  <div class="cloud">
+    <label class="drop dl-card" class:disabled={busy}>
+      <input
+        type="file"
+        class="dl-visually-hidden"
+        aria-describedby="dl-cloud-steps"
+        onchange={(e) => {
+          void choose('cloud', e.currentTarget.files);
+          e.currentTarget.value = '';
+        }}
+        disabled={busy}
+      />
+      <strong>{LABELS.cloud}</strong>
+      <span>Choose the exported .db file</span>
+    </label>
+    <p id="dl-cloud-steps" class="steps">{CLOUD_EXPORT_HELP}</p>
+  </div>
   <label class="drop dl-card" class:disabled={busy}>
     <input
       type="file"
@@ -120,7 +241,15 @@
   </label>
 </div>
 
-<p class="status" role="status">{busy ? (preview ? 'Importing…' : 'Reading the file…') : ''}</p>
+<p class="status" role="status">
+  {checking
+    ? 'Applying the clock offset…'
+    : busy
+      ? preview
+        ? 'Importing…'
+        : 'Reading the file…'
+      : ''}
+</p>
 {#if error}<p class="error" role="alert">{error}</p>{/if}
 
 {#if preview && pending}
@@ -135,25 +264,32 @@
         ? ''
         : 's'}
     </h2>
-    <ul class="lines">
-      {#each importLines(preview) as line (line)}<li>{line}</li>{/each}
-    </ul>
-    {#if preview.created.length}
-      <p class="muted">New drafts would be numbered #{preview.created.join(', #')}.</p>
-    {/if}
-    {#if preview.updated.length}
-      <p class="muted">
-        Profiles for
-        {#each preview.updated as n, i (n)}{i ? ', ' : ''}<a href={urls.admin.dive(n)}>#{n}</a
-          >{/each}.
-      </p>
+    {#if cloud}
+      {@render cloudPreview(preview, cloud)}
+    {:else}
+      <ul class="lines">
+        {#each importLines(preview) as line (line)}<li>{line}</li>{/each}
+      </ul>
+      {#if preview.created.length}
+        <p class="muted">New drafts would be numbered #{preview.created.join(', #')}.</p>
+      {/if}
+      {#if preview.updated.length}
+        <p class="muted">
+          Profiles for
+          {#each preview.updated as n, i (n)}{i ? ', ' : ''}<a href={urls.admin.dive(n)}>#{n}</a
+            >{/each}.
+        </p>
+      {/if}
     {/if}
     <ImportSites sites={preview.sites ?? []} />
     <div class="actions">
       <button
         type="button"
         class="dl-btn dl-btn-solid dl-btn-sm"
-        disabled={busy || (!preview.created.length && !preview.updated.length)}
+        disabled={busy ||
+          (cloud
+            ? checking || offsetDirty || !tickedCount(cloud.rows, ticked)
+            : !preview.created.length && !preview.updated.length)}
         onclick={commit}>Import</button
       >
       <button type="button" class="dl-btn dl-btn-ghost dl-btn-sm" disabled={busy} onclick={cancel}
@@ -162,6 +298,81 @@
     </div>
   </section>
 {/if}
+
+{#snippet cloudPreview(report: ImportResult, view: CloudPreview)}
+  <ul class="lines">
+    {#each cloudLines(report, view) as line (line)}<li>{line}</li>{/each}
+  </ul>
+  <Field
+    label="Clock offset"
+    hint="e.g. +7 h if the computer was on trip time"
+    error={offsetError}
+    class="offset"
+  >
+    {#snippet children(control)}
+      <input
+        {...control}
+        class="dl-input"
+        type="text"
+        autocomplete="off"
+        spellcheck="false"
+        enterkeyhint="done"
+        value={offsetText}
+        oninput={(e) => typeOffset(e.currentTarget.value)}
+        onblur={applyOffset}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            applyOffset();
+          }
+        }}
+      />
+    {/snippet}
+  </Field>
+  {#if nothingNew(view)}
+    <p class="empty"><strong>Nothing new to import.</strong></p>
+  {:else}
+    <fieldset class="dives">
+      <legend>Dives to import</legend>
+      <p class="muted">{selectionLine(view, ticked)}</p>
+      <ul class="dive-list">
+        {#each view.rows.filter((r) => r.eligible) as row (row.key)}
+          <li>
+            <label class="dive-row">
+              <input
+                type="checkbox"
+                checked={ticked.includes(row.computerNo)}
+                disabled={busy}
+                onchange={(e) =>
+                  (ticked = setTick(ticked, row.computerNo, e.currentTarget.checked))}
+              />
+              <span class="dive-text">
+                <strong>{row.title}</strong>
+                <span>{row.when}</span>
+                <span>{row.facts}</span>
+                <span class="outcome {row.status}">{row.outcome}</span>
+              </span>
+            </label>
+          </li>
+        {/each}
+      </ul>
+    </fieldset>
+  {/if}
+  {#if view.rows.some((r) => !r.eligible)}
+    <p class="muted">Could not be read, not imported:</p>
+    <ul class="dive-list">
+      {#each view.rows.filter((r) => !r.eligible) as row (row.key)}
+        <li class="dive-row">
+          <span class="dive-text">
+            <strong>{row.title}</strong>
+            <span>{row.when}</span>
+            <span class="outcome error">{row.outcome}</span>
+          </span>
+        </li>
+      {/each}
+    </ul>
+  {/if}
+{/snippet}
 
 {#if result}
   <section
@@ -266,6 +477,80 @@
   .drop.disabled {
     cursor: progress;
     opacity: 0.7;
+  }
+  .cloud {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .cloud .drop {
+    flex: 1;
+  }
+  .steps {
+    margin: 0;
+    font-size: var(--dl-text-sm);
+    color: var(--dl-color-text-muted);
+  }
+  .dives {
+    border: 0;
+    margin: 12px 0 0;
+    padding: 0;
+    min-width: 0;
+  }
+  .dives legend {
+    padding: 0;
+    font-weight: 600;
+  }
+  .dive-list {
+    list-style: none;
+    margin: 6px 0 10px;
+    padding: 0;
+  }
+  .dive-list li + li {
+    border-top: 1px solid var(--dl-color-border);
+  }
+  :global(.divelog) .dive-row {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 0;
+    font-size: var(--dl-text-md);
+    color: var(--dl-color-text);
+  }
+  .dive-row input {
+    margin-top: 3px;
+    flex: none;
+  }
+  .dive-text {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 10px;
+    min-width: 0;
+  }
+  .dive-text strong {
+    flex-basis: 100%;
+  }
+  .outcome {
+    color: var(--dl-color-text-muted);
+  }
+  .outcome.new {
+    color: var(--dl-color-warm);
+  }
+  .outcome.error {
+    color: var(--dl-color-danger);
+  }
+  .empty {
+    margin: 12px 0 0;
+  }
+  .summary :global(.offset) {
+    max-width: 20rem;
+    margin-top: 12px;
+  }
+  @media (pointer: coarse) {
+    :global(.divelog) .dive-row {
+      min-height: var(--dl-tap-min);
+    }
   }
   .status {
     min-height: 1.4em;
