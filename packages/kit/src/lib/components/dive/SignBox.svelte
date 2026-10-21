@@ -58,6 +58,7 @@
 
   async function submit(e: SubmitEvent) {
     e.preventDefault();
+    if (busy) return;
     const text = comment.trim();
     if (!text && !strokes.length) {
       error = 'Write a comment or draw a signature first.';

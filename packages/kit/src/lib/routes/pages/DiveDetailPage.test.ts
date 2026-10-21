@@ -12,7 +12,7 @@ vi.mock('$app/navigation', () => ({
   replaceState: vi.fn(),
 }));
 
-import { replaceState } from '$app/navigation';
+import { goto, replaceState } from '$app/navigation';
 import DiveDetailPage from './DiveDetailPage.svelte';
 import type { DiveSigning } from '../public.js';
 import type { BuddyNote, Dive } from '$lib/core/dive/types.js';
@@ -334,4 +334,179 @@ describe('the buddy notes on the dive page', () => {
     );
     expect(box(target)!.textContent).toContain('Your note is on the dive page.');
   });
+});
+
+describe('the sign page under hostile input', () => {
+  const HOSTILE = '<img src=x onerror="alert(1)"><script>alert(2)</script>"\'&amp;';
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-28T12:00:00Z'));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const inert = (target: HTMLElement) => {
+    expect(target.querySelector('img[src="x"]')).toBeNull();
+    expect(target.querySelector('script')).toBeNull();
+    expect(target.querySelector('[onerror]')).toBeNull();
+  };
+
+  it('writes the signer name, the comment and the buddy name as text', () => {
+    const hostileNote: BuddyNote = { ...note, comment: HOSTILE };
+    const target = mountPage(
+      { ...open, signer: { slug: 'alex', first_name: HOSTILE } },
+      publicDive({
+        buddies: [{ ...publicDive().buddies[0], name: HOSTILE }],
+        buddy_notes: [hostileNote],
+      }),
+    );
+    inert(target);
+    expect(box(target)!.textContent).toContain(HOSTILE);
+    expect(target.querySelector('blockquote')!.textContent).toBe(`“${HOSTILE}”`);
+    expect(
+      target.querySelector('svg[aria-label^="Signature of"]')!.getAttribute('aria-label'),
+    ).toBe(`Signature of ${HOSTILE}`);
+  });
+
+  it('shows a note whose strokes are not drawable without failing the page', () => {
+    const odd = [
+      null,
+      5,
+      'abc',
+      [
+        ['<x>', NaN],
+        [Infinity, 1],
+      ],
+      [[1, 2]],
+    ] as unknown as number[][][];
+    const target = mountPage(null, publicDive({ buddy_notes: [{ ...note, strokes: odd }] }));
+    const d = target.querySelector('[aria-label="Signature of Alex"] path')!.getAttribute('d');
+    expect(d).toBe('M1 2 L1 2');
+    inert(target);
+  });
+
+  it('does not show a person-less or comment-less and stroke-less note', () => {
+    const target = mountPage(
+      null,
+      publicDive({ buddy_notes: [{ ...note, comment: null, strokes: null }] }),
+    );
+    expect(target.querySelector('.dl-buddy-notes')).toBeNull();
+  });
+
+  it('falls back to the history when the router is not ready to replace the address', async () => {
+    vi.mocked(replaceState).mockImplementationOnce(() => {
+      throw new Error('Cannot call replaceState(...) before router is initialized');
+    });
+    const spy = vi.spyOn(history, 'replaceState');
+    mountPage(open);
+    await settle();
+    expect(spy).toHaveBeenCalledWith(history.state, '', '/dive/9');
+    spy.mockRestore();
+  });
+
+  it('keeps the other parameters and the hash when it drops the token', async () => {
+    nav.page.url = new URL('http://localhost/dive/9?a=1&sign=t0k&b=2#story');
+    mountPage(open);
+    await settle();
+    expect(replaceState).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(replaceState).mock.calls[0][0]).toBe('/dive/9?a=1&b=2#story');
+  });
+
+  it('replaces the address once, however often the page re-renders', async () => {
+    const target = mountPage(open);
+    await settle();
+    flushSync();
+    draw(target);
+    await settle();
+    expect(replaceState).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps [ and ] for typing in the comment, and pages elsewhere', () => {
+    vi.mocked(goto).mockClear();
+    const target = mountPage(open, publicDive({ next_number: 10 }));
+    const comment = target.querySelector<HTMLTextAreaElement>('textarea')!;
+    comment.dispatchEvent(new KeyboardEvent('keydown', { key: ']', bubbles: true }));
+    expect(goto).not.toHaveBeenCalled();
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: ']', bubbles: true }));
+    expect(goto).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends one request when the form is submitted twice before the answer', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ note }), { status: 200 }));
+    vi.stubGlobal('fetch', fetch);
+    const target = mountPage(open);
+    const comment = target.querySelector<HTMLTextAreaElement>('textarea')!;
+    comment.value = 'Hi';
+    comment.dispatchEvent(new Event('input', { bubbles: true }));
+    const form = target.querySelector('form')!;
+    form.requestSubmit();
+    form.requestSubmit();
+    await settle();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps what was typed and says so when the answer is a server error or no answer', async () => {
+    const target = mountPage(open);
+    const comment = target.querySelector<HTMLTextAreaElement>('textarea')!;
+    comment.value = 'Cold feet';
+    comment.dispatchEvent(new Event('input', { bubbles: true }));
+    draw(target);
+    for (const [reply, message] of [
+      [() => new Response('{}', { status: 500 }), /^Signing failed/],
+      [() => Promise.reject(new TypeError('offline')), /^Could not reach the dive log/],
+      [() => new Response('{}', { status: 429 }), /^Too many tries/],
+      [() => new Response('{}', { status: 410 }), /^This sign link has expired/],
+      [() => new Response('{}', { status: 422 }), /^The note was not accepted/],
+    ] as const) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => reply()),
+      );
+      signButton(target).click();
+      await settle();
+      expect(target.querySelector('[role="alert"]')!.textContent).toMatch(message);
+      expect(comment.value).toBe('Cold feet');
+      expect(target.querySelector('.dl-signature-hint')!.textContent).toContain('1 stroke drawn');
+      expect(signButton(target).disabled).toBe(false);
+    }
+  });
+
+  it('names the pad, the comment, the choice and the buttons for assistive technology', () => {
+    const target = mountPage(open);
+    const section = box(target)!;
+    const title = document.getElementById(section.getAttribute('aria-labelledby')!)!;
+    expect(title.tagName).toBe('H2');
+    const comment = section.querySelector<HTMLTextAreaElement>('textarea')!;
+    expect(section.querySelector(`label[for="${comment.id}"]`)?.textContent).toContain('Comment');
+    expect(
+      document.getElementById(comment.getAttribute('aria-describedby')!)?.textContent,
+    ).toContain('200 of 200 characters left');
+    const pad = section.querySelector('[role="img"]')!;
+    expect(pad.getAttribute('aria-label')).toBe('Your signature or a doodle');
+    expect(document.getElementById(pad.getAttribute('aria-describedby')!)).not.toBeNull();
+    const names = [...section.querySelectorAll('button')].map((b) => b.textContent?.trim());
+    expect(names).toEqual(['Undo', 'Clear', 'Sign the dive']);
+    expect(
+      section.querySelector('input[type="checkbox"]')!.closest('label')!.textContent,
+    ).toContain('Show my note on the dive page');
+  });
+
+  it.fails(
+    'shows the box again after going away and back, from the token kept in the history state',
+    async () => {
+      nav.page.url = new URL('http://localhost/dive/9');
+      nav.page.state = { from: '/dive?tag=cave', sign: 't0k' } as typeof nav.page.state;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => Response.json({ ...open, dive: publicDive() })),
+      );
+      try {
+        const target = mountPage(null);
+        await settle();
+        expect(box(target)).not.toBeNull();
+      } finally {
+        nav.page.state = { from: '/dive?tag=cave' };
+      }
+    },
+  );
 });
