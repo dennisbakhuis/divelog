@@ -182,6 +182,9 @@ test.describe('logging a dive', () => {
       await notes.locator('summary').click();
     await expect(notes.locator('li').first()).toContainText('signed on');
     await expect(notes.locator('li').first()).toContainText('“Cold feet, great vis.”');
+    const publicLabel = notes.locator('label.check').first();
+    await expect(publicLabel).toContainText('Public');
+    expect(await publicLabel.evaluate((el) => getComputedStyle(el).flexDirection)).toBe('row');
 
     await page.getByLabel('Max depth (m)').fill('16.5');
     await expect(ask).toBeChecked();
