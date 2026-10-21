@@ -447,7 +447,9 @@ class TripTogether(ApiModel):
 
 
 class TripIn(ApiModel):
-    slug: str = Field(min_length=1, max_length=120)
+    """A trip override as the editor sends it; ``slug`` names its file, so it is a plain slug."""
+
+    slug: str = Field(min_length=1, max_length=120, pattern=r"^[a-z0-9-]+$")
     name: str = Field(min_length=1, max_length=200)
     start_date: date | None = None
     end_date: date | None = None

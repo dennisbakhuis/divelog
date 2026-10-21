@@ -912,10 +912,13 @@ async def admin_create_trip(body: TripIn, store: StoreDep) -> TripOut:
 
 @router.put("/trips/{slug}", response_model=TripOut)
 async def admin_update_trip(slug: str, body: TripIn, store: StoreDep) -> TripOut:
-    if slug not in store.trips:
+    """Change an override's name, dates and description; ``merge`` and ``cover`` are kept."""
+    existing = store.trips.get(slug)
+    if existing is None:
         raise HTTPException(status_code=404, detail="Trip not found")
-    trip = TripRecord(**body.model_dump(exclude={"description_md"}), body_md=body.description_md)
-    trip.slug = slug
+    payload = existing.model_dump() | body.model_dump(exclude={"description_md"}) | {"slug": slug}
+    trip = TripRecord.model_validate(payload)
+    trip.body_md = body.description_md
     await store.save_trip(trip, f"Update trip {slug}")
     return _trip_out(trip, store.trip_index(True).trips.get(slug))
 
