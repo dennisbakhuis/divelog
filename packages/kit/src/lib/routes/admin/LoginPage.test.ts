@@ -61,6 +61,22 @@ describe('LoginPage', () => {
     expect(await signIn(false, odd)).toContain('It is valid for a few minutes.');
   });
 
+  it.each([0, -3, 2.5, 1e21, 1441, null, true, '2', [2], { n: 2 }])(
+    'says a few minutes for a valid_minutes of %j',
+    async (odd) => {
+      const reply = () => Response.json({ valid_minutes: odd }, { status: 202 });
+      const text = await signIn(false, reply);
+      expect(text).toContain('It is valid for a few minutes.');
+    },
+  );
+
+  it('says a few minutes for a body that is not an object', async () => {
+    for (const body of [null, 'sent', 7, [2]]) {
+      const text = await signIn(false, () => Response.json(body, { status: 202 }));
+      expect(text).toContain('It is valid for a few minutes.');
+    }
+  });
+
   it('says one minute in the singular', async () => {
     const one = () => Response.json({ valid_minutes: 1 }, { status: 202 });
     expect(await signIn(false, one)).toContain('It is valid for 1 minute.');

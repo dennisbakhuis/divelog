@@ -16,10 +16,12 @@
       : `${validMinutes} ${validMinutes === 1 ? 'minute' : 'minutes'}`,
   );
 
-  /** The link's lifetime from the 202 body; an older server sends none. */
+  /** The link's lifetime from the 202 body; an older server sends none, an odd one counts as none. */
   function minutesFrom(body: unknown): number | null {
     const value = (body as { valid_minutes?: unknown } | null | undefined)?.valid_minutes;
-    return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+    return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= 1440
+      ? value
+      : null;
   }
 
   async function submit(e: SubmitEvent) {
