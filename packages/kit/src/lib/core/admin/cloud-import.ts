@@ -6,13 +6,10 @@ import type { ImportDive, ImportResult } from '$lib/core/dive/types.js';
 import { formatDate, formatDepth, pluralize } from '$lib/core/dive/format.js';
 import { AdminApiError } from './client.js';
 
-/**
- * How to get the export, under the card's button. One place, so the app's exact menu path can
- * be added once it is known.
- */
+/** How to get the export, under the card's button. */
 export const CLOUD_EXPORT_HELP =
-  'Export your dive database from the Shearwater Cloud app (a .db file) and pick it here. ' +
-  'The desktop dive_data.db and an account ZIP work too.';
+  'In the Shearwater Cloud app, open the Profile tab and tap Export (*.db), save the file, ' +
+  'then pick it here. The desktop dive_data.db and an account ZIP work too.';
 
 /** The furthest a computer clock may be corrected, either way: one day. */
 export const MAX_CLOCK_OFFSET_MIN = 1440;
