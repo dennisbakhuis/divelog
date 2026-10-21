@@ -125,4 +125,6 @@
   --dl-space-page-x: var(--space-page-x, clamp(16px, 4vw, 32px));
   --dl-space-section: var(--space-section, clamp(64px, 9vw, 120px));
   --dl-header-h: var(--header-h, 68px);
+  /* Smallest touch target on a coarse pointer (WCAG 2.5.5). */
+  --dl-tap-min: 44px;
 }

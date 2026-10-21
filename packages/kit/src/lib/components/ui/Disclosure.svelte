@@ -14,7 +14,12 @@
     /** Summary text; or pass a `label` snippet for richer content. */
     summary?: string;
     open?: boolean;
-    /** Remember the open state in `localStorage` under `dl-disclosure:<key>`. */
+    /**
+     * Remember the open state in `localStorage` under `dl-disclosure:<key>`.
+     * The stored state applies before the first client render; a server-rendered
+     * page shows the `open` prop until hydration, so a section stored open can
+     * expand once as the page hydrates (the host CSP rules out an inline script).
+     */
     persistKey?: string;
     /** A count badge after the summary (filled fields, errors, items). */
     count?: number | string | null;
