@@ -7,6 +7,9 @@
   The container is always mounted. Toasts are announced through the live
   regions (polite for success and info, assertive for errors), so the visible
   items carry no live role of their own and nothing is read twice.
+  On a wide screen they sit bottom right, raised by `--dl-toast-offset` (a page
+  with a sticky save bar sets it); below 700 px they sit at the top, under the
+  admin bar (`--dl-admin-bar-h`, set by the admin shell).
 -->
 <div class="toast-container divelog">
   <LiveRegion />
@@ -37,7 +40,7 @@
 <style>
   .toast-container {
     position: fixed;
-    bottom: 1.5rem;
+    bottom: calc(1.5rem + var(--dl-toast-offset, 0px) + env(safe-area-inset-bottom, 0px));
     right: 1.5rem;
     z-index: 9999;
     display: flex;
@@ -97,6 +100,36 @@
   .toast-close:focus-visible {
     outline: 2px solid currentColor;
     outline-offset: 1px;
+  }
+  @media (max-width: 699.98px) {
+    .toast-container {
+      top: calc(var(--dl-admin-bar-h, 0px) + env(safe-area-inset-top, 0px) + 0.5rem);
+      bottom: auto;
+      left: 0.75rem;
+      right: 0.75rem;
+      max-width: none;
+      gap: 0.5rem;
+    }
+    .toast {
+      animation-name: toast-down;
+    }
+  }
+  @media (pointer: coarse) {
+    .toast-close {
+      min-width: var(--dl-tap-min, 44px);
+      min-height: var(--dl-tap-min, 44px);
+      margin: -10px -10px -10px 0;
+    }
+  }
+  @keyframes toast-down {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
   @keyframes toast-in {
     from {

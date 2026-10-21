@@ -84,6 +84,35 @@ describe('toast store', () => {
     expect(toast.items).toHaveLength(0);
   });
 
+  it('makes ids without crypto.randomUUID, which plain http on a LAN lacks', () => {
+    vi.stubGlobal('crypto', {});
+    try {
+      const a = toast.show({ kind: 'success', message: 'Een' });
+      const b = toast.show({ kind: 'success', message: 'Twee' });
+      expect(a).not.toBe(b);
+      expect(toast.items.map((t) => t.id)).toEqual([a, b]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps at most three toasts, pushing out the oldest non-sticky one first', () => {
+    toast.show({ kind: 'error', message: 'Fout 1' });
+    toast.show({ kind: 'success', message: 'Klaar 1' });
+    toast.show({ kind: 'error', message: 'Fout 2' });
+    toast.show({ kind: 'success', message: 'Klaar 2' });
+    expect(toast.items.map((t) => t.message)).toEqual(['Fout 1', 'Fout 2', 'Klaar 2']);
+    toast.show({ kind: 'info', message: 'Let op' });
+    expect(toast.items.map((t) => t.message)).toEqual(['Fout 1', 'Fout 2', 'Let op']);
+    toast.show({ kind: 'error', message: 'Fout 3' });
+    toast.show({ kind: 'error', message: 'Fout 4' });
+    expect(toast.items.map((t) => t.message)).toEqual(['Fout 2', 'Fout 3', 'Fout 4']);
+    toast.show({ kind: 'success', message: 'Klaar 3' });
+    expect(toast.items.map((t) => t.message)).toEqual(['Fout 3', 'Fout 4', 'Klaar 3']);
+    vi.advanceTimersByTime(60_000);
+    expect(toast.items.map((t) => t.message)).toEqual(['Fout 3', 'Fout 4']);
+  });
+
   it('ignores dismissing an unknown id', () => {
     toast.show({ kind: 'success', message: 'Blijft staan' });
     toast.dismiss('bestaat-niet');
