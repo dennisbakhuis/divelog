@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import SiteCreate from './SiteCreate.svelte';
 import { resetLookups } from '$lib/core/admin/lookups.js';
+import { loadCountries } from '$lib/core/map/countries.js';
 import { fakeSite } from '$lib/testing/sharing.js';
 import type { NearbySitesOut, Region } from '$lib/core/dive/types.js';
 
@@ -327,6 +328,161 @@ describe('SiteCreate', () => {
     expect(event.defaultPrevented).toBe(true);
     await settle();
     expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0);
+    unmount(app);
+  });
+
+  it('treats a given country and region as a suggestion the pin replaces', async () => {
+    fakeFetch({
+      'GET /api/v1/meta/countries': { body: COUNTRIES },
+      'GET /api/v1/admin/sites/nearby': { body: NOTHING },
+    });
+    const { target, app, byLabel } = render({ initial: { country: 'NLD', region: 'zeeland' } });
+    await settle();
+    expect(byLabel<HTMLSelectElement>('Country').value).toBe('NLD');
+    expect(byLabel<HTMLInputElement>('Region').value).toBe('Zeeland');
+    pastePosition(byLabel<HTMLInputElement>('Coordinates'), '44.5612, 1.7344');
+    await until(() => byLabel<HTMLSelectElement>('Country').value === 'FRA');
+    await settle();
+    expect(byLabel<HTMLInputElement>('Region').value).toBe('Lot');
+    const chips = [...target.querySelectorAll('.chip')].map((c) => c.textContent?.trim());
+    expect(chips).toEqual(['from the pin', 'nearest']);
+    unmount(app);
+  });
+
+  it('keeps a suggested country when the pin lands where no country is', async () => {
+    fakeFetch({
+      'GET /api/v1/meta/countries': { body: COUNTRIES },
+      'GET /api/v1/admin/sites/nearby': { body: NOTHING },
+    });
+    await loadCountries();
+    const { target, app, byLabel } = render({ initial: { country: 'NLD' } });
+    pastePosition(byLabel<HTMLInputElement>('Coordinates'), '30, -40');
+    await settle(50);
+    expect(target.querySelector('.from-pin')).toBeNull();
+    expect(byLabel<HTMLSelectElement>('Country').value).toBe('NLD');
+    unmount(app);
+  });
+
+  it('clears the country and region of a pin moved out to sea', async () => {
+    fakeFetch({
+      'GET /api/v1/meta/countries': { body: COUNTRIES },
+      'GET /api/v1/admin/sites/nearby': { body: NOTHING },
+    });
+    const { target, app, byLabel } = render();
+    const coords = byLabel<HTMLInputElement>('Coordinates');
+    pastePosition(coords, '51.7, 3.9');
+    await until(() => byLabel<HTMLInputElement>('Region').value === 'Zeeland');
+    expect(byLabel<HTMLSelectElement>('Country').value).toBe('NLD');
+    pastePosition(coords, '30, -40');
+    await until(() => target.querySelector('.from-pin') === null);
+    await settle();
+    expect(byLabel<HTMLSelectElement>('Country').value).toBe('');
+    expect(byLabel<HTMLInputElement>('Region').value).toBe('');
+    unmount(app);
+  });
+
+  it('lets the pin fill the country again after the select is cleared', async () => {
+    fakeFetch({
+      'GET /api/v1/meta/countries': { body: COUNTRIES },
+      'GET /api/v1/admin/sites/nearby': { body: NOTHING },
+    });
+    const { app, byLabel } = render();
+    await settle();
+    const country = byLabel<HTMLSelectElement>('Country');
+    choose(country, 'NLD');
+    choose(country, '');
+    pastePosition(byLabel<HTMLInputElement>('Coordinates'), '44.5612, 1.7344');
+    await until(() => country.value === 'FRA');
+    unmount(app);
+  });
+
+  it('drops a region chosen by hand when the country changes to another', async () => {
+    fakeFetch({
+      'GET /api/v1/meta/countries': { body: COUNTRIES },
+      'GET /api/v1/admin/sites/nearby': { body: NOTHING },
+    });
+    const { target, app, byLabel } = render();
+    await settle();
+    const country = byLabel<HTMLSelectElement>('Country');
+    choose(country, 'NLD');
+    const region = byLabel<HTMLInputElement>('Region');
+    region.click();
+    flushSync();
+    [...target.querySelectorAll<HTMLElement>('[role="option"]')]
+      .find((o) => o.textContent?.includes('Zeeland'))!
+      .click();
+    flushSync();
+    expect(region.value).toBe('Zeeland');
+    choose(country, 'NLD');
+    expect(region.value).toBe('Zeeland');
+    choose(country, 'FRA');
+    await settle();
+    expect(region.value).toBe('');
+    unmount(app);
+  });
+
+  it('waits for the country lookup of a fresh pin before it validates', async () => {
+    const created = fakeSite({ id: 'nld-vinkeveen', name: 'Vinkeveen' });
+    const calls = fakeFetch({
+      'GET /api/v1/meta/countries': { body: COUNTRIES },
+      'GET /api/v1/admin/sites/nearby': { body: NOTHING },
+      'POST /api/v1/admin/sites': { status: 201, body: created },
+    });
+    const { target, app, byLabel, button, onCreated } = render();
+    type(byLabel<HTMLInputElement>('Name'), 'Vinkeveen');
+    pastePosition(byLabel<HTMLInputElement>('Coordinates'), '52.2603, 4.9324');
+    button('Create').click();
+    await until(() => onCreated.mock.calls.length > 0);
+    expect(target.textContent).not.toContain('Pick the country');
+    expect(calls.find((c) => c.method === 'POST')?.body).toMatchObject({ country: 'NLD' });
+    unmount(app);
+  });
+
+  it('checks the id only once the country is known, and marks it taken after a 409', async () => {
+    const calls = fakeFetch({
+      'GET /api/v1/meta/countries': { body: COUNTRIES },
+      'GET /api/v1/admin/sites/nearby': { body: NOTHING },
+      'POST /api/v1/admin/sites': { status: 409, body: { detail: 'Site id already in use' } },
+    });
+    const { target, app, byLabel, button } = render();
+    type(byLabel<HTMLInputElement>('Name'), 'Example');
+    await settle(450);
+    expect(calls.some((c) => c.url.startsWith('/api/v1/admin/sites/xxx-'))).toBe(false);
+    choose(byLabel<HTMLSelectElement>('Country'), 'NLD');
+    await settle(450);
+    expect(target.querySelector('.id-line')?.textContent).toContain('available');
+    button('Create').click();
+    await settle();
+    expect(target.querySelector('.id-line')?.textContent).toContain('already in use');
+    unmount(app);
+  });
+
+  it('says when a name makes the id too long', () => {
+    fakeFetch({ 'GET /api/v1/meta/countries': { body: COUNTRIES } });
+    const { target, app, byLabel } = render({ initial: { country: 'NLD' } });
+    type(byLabel<HTMLInputElement>('Name'), 'x'.repeat(130));
+    expect(target.querySelector('.id-line')?.textContent).toContain('too long');
+    unmount(app);
+  });
+
+  it('does not post twice when what follows the create fails', async () => {
+    const created = fakeSite({ id: 'nld-example', name: 'Example' });
+    const calls = fakeFetch({
+      'GET /api/v1/meta/countries': { body: COUNTRIES },
+      'GET /api/v1/admin/sites/nearby': { body: NOTHING },
+      'POST /api/v1/admin/sites': { status: 201, body: created },
+    });
+    const onCreated = vi.fn().mockRejectedValueOnce(new Error('navigation failed'));
+    const { target, app, byLabel, button } = render({ initial: { country: 'NLD' }, onCreated });
+    type(byLabel<HTMLInputElement>('Name'), 'Example');
+    button('Create').click();
+    await settle();
+    expect(target.querySelector('.form-error')?.textContent).toContain('was created');
+    button('Create').click();
+    await settle();
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(1);
+    expect(onCreated).toHaveBeenCalledTimes(2);
+    expect(onCreated).toHaveBeenLastCalledWith(created, 'create');
     unmount(app);
   });
 });
