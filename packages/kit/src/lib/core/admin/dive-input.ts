@@ -691,8 +691,7 @@ export function validateEssentials(form: DiveInput): Record<string, string> {
   const depth = asNumber(form.max_depth_m);
   if (depth === null) errors.max_depth_m = 'Enter the maximum depth';
   else if (depth < 0) errors.max_depth_m = 'Depth cannot be negative';
-  if (timeOutBeforeIn(form.time_in, form.time_out))
-    errors.time_out = 'Time out is before time in';
+  if (timeOutBeforeIn(form.time_in, form.time_out)) errors.time_out = 'Time out is before time in';
   form.tanks.forEach((tank, i) => {
     if (!isBlankTank(tank) && isEmptyValue(tank.cylinder))
       errors[`tanks.${i}.cylinder`] = 'Cylinder required';

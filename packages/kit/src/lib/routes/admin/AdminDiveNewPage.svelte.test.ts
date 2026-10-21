@@ -3,7 +3,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 
 const navigation = vi.hoisted(() => ({
   beforeNavigate: vi.fn(),
-  goto: vi.fn(async (_url: string, _opts?: { invalidateAll?: boolean }) => {}),
+  goto: vi.fn<(url: string, opts?: { invalidateAll?: boolean }) => Promise<void>>(async () => {}),
   invalidateAll: vi.fn(async () => {}),
 }));
 vi.mock('$app/navigation', () => navigation);

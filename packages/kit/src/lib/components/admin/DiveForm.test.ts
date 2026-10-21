@@ -922,9 +922,9 @@ describe('DiveForm dialogs', () => {
     const dialog = openDialog()!;
     expect(dialog.querySelector('h2')?.textContent).toBe('New site');
     const select = (label: string) =>
-      [...dialog.querySelectorAll('label')]
-        .find((l) => l.textContent?.replace('*', '').trim() === label)
-        ?.htmlFor;
+      [...dialog.querySelectorAll('label')].find(
+        (l) => l.textContent?.replace('*', '').trim() === label,
+      )?.htmlFor;
     const value = (label: string) =>
       (document.getElementById(select(label)!) as HTMLInputElement | HTMLSelectElement).value;
     expect(value('Name')).toBe('Hemmoor Nord');
@@ -1079,7 +1079,12 @@ describe('DiveForm errors and site changes', () => {
     const calls = fakeFetch();
     const map = fakeMap({ id: 'm1' });
     const sites = [
-      fakeSite({ id: 'mex-tortuga', slug: 'tortuga', name: 'Cenote Tortuga', maps: [drawnRef(map)] }),
+      fakeSite({
+        id: 'mex-tortuga',
+        slug: 'tortuga',
+        name: 'Cenote Tortuga',
+        maps: [drawnRef(map)],
+      }),
       hemmoor(),
     ];
     const annotation = {
@@ -1146,4 +1151,3 @@ describe('DiveForm errors and site changes', () => {
     unmount(app);
   });
 });
-
