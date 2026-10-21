@@ -17,3 +17,22 @@ export function ownerEditor(): {
 };
 export function adminSite(id: string): Record<string, unknown> | null;
 export function mapSeed(id: string): Record<string, unknown> | null;
+export interface StubMail {
+  to: string;
+  subject: string;
+  text: string;
+}
+export function signBook(options: {
+  adminDive(n: number): Record<string, unknown> | null;
+  publicDive(n: number): Record<string, unknown> | null;
+  siteUrl: string;
+  ownerName?: string;
+}): {
+  mails: StubMail[];
+  publicNotes(n: number): Record<string, unknown>[];
+  adminView(n: number, body: unknown): Record<string, unknown>;
+  publicView(n: number, body: unknown): Record<string, unknown>;
+  applyForm(n: number, input: unknown): void;
+  admin(method: string, path: string, body: unknown): [number, unknown] | undefined;
+  sign(method: string, path: string, body: unknown): [number, unknown] | undefined;
+};
