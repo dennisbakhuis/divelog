@@ -1028,17 +1028,24 @@ function adminRow(input) {
 const when = (d) => `${d.date} ${d.time_in ?? ''} ${String(d.number).padStart(6, '0')}`;
 
 /**
- * The owner's dive editor endpoints over the fixture log, with dives the e2e saves kept in
- * memory: `handle(method, path, query, body)` answers `{ status, body }`, or undefined for a
- * path it leaves to `ownerFixtures` (the form's lists and the fixture dives).
+ * The Shearwater Cloud export the stub "reads": computer start, depth, minutes, status and the
+ * server's `selected`. 117 is new but older than 118, the newest dive the log has, so it is not
+ * selected; 123 starts 10 minutes after 122 surfaced.
  */
-/** The Shearwater Cloud export the stub "reads": computer start, depth, minutes, status. */
 const CLOUD_DIVES = [
-  [118, '2026-10-16T09:05:00', 24.3, 52, 'have'],
-  [119, '2026-10-16T13:40:00', 18.6, 61, 'attach'],
-  [120, '2026-10-17T08:55:00', 0, 0, 'error'],
-  [121, '2026-10-17T14:10:00', 31.2, 47, 'new'],
-  [122, '2026-10-18T09:20:00', 27.8, 55, 'new'],
+  [117, '2026-10-15T10:30:00', 19.4, 44, 'new', false],
+  [118, '2026-10-16T09:05:00', 24.3, 52, 'have', false],
+  [119, '2026-10-16T13:40:00', 18.6, 61, 'attach', true],
+  [120, '2026-10-17T08:55:00', 0, 0, 'error', false],
+  [121, '2026-10-17T14:10:00', 31.2, 47, 'new', true],
+  [122, '2026-10-18T09:20:00', 27.8, 55, 'new', true],
+  [123, '2026-10-18T10:25:00', 8.4, 14, 'new', true],
+];
+
+/** Log dives without a profile on the export's days: the candidates of its new dives. */
+const CLOUD_CANDIDATES = [
+  { number: 2, date: '2026-10-17', time_in: '14:20', site: 'Slijk-Ewijk', max_depth_m: 9.5 },
+  { number: 1, date: '2026-10-17', time_in: '21:30', site: null, max_depth_m: 6.1 },
 ];
 
 /** `start` moved by `minutes`, both local ISO date-times without a zone. */
@@ -1048,10 +1055,34 @@ function shiftLocal(start, minutes) {
   return at.toISOString().slice(0, 19);
 }
 
+const minutesOf = (iso) => Date.parse(`${iso}Z`) / 60000;
+
+/** The candidates of a new dive starting at `start`, nearest first, and the one to suggest. */
+function candidatesAt(start) {
+  const candidates = CLOUD_CANDIDATES.filter((c) => c.date === start.slice(0, 10))
+    .map((c) => ({
+      ...c,
+      minutes_apart: Math.round(
+        Math.abs(minutesOf(`${c.date}T${c.time_in}:00`) - minutesOf(start)),
+      ),
+    }))
+    .sort((a, b) => a.minutes_apart - b.minutes_apart || a.number - b.number);
+  const [near, next] = candidates;
+  const suggested =
+    candidates.length === 1 ||
+    (near && near.minutes_apart <= 60 && next.minutes_apart >= 2 * near.minutes_apart)
+      ? near.number
+      : null;
+  return { candidates, suggested };
+}
+
 /**
- * `POST /admin/import/shearwater-cloud` from its query alone (the upload is not read): five
- * dives, two new, one attaching a profile to dive 3, one logged and one unreadable; `only`
- * picks among the new and attach ones, `clock_offset_min` moves the starts.
+ * `POST /admin/import/shearwater-cloud` from its query alone (the upload is not read): seven
+ * dives, four new (one older than the log's newest), one attaching a profile to dive 3, one
+ * logged and one unreadable. `only` picks among the new and attach ones, `clock_offset_min` moves
+ * the starts and with them the candidates, `link` (`121:2`) attaches a new dive to a log dive and
+ * `join` (`122+123`) makes one dive of several, its first row carrying the merged values and the
+ * others `joined_to`.
  */
 export function cloudImport(query, nextNumber) {
   const offset = Number(query.get('clock_offset_min') ?? 0);
@@ -1062,28 +1093,72 @@ export function cloudImport(query, nextNumber) {
     ];
   const dryRun = query.get('dry_run') === 'true';
   const only = query.get('only')?.split(',').map(Number);
+  const links = new Map(
+    (query.get('link') ?? '')
+      .split(',')
+      .filter(Boolean)
+      .map((pair) => pair.split(':').map(Number)),
+  );
+  const groups = (query.get('join') ?? '')
+    .split(',')
+    .filter(Boolean)
+    .map((group) => group.split('+').map(Number));
+  const dives = CLOUD_DIVES.map(([n, computerStart, depth, minutes, status, selected], i) => {
+    const start = shiftLocal(computerStart, offset);
+    const before = CLOUD_DIVES[i - 1];
+    const sameDay = before && shiftLocal(before[1], offset).slice(0, 10) === start.slice(0, 10);
+    return {
+      computer_no: n,
+      serial: '344FDE85',
+      model: 'Perdix AI',
+      start,
+      computer_start: computerStart,
+      max_depth_m: depth,
+      duration_min: minutes,
+      status,
+      dive_number: status === 'have' ? 2 : status === 'attach' ? 3 : null,
+      error: status === 'error' ? 'Log 120 ends early' : null,
+      selected,
+      ...(status === 'new' ? candidatesAt(start) : { candidates: [], suggested: null }),
+      surface_before_min: sameDay
+        ? Math.round(minutesOf(start) - minutesOf(shiftLocal(before[1], offset)) - before[3])
+        : null,
+      joined_to: null,
+    };
+  });
+  const byNo = new Map(dives.map((d) => [d.computer_no, d]));
+  for (const [n, target] of links) {
+    const d = byNo.get(n);
+    if (d?.status !== 'new') return [400, { detail: `Cannot link #${n}: not a new dive` }];
+    Object.assign(d, { status: 'attach', dive_number: target, candidates: [], suggested: null });
+  }
+  for (const [first, ...rest] of groups) {
+    const head = byNo.get(first);
+    const members = rest.map((n) => byNo.get(n));
+    head.max_depth_m = Math.max(head.max_depth_m, ...members.map((m) => m.max_depth_m));
+    head.duration_min += members.reduce((sum, m) => sum + m.duration_min, 0);
+    for (const m of members) m.joined_to = first;
+  }
+  const picked = (d) => !only || only.includes(d.joined_to ?? d.computer_no);
   let number = nextNumber;
-  const dives = CLOUD_DIVES.map(([n, computerStart, depth, minutes, status]) => ({
-    computer_no: n,
-    serial: '344FDE85',
-    model: 'Perdix AI',
-    start: shiftLocal(computerStart, offset),
-    computer_start: computerStart,
-    max_depth_m: depth,
-    duration_min: minutes,
-    status,
-    dive_number: status === 'have' ? 2 : status === 'attach' ? 3 : null,
-    error: status === 'error' ? 'Log 120 ends early' : null,
-  }));
-  const picked = (d) => !only || only.includes(d.computer_no);
-  for (const d of dives) if (d.status === 'new' && picked(d)) d.dive_number = number++;
+  for (const d of dives)
+    if (d.status === 'new' && d.joined_to === null && picked(d)) d.dive_number = number++;
+  for (const d of dives)
+    if (d.joined_to !== null) {
+      const head = byNo.get(d.joined_to);
+      Object.assign(d, { status: head.status, dive_number: head.dive_number });
+    }
+  const imported = (status) =>
+    dives
+      .filter((d) => d.status === status && d.joined_to === null && picked(d))
+      .map((d) => d.dive_number);
   const starts = dives.map((d) => d.start.slice(0, 10));
   return [
     200,
     {
       import_id: dryRun ? '' : 'cloud-e2e',
-      created: dives.filter((d) => d.status === 'new' && picked(d)).map((d) => d.dive_number),
-      updated: dives.filter((d) => d.status === 'attach' && picked(d)).map((d) => d.dive_number),
+      created: imported('new'),
+      updated: imported('attach'),
       skipped: dives.filter((d) => d.status === 'have').length,
       sites_created: 0,
       sites_matched: 0,
@@ -1097,6 +1172,11 @@ export function cloudImport(query, nextNumber) {
   ];
 }
 
+/**
+ * The owner's dive editor endpoints over the fixture log, with dives the e2e saves kept in
+ * memory: `handle(method, path, query, body)` answers `{ status, body }`, or undefined for a
+ * path it leaves to `ownerFixtures` (the form's lists and the fixture dives).
+ */
 export function ownerEditor() {
   const saved = new Map();
   const all = () => {

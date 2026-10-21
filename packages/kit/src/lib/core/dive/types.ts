@@ -245,6 +245,9 @@ export type ImportResult = Schemas['ImportResult'];
 /** One dive of a Shearwater Cloud export: new, attaching a profile, already logged, or unreadable. */
 export type ImportDive = Schemas['ImportDiveOut'];
 
+/** A log dive a new computer dive may belong to: same day, no profile from this computer yet. */
+export type ImportCandidate = Schemas['ImportCandidateOut'];
+
 /** One imported site: matched to a site in the log or the commons, or created as personal. */
 export type ImportSite = Schemas['ImportSiteOut'];
 

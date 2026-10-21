@@ -140,7 +140,12 @@
         >{data.drafts} draft{data.drafts === 1 ? '' : 's'}</a
       >{/if}
   </h1>
-  <a class="dl-btn dl-btn-solid dl-btn-sm" href={urls.admin.newDive()}>New dive</a>
+  <div class="head-actions">
+    <a class="dl-btn dl-btn-ghost dl-btn-sm" href={`${urls.admin.import()}#shearwater-cloud`}
+      >Import from Shearwater</a
+    >
+    <a class="dl-btn dl-btn-solid dl-btn-sm" href={urls.admin.newDive()}>New dive</a>
+  </div>
 </div>
 
 <div class="toolbar">
@@ -316,6 +321,11 @@
   }
   .head h1 {
     margin-bottom: 0;
+  }
+  .head-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--dl-space-2);
   }
   .count {
     font-size: var(--dl-text-xl);

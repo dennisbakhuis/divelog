@@ -93,6 +93,16 @@ afterEach(() => {
 });
 
 describe('AdminDiveNewPage', () => {
+  it('offers the Shearwater import beside the heading, as a secondary link', () => {
+    const { target, app } = render(8);
+    const link = target.querySelector<HTMLAnchorElement>('.head a')!;
+    expect(link.textContent?.trim()).toBe('Import from Shearwater');
+    expect(link.getAttribute('href')).toBe('/admin/import#shearwater-cloud');
+    expect(link.classList.contains('dl-btn-ghost')).toBe(true);
+    expect(link.previousElementSibling?.textContent).toBe('New dive');
+    unmount(app);
+  });
+
   it('starts a blank form after every Save & new, also on the same link', async () => {
     const { target, app, props } = render(8);
     let next = 8;

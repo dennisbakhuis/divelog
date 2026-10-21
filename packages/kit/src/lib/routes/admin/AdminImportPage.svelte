@@ -1,15 +1,20 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import type { AdminDataFor } from '../admin';
   import { invalidateAll } from '$app/navigation';
   import { adminUpload, adminUploadMany, AdminApiError } from '$lib/core/admin/client';
   import { importLines } from '$lib/core/admin/dive-list';
   import {
     CLOUD_EXPORT_HELP,
+    carryChoices,
     carryTicks,
+    chooseRow,
     cloudErrorMessage,
     cloudFields,
     cloudLines,
+    cloudSections,
+    joinParam,
+    linkParam,
     nothingNew,
     onlyParam,
     parseClockOffset,
@@ -18,12 +23,16 @@
     selectionLine,
     setTick,
     tickedCount,
+    viewRows,
+    type CloudChoices,
     type CloudPreview,
+    type CloudRowView,
   } from '$lib/core/admin/cloud-import';
   import { getDivelog } from '$lib/core/dive/context';
   import type { ImportResult } from '$lib/core/dive/types';
   import { announce } from '$lib/core/ui/announce.js';
   import ImportSites from '$lib/components/admin/ImportSites.svelte';
+  import Disclosure from '$lib/components/ui/Disclosure.svelte';
   import Field from '$lib/components/ui/Field.svelte';
 
   const { urls } = getDivelog();
@@ -37,6 +46,7 @@
     cloud: 'Shearwater Cloud export',
   };
   const OFFSET_DELAY_MS = 500;
+  const CLOUD_HASH = '#shearwater-cloud';
 
   let busy = $state(false);
   let pending = $state<{ format: Format; files: File[] } | null>(null);
@@ -47,6 +57,9 @@
 
   let cloud = $state<CloudPreview | null>(null);
   let ticked = $state<number[]>([]);
+  let choices = $state<CloudChoices>({});
+  let cloudInput = $state<HTMLInputElement>();
+  let cloudCard = $state<HTMLElement>();
   let offsetText = $state('');
   let offsetMin = $state(0);
   let offsetError = $state('');
@@ -54,16 +67,35 @@
   let offsetTimer: ReturnType<typeof setTimeout> | undefined;
   let runs = 0;
   const offsetDirty = $derived(parseClockOffset(offsetText) !== offsetMin);
+  const cloudViews = $derived(cloud ? cloudSections(viewRows(cloud.rows, choices)) : null);
 
   $effect(() => () => clearTimeout(offsetTimer));
 
+  onMount(() => {
+    if (location.hash !== CLOUD_HASH) return;
+    cloudInput?.focus({ preventScroll: true });
+    cloudCard?.scrollIntoView({ block: 'start' });
+  });
+
+  /** The dry run sends the file and the offset; the commit adds the ticks, links and joins. */
   function sendCloud(file: File, dryRun: boolean, clockOffsetMin: number): Promise<ImportResult> {
-    const only = !dryRun && cloud ? onlyParam(cloud.rows, ticked) : undefined;
+    const rows = !dryRun && cloud ? cloud.rows : null;
     return adminUpload<ImportResult>(
       '/admin/import/shearwater-cloud',
       file,
-      cloudFields({ dryRun, only, clockOffsetMin }),
+      cloudFields({
+        dryRun,
+        only: rows ? onlyParam(rows, ticked, choices) : undefined,
+        link: rows ? linkParam(rows, choices) : undefined,
+        join: rows ? joinParam(rows, choices) : undefined,
+        clockOffsetMin,
+      }),
     );
+  }
+
+  function pick(row: number, value: string) {
+    if (!cloud) return;
+    ({ choices, ticked } = chooseRow(cloud.rows, choices, ticked, row, value));
   }
 
   function send(format: Format, files: File[], dryRun: boolean): Promise<ImportResult> {
@@ -142,6 +174,7 @@
     runs++;
     cloud = null;
     ticked = [];
+    choices = {};
     offsetText = '';
     offsetMin = 0;
     offsetError = '';
@@ -159,6 +192,7 @@
       if (run !== runs || !cloud) return;
       const rows = previewRows(next);
       ticked = carryTicks(rows.rows, cloud.rows, ticked);
+      choices = carryChoices(rows.rows, choices);
       cloud = rows;
       preview = next;
       offsetMin = min;
@@ -193,9 +227,10 @@
 </p>
 
 <div class="drops">
-  <div class="cloud">
+  <div class="cloud" id="shearwater-cloud" bind:this={cloudCard}>
     <label class="drop dl-card" class:disabled={busy}>
       <input
+        bind:this={cloudInput}
         type="file"
         class="dl-visually-hidden"
         aria-describedby="dl-cloud-steps"
@@ -288,7 +323,7 @@
         class="dl-btn dl-btn-solid dl-btn-sm"
         disabled={busy ||
           (cloud
-            ? checking || offsetDirty || !tickedCount(cloud.rows, ticked)
+            ? checking || offsetDirty || !tickedCount(cloud.rows, ticked, choices)
             : !preview.created.length && !preview.updated.length)}
         onclick={commit}>Import</button
       >
@@ -331,37 +366,41 @@
   </Field>
   {#if nothingNew(view)}
     <p class="empty"><strong>Nothing new to import.</strong></p>
-  {:else}
-    <fieldset class="dives">
-      <legend>Dives to import</legend>
-      <p class="muted">{selectionLine(view, ticked)}</p>
-      <ul class="dive-list">
-        {#each view.rows.filter((r) => r.eligible) as row (row.key)}
-          <li>
-            <label class="dive-row">
-              <input
-                type="checkbox"
-                checked={ticked.includes(row.computerNo)}
-                disabled={busy}
-                onchange={(e) =>
-                  (ticked = setTick(ticked, row.computerNo, e.currentTarget.checked))}
-              />
-              <span class="dive-text">
-                <strong>{row.title}</strong>
-                <span>{row.when}</span>
-                <span>{row.facts}</span>
-                <span class="outcome {row.status}">{row.outcome}</span>
-              </span>
-            </label>
-          </li>
-        {/each}
-      </ul>
-    </fieldset>
+  {:else if cloudViews}
+    <p class="muted">{selectionLine(view, ticked, choices)}</p>
+    {#if cloudViews.current.length}
+      <fieldset class="dives">
+        <legend>Dives to import</legend>
+        <ul class="dive-list">
+          {#each cloudViews.current as row (row.row.key)}{@render diveRow(row)}{/each}
+        </ul>
+      </fieldset>
+    {:else}
+      <p class="empty">No dives after the newest one the log has from this computer.</p>
+    {/if}
+    {#if cloudViews.older.length}
+      <Disclosure
+        summary="Older dives not in your log"
+        count={cloudViews.older.length}
+        class="older"
+      >
+        <fieldset class="dives">
+          <legend class="dl-visually-hidden">Older dives not in your log</legend>
+          <p class="muted">
+            These are older than the newest dive the log has from this computer. Tick the ones you
+            want.
+          </p>
+          <ul class="dive-list">
+            {#each cloudViews.older as row (row.row.key)}{@render diveRow(row)}{/each}
+          </ul>
+        </fieldset>
+      </Disclosure>
+    {/if}
   {/if}
-  {#if view.rows.some((r) => !r.eligible)}
+  {#if cloudViews?.broken.length}
     <p class="muted">Could not be read, not imported:</p>
     <ul class="dive-list">
-      {#each view.rows.filter((r) => !r.eligible) as row (row.key)}
+      {#each cloudViews.broken as row (row.row.key)}
         <li class="dive-row">
           <span class="dive-text">
             <strong>{row.title}</strong>
@@ -372,6 +411,50 @@
       {/each}
     </ul>
   {/if}
+{/snippet}
+
+{#snippet diveText(view: CloudRowView)}
+  <span class="dive-text">
+    <strong id="dl-cloud-{view.row.key}">{view.title}</strong>
+    <span>{view.when}</span>
+    <span>{view.facts}</span>
+    <span class="outcome {view.joinedTo === null ? view.row.status : ''}">{view.outcome}</span>
+  </span>
+{/snippet}
+
+{#snippet diveRow(view: CloudRowView)}
+  <li class="dive-item">
+    {#if view.joinedTo === null}
+      <label class="dive-row">
+        <input
+          type="checkbox"
+          checked={ticked.includes(view.row.computerNo)}
+          disabled={busy}
+          onchange={(e) => (ticked = setTick(ticked, view.row.computerNo, e.currentTarget.checked))}
+        />
+        {@render diveText(view)}
+      </label>
+    {:else}
+      <div class="dive-row joined">{@render diveText(view)}</div>
+    {/if}
+    {#if view.options.length > 1}
+      <Field label="Belongs to" describedby="dl-cloud-{view.row.key}" class="belongs">
+        {#snippet children(control)}
+          <select
+            {...control}
+            class="dl-select"
+            disabled={busy}
+            value={view.value}
+            onchange={(e) => pick(view.row.computerNo, e.currentTarget.value)}
+          >
+            {#each view.options as option (option.value)}
+              <option value={option.value}>{option.label}</option>
+            {/each}
+          </select>
+        {/snippet}
+      </Field>
+    {/if}
+  </li>
 {/snippet}
 
 {#if result}
@@ -521,6 +604,19 @@
   .dive-row input {
     margin-top: 3px;
     flex: none;
+  }
+  .dive-row.joined {
+    padding-left: calc(1em + 10px);
+  }
+  .dive-item :global(.belongs) {
+    margin: 0 0 10px calc(1em + 10px);
+    max-width: 32rem;
+  }
+  .dive-item :global(.belongs select) {
+    width: 100%;
+  }
+  .summary :global(.older) {
+    margin: 4px 0 10px;
   }
   .dive-text {
     display: flex;

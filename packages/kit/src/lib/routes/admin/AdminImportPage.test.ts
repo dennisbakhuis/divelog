@@ -202,11 +202,22 @@ describe('AdminImportPage', () => {
         status: 'new',
         dive_number: 651,
         error: null,
+        selected: true,
+        candidates: [],
+        suggested: null,
+        surface_before_min: null,
+        joined_to: null,
         ...overrides,
       };
     }
 
-    /** The stub's export: 674 and 673 new, 671 attaches, 670 is logged, 672 is unreadable. */
+    let rich = false;
+
+    /**
+     * The stub's export: 674 and 673 new, 671 attaches, 670 is logged, 672 is unreadable. With
+     * `rich`, 673 has two candidates and a suggestion, 675 may join 674, and 669 is an older new
+     * dive the server leaves unticked.
+     */
     function exportReport(url: URL): ImportResult {
       const offset = Number(url.searchParams.get('clock_offset_min') ?? 0);
       const shift = (iso: string) => {
@@ -238,6 +249,48 @@ describe('AdminImportPage', () => {
         cloudDive({ computer_no: 673, ...at('2026-08-07T14:00:00'), dive_number: 651 }),
         cloudDive({ computer_no: 674, ...at('2026-08-08T07:44:48'), dive_number: 652 }),
       ];
+      if (rich) {
+        dives.unshift(
+          cloudDive({
+            computer_no: 669,
+            ...at('2026-08-05T10:00:00'),
+            dive_number: 650,
+            selected: false,
+          }),
+        );
+        dives[4] = {
+          ...dives[4],
+          candidates: [
+            {
+              number: 660,
+              date: '2026-08-07',
+              time_in: '14:05',
+              site: 'Slijk-Ewijk',
+              max_depth_m: 9,
+              minutes_apart: 5,
+            },
+            {
+              number: 661,
+              date: '2026-08-07',
+              time_in: '09:00',
+              site: null,
+              max_depth_m: 4,
+              minutes_apart: 300,
+            },
+          ],
+          suggested: 660,
+        };
+        dives.push(
+          cloudDive({
+            computer_no: 675,
+            ...at('2026-08-08T08:50:00'),
+            max_depth_m: 6,
+            duration_min: 10,
+            dive_number: 653,
+            surface_before_min: 8,
+          }),
+        );
+      }
       const dry = url.searchParams.get('dry_run') === 'true';
       const only = url.searchParams.get('only')?.split(',').map(Number);
       const picked = (n: number) => !only || only.includes(n);
@@ -261,6 +314,7 @@ describe('AdminImportPage', () => {
     function stubCloud(
       answer: (url: URL) => Response = (url) => new Response(JSON.stringify(exportReport(url))),
     ) {
+      rich = false;
       cloudCalls.length = 0;
       vi.stubGlobal(
         'fetch',
@@ -315,7 +369,7 @@ describe('AdminImportPage', () => {
         'Perdix AI #671',
       ]);
       expect(boxes.every((b) => b.checked)).toBe(true);
-      expect(boxes[2].closest('label')!.textContent).toContain('profile for #641');
+      expect(boxes[2].closest('label')!.textContent).toContain('add profile to dive #641');
       expect(section.textContent).toContain("can't be read: unreadable log");
       expect(section.textContent).not.toContain('#670');
       const offset = offsetInput(target);
@@ -521,6 +575,153 @@ describe('AdminImportPage', () => {
         'The export is too large to upload.',
       );
       expect(target.querySelector('.preview')).not.toBeNull();
+      unmount(app);
+    });
+
+    const belongsTo = (target: HTMLElement, n: number) => {
+      const title = [...target.querySelectorAll('.preview strong')].find((s) =>
+        s.textContent?.startsWith(`Perdix AI #${n}`),
+      )!;
+      return title.closest('li')!.querySelector<HTMLSelectElement>('select');
+    };
+
+    function pick(select: HTMLSelectElement, value: string) {
+      select.value = value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      flushSync();
+    }
+
+    it('ticks what the server selected and keeps the older dives collapsed and unticked', async () => {
+      stubCloud();
+      rich = true;
+      const { target, app } = await preview();
+      const section = target.querySelector<HTMLElement>('.preview')!;
+      expect(section.textContent).toContain('4 of 5 dives selected');
+      const current = section.querySelector('fieldset')!;
+      const boxes = [...current.querySelectorAll<HTMLInputElement>('input[type=checkbox]')];
+      expect(boxes.map((b) => b.checked)).toEqual([true, true, true, true]);
+      const older = section.querySelector<HTMLDetailsElement>('details')!;
+      expect(older.open).toBe(false);
+      expect(older.querySelector('summary')!.textContent).toMatch(
+        /Older dives not in your log\s*1/,
+      );
+      const old = older.querySelector<HTMLInputElement>('input[type=checkbox]')!;
+      expect(old.closest('label')!.textContent).toContain('Perdix AI #669');
+      expect(old.checked).toBe(false);
+      old.click();
+      flushSync();
+      expect(section.textContent).toContain('5 of 5 dives selected');
+      unmount(app);
+    });
+
+    it('pre-fills Belongs to with the suggestion and links it on import', async () => {
+      stubCloud();
+      rich = true;
+      const { target, app } = await preview();
+      const select = belongsTo(target, 673)!;
+      const label = document.querySelector(`label[for="${select.id}"]`);
+      expect(label?.textContent).toContain('Belongs to');
+      expect(select.getAttribute('aria-describedby')).toContain('dl-cloud-344FDE85-673');
+      expect([...select.options].map((o) => o.textContent)).toEqual([
+        'New draft',
+        'Dive #660 · 14:05 · Slijk-Ewijk · 5 min apart',
+        'Dive #661 · 09:00 · 300 min apart',
+      ]);
+      expect(select.value).toBe('660');
+      expect(select.closest('li')!.textContent).toContain('add profile to dive #660');
+      expect(belongsTo(target, 671)).toBeNull();
+      importButton(target).click();
+      await settle();
+      expect(query(cloudCalls[1])).toEqual({ only: '671,673,674,675', link: '673:660' });
+      unmount(app);
+    });
+
+    it('drops a row set to New draft from the links', async () => {
+      stubCloud();
+      rich = true;
+      const { target, app } = await preview();
+      pick(belongsTo(target, 673)!, 'own');
+      expect(belongsTo(target, 673)!.closest('li')!.textContent).toContain('new draft #651');
+      importButton(target).click();
+      await settle();
+      expect(query(cloudCalls[1])).toEqual({ only: '671,673,674,675' });
+      unmount(app);
+    });
+
+    it('keeps the choices across a clock offset re-run', async () => {
+      stubCloud();
+      rich = true;
+      const { target, app } = await preview();
+      pick(belongsTo(target, 673)!, '661');
+      const offset = offsetInput(target);
+      typeOffset(offset, '+7 h');
+      offset.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await settle();
+      expect(query(cloudCalls[1])).toEqual({ dry_run: 'true', clock_offset_min: '420' });
+      expect(belongsTo(target, 673)!.value).toBe('661');
+      importButton(target).click();
+      await settle();
+      expect(query(cloudCalls[2])).toEqual({
+        only: '671,673,674,675',
+        link: '673:661',
+        clock_offset_min: '420',
+      });
+      unmount(app);
+    });
+
+    it('joins a dive to the one before it and imports them as one', async () => {
+      stubCloud();
+      rich = true;
+      const { target, app } = await preview();
+      const select = belongsTo(target, 675)!;
+      expect([...select.options].map((o) => o.textContent)).toEqual([
+        'New draft',
+        'Same dive as #674 (surfaced 8 min)',
+      ]);
+      target.querySelector<HTMLInputElement>('.preview input[type=checkbox]')!.click();
+      flushSync();
+      pick(select, 'join');
+      const section = target.querySelector<HTMLElement>('.preview')!;
+      const joined = belongsTo(target, 675)!.closest('li')!;
+      expect(joined.querySelector('input[type=checkbox]')).toBeNull();
+      expect(joined.textContent).toContain('same dive as #674');
+      const first = [...section.querySelectorAll('strong')].find(
+        (s) => s.textContent === 'Perdix AI #674 + #675, one dive',
+      )!;
+      const box = first.closest('label')!.querySelector<HTMLInputElement>('input')!;
+      expect(box.checked).toBe(true);
+      expect(first.closest('label')!.textContent).toContain('32.1 m, 68 min');
+      expect(section.textContent).toContain('3 of 4 dives selected');
+      importButton(target).click();
+      await settle();
+      expect(query(cloudCalls[1])).toEqual({
+        only: '671,673,674,675',
+        link: '673:660',
+        join: '674+675',
+      });
+      unmount(app);
+    });
+
+    it('focuses the export input when the page opens at #shearwater-cloud', () => {
+      const scroll = vi.fn();
+      Element.prototype.scrollIntoView = scroll;
+      location.hash = '#shearwater-cloud';
+      try {
+        const { target, app } = render();
+        const input = fileInput(target, 'Shearwater Cloud export');
+        expect(document.activeElement).toBe(input);
+        expect(input.closest('#shearwater-cloud')).not.toBeNull();
+        expect(scroll).toHaveBeenCalledWith({ block: 'start' });
+        unmount(app);
+      } finally {
+        location.hash = '';
+        delete (Element.prototype as Partial<Element>).scrollIntoView;
+      }
+    });
+
+    it('leaves the focus alone without the hash', () => {
+      const { target, app } = render();
+      expect(document.activeElement).not.toBe(fileInput(target, 'Shearwater Cloud export'));
       unmount(app);
     });
   });

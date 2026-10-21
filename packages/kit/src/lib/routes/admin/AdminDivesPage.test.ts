@@ -136,6 +136,10 @@ describe('AdminDivesPage', () => {
       '/dive/12',
     ]);
     expect(target.querySelector('a[href="/admin/dives/new"]')?.textContent).toContain('New dive');
+    const shearwater = target.querySelector('a[href="/admin/import#shearwater-cloud"]')!;
+    expect(shearwater.textContent?.trim()).toBe('Import from Shearwater');
+    expect(shearwater.classList.contains('dl-btn-ghost')).toBe(true);
+    expect(shearwater.nextElementSibling?.getAttribute('href')).toBe('/admin/dives/new');
     expect(target.querySelector('[role=status]')?.textContent).toContain('Showing 3 of 250');
     unmount(app);
   });
