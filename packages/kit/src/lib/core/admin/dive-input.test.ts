@@ -24,6 +24,10 @@ import {
   filledCount,
   formatInterval,
   inputFromDiveIn,
+  isBlankTank,
+  isEmptyAnnotation,
+  normalizeInterval,
+  timeOutBeforeIn,
   isBlank,
   minutesOf,
   orderedErrors,
@@ -471,7 +475,8 @@ describe('tanks', () => {
     const { emptyDiveInput, emptyTank, formPayload } = await import('./dive-input.js');
     const form = emptyDiveInput(1);
     const typed = { ...emptyTank('back'), pressure_in_bar: '200', pressure_out_bar: '' };
-    form.tanks = [typed, { ...emptyTank('deco'), cylinder: '  ' }] as unknown as Tank[];
+    const blank = { ...emptyTank('deco'), cylinder: '  ', volume_l: null };
+    form.tanks = [typed, blank] as unknown as Tank[];
     const payload = formPayload(form, '');
     expect(payload.tanks).toHaveLength(1);
     expect(payload.tanks[0].pressure_in_bar).toBe(200);
@@ -497,5 +502,93 @@ describe('presetsFor', () => {
     expect(presets.tags).toEqual(['reef']);
     expect(presets.cylinders).toEqual([{ name: 'AL80', volume_l: 11.1 }]);
     expect(presets.gases).toBe(STANDARD_GASES);
+  });
+});
+
+describe('tank rows without a cylinder', () => {
+  it('keeps a filled row and asks for its cylinder, so its pressures are never dropped', () => {
+    const form = { ...emptyDiveInput(1), duration_min: 40, max_depth_m: 12 };
+    const filled = { ...emptyTank('back'), cylinder: '', pressure_in_bar: 200 };
+    const blank = { ...emptyTank('stage'), cylinder: ' ', volume_l: null };
+    form.tanks = [blank, filled];
+    expect(isBlankTank(blank)).toBe(true);
+    expect(isBlankTank(filled)).toBe(false);
+    expect(validateEssentials(form)).toEqual({ 'tanks.1.cylinder': 'Cylinder required' });
+    expect(cleanInput(form).tanks).toEqual([{ ...filled, cylinder: '' }]);
+  });
+
+  it('asks for the cylinder of an old dive whose single-line gas had none', async () => {
+    const { legacyTanks } = await import('./dive-input.js');
+    const tanks = legacyTanks({
+      cylinder: null,
+      gas: 'air',
+      o2_pct: null,
+      o2_measured_pct: null,
+      he_pct: null,
+      pressure_in_bar: 210,
+      pressure_out_bar: 60,
+    });
+    const form = { ...emptyDiveInput(1), duration_min: 40, max_depth_m: 12, tanks };
+    expect(validateEssentials(form)).toHaveProperty(['tanks.0.cylinder']);
+  });
+});
+
+describe('time out before time in', () => {
+  it('derives no duration from a wrap of more than six hours, and flags time out', () => {
+    expect(durationFromTimes('10:00', '09:00')).toBeNull();
+    expect(durationFromTimes('22:30', '01:00')).toBe(150);
+    expect(timeOutBeforeIn('10:00', '09:00')).toBe(true);
+    expect(timeOutBeforeIn('22:30', '01:00')).toBe(false);
+    expect(timeOutBeforeIn('10:00', null)).toBe(false);
+    const form = { ...emptyDiveInput(1), duration_min: 40, max_depth_m: 12 };
+    expect(validateEssentials({ ...form, time_in: '10:00', time_out: '09:10' })).toEqual({
+      time_out: 'Time out is before time in',
+    });
+  });
+});
+
+describe('surface interval typing', () => {
+  it('writes the phone keypad forms as H:MM and leaves anything else as typed', () => {
+    expect(normalizeInterval('1.15')).toBe('1:15');
+    expect(normalizeInterval('1,05')).toBe('1:05');
+    expect(normalizeInterval(' 2h30 ')).toBe('2:30');
+    expect(normalizeInterval('0 45')).toBe('0:45');
+    expect(normalizeInterval('01:15')).toBe('1:15');
+    expect(normalizeInterval('1.75')).toBe('1.75');
+    expect(normalizeInterval('overnight')).toBe('overnight');
+    expect(normalizeInterval(null)).toBeNull();
+  });
+});
+
+describe('empty map annotations', () => {
+  const annotation = {
+    map_id: 'm1',
+    revision: 3,
+    route: [],
+    turn: null,
+    pins: [],
+    path: [],
+    turn_at: null,
+    note: ' ',
+  };
+
+  it('saves an annotation that marks nothing as none', () => {
+    expect(isEmptyAnnotation(annotation)).toBe(true);
+    expect(isEmptyAnnotation(null)).toBe(true);
+    const form = { ...emptyDiveInput(1), map_annotation: annotation };
+    expect(cleanInput(form).map_annotation).toBeNull();
+    expect(formSnapshot(form, '')).toBe(formSnapshot(emptyDiveInput(1), ''));
+  });
+
+  it('keeps a track, a route, a pin or a note', () => {
+    const track = { ...annotation, path: [{ x: 1, y: 2 }] };
+    expect(isEmptyAnnotation(track)).toBe(false);
+    expect(isEmptyAnnotation({ ...annotation, route: [{ from: 'a', to: 'b' }] })).toBe(false);
+    const pin = { id: 'p1', x: 0, y: 0, note: '' };
+    expect(isEmptyAnnotation({ ...annotation, pins: [pin] })).toBe(false);
+    expect(isEmptyAnnotation({ ...annotation, note: 'clear water' })).toBe(false);
+    expect(cleanInput({ ...emptyDiveInput(1), map_annotation: track }).map_annotation).toEqual(
+      track,
+    );
   });
 });

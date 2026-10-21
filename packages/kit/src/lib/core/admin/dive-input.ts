@@ -227,7 +227,7 @@ export function cleanInput(form: DiveInput): DiveInput {
     'pressure_out_bar',
   ] as const;
   out.tanks = (out.tanks as Tank[])
-    .filter((t) => t.cylinder.trim())
+    .filter((t) => !isBlankTank(t))
     .map((t) => {
       const tank: Record<string, unknown> = { ...t, cylinder: t.cylinder.trim() };
       for (const key of tankNumeric) {
@@ -236,7 +236,38 @@ export function cleanInput(form: DiveInput): DiveInput {
       }
       return tank as unknown as Tank;
     });
+  if (isEmptyAnnotation(out.map_annotation as DiveMapAnnotation | null)) out.map_annotation = null;
   return out as DiveInput;
+}
+
+function isEmptyValue(value: unknown): boolean {
+  return value === null || value === undefined || (typeof value === 'string' && !value.trim());
+}
+
+/**
+ * A tank row the owner never filled: no cylinder, volume or pressure. The gas and role
+ * always hold a value, so they do not count; such a row is left out of the save.
+ */
+export function isBlankTank(tank: Tank): boolean {
+  return (
+    isEmptyValue(tank.cylinder) &&
+    isEmptyValue(tank.volume_l) &&
+    isEmptyValue(tank.o2_measured_pct) &&
+    isEmptyValue(tank.pressure_in_bar) &&
+    isEmptyValue(tank.pressure_out_bar)
+  );
+}
+
+/** An annotation that marks nothing: no route, track, turn or pin, and no note. */
+export function isEmptyAnnotation(annotation: DiveMapAnnotation | null | undefined): boolean {
+  if (!annotation) return true;
+  return (
+    !annotation.route?.length &&
+    !annotation.path?.length &&
+    !annotation.pins?.length &&
+    !annotation.turn &&
+    !(annotation.note ?? '').trim()
+  );
 }
 
 /** Perdix dive numbers typed as free text, e.g. "457, 458". */
@@ -466,15 +497,44 @@ export function minutesOf(time: string | null | undefined): number | null {
   return h < 24 && min < 60 ? h * 60 + min : null;
 }
 
-/** Whole minutes from time in to time out; a dive past midnight ends the next day. */
+/** Longest dive past midnight; a time out further before the time in is a typing slip. */
+export const MAX_OVERNIGHT_MIN = 6 * 60;
+
+/** Whether time out lies before time in by more than a dive past midnight could explain. */
+export function timeOutBeforeIn(
+  timeIn: string | null | undefined,
+  timeOut: string | null | undefined,
+): boolean {
+  const start = minutesOf(timeIn);
+  const end = minutesOf(timeOut);
+  return start !== null && end !== null && end < start && end + 24 * 60 - start > MAX_OVERNIGHT_MIN;
+}
+
+/**
+ * Whole minutes from time in to time out; a dive past midnight ends the next day, up to
+ * six hours later. Null when a time is missing or time out lies before time in.
+ */
 export function durationFromTimes(
   timeIn: string | null | undefined,
   timeOut: string | null | undefined,
 ): number | null {
   const start = minutesOf(timeIn);
   const end = minutesOf(timeOut);
-  if (start === null || end === null || start === end) return null;
+  if (start === null || end === null || start === end || timeOutBeforeIn(timeIn, timeOut))
+    return null;
   return end > start ? end - start : end + 24 * 60 - start;
+}
+
+/**
+ * A surface interval as typed on a phone keypad, written the log's way: `1.15`, `1,15`,
+ * `1h15` and `1 15` become `1:15`. Anything else is returned as typed.
+ */
+export function normalizeInterval(text: string | null | undefined): string | null {
+  if (text === null || text === undefined) return null;
+  const value = text.trim();
+  const m = /^(\d{1,2})\s*[:.,h\s]\s*(\d{2})\s*m?$/i.exec(value);
+  if (!m || Number(m[2]) > 59) return value;
+  return `${Number(m[1])}:${m[2]}`;
 }
 
 function dayNumber(iso: string): number | null {
@@ -616,7 +676,8 @@ function asNumber(value: unknown): number | null {
 
 /**
  * What the form checks before it saves: the fields the API requires, so a dive with a
- * missing depth or duration is never sent (and never goes live half-filled).
+ * missing depth or duration is never sent (and never goes live half-filled), a time out
+ * before the time in, and a filled tank row without its cylinder.
  */
 export function validateEssentials(form: DiveInput): Record<string, string> {
   const errors: Record<string, string> = {};
@@ -630,6 +691,12 @@ export function validateEssentials(form: DiveInput): Record<string, string> {
   const depth = asNumber(form.max_depth_m);
   if (depth === null) errors.max_depth_m = 'Enter the maximum depth';
   else if (depth < 0) errors.max_depth_m = 'Depth cannot be negative';
+  if (timeOutBeforeIn(form.time_in, form.time_out))
+    errors.time_out = 'Time out is before time in';
+  form.tanks.forEach((tank, i) => {
+    if (!isBlankTank(tank) && isEmptyValue(tank.cylinder))
+      errors[`tanks.${i}.cylinder`] = 'Cylinder required';
+  });
   return errors;
 }
 
