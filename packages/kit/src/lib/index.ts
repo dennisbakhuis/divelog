@@ -1,7 +1,7 @@
 /**
  * The dive log's components: dive, map and admin building blocks, the owner
  * bar, toasts, the UI primitives (dialog, popover, tabs, combobox, field,
- * disclosure, toolbar, skip link, live region) and the motion helpers they share. Pure logic is in `./core`,
+ * disclosure, toolbar, signature pad, skip link, live region) and the motion helpers they share. Pure logic is in `./core`,
  * page components in `./routes`, server helpers in `./server`.
  */
 export { default as Charts } from './components/dive/Charts.svelte';
@@ -46,6 +46,7 @@ export { default as Disclosure } from './components/ui/Disclosure.svelte';
 export { default as Field, type FieldControlProps } from './components/ui/Field.svelte';
 export { default as LiveRegion } from './components/ui/LiveRegion.svelte';
 export { default as Popover, type PopoverTriggerProps } from './components/ui/Popover.svelte';
+export { default as SignaturePad } from './components/ui/SignaturePad.svelte';
 export { default as SkipLink } from './components/ui/SkipLink.svelte';
 export { default as Tabs, type TabItem } from './components/ui/Tabs.svelte';
 export { default as Toolbar, type ToolItem } from './components/ui/Toolbar.svelte';
