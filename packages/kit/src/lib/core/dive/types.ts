@@ -117,70 +117,44 @@ export type Tank = Schemas['TankOut'];
 
 export type DivePrivate = Schemas['DivePrivate'];
 
-/*
- * Buddy notes and sign requests are hand-written from the server contract until ./api.d.ts is
- * regenerated from a server that has them; they are optional on `Dive` and `DiveAdmin` so a
- * server without them still type-checks and loads.
- */
+/** A signature's strokes: polylines of integer `[x, y]` points in the 1000 × 400 box. */
+type Strokes = number[][][];
 
 /**
  * A buddy's note on a dive, signed through a mailed link: a comment, a drawn signature or
- * both. `strokes` are polylines of integer points in the 1000 × 400 signature box.
+ * both. The API types a point as a pair; the kit reads and draws plain number arrays.
  */
-export type BuddyNote = {
-  /** Slug of the buddy, one of the dive's people. */
-  person: string;
-  comment: string | null;
-  strokes: number[][][] | null;
-  /** ISO date-time of the signing. */
-  signed_at: string;
-  /** Shown on the public dive page; the buddy's choice, the owner may change it. */
-  public: boolean;
-};
+export type BuddyNote = Narrow<Schemas['BuddyNoteOut'], { strokes: Strokes | null }>;
 
 /** What the dive form sends per note: only `public` is the owner's to change. */
-export type BuddyNoteInput = Pick<BuddyNote, 'person' | 'public'>;
+export type BuddyNoteInput = Schemas['BuddyNoteIn'];
 
 /** Where the request to sign stands for one buddy; `signed` wins once a note exists. */
-export type SignRequestState = 'none' | 'open' | 'expired' | 'signed' | 'no_email';
+export type SignRequestState = Schemas['SignRequestOut']['state'];
 
 /** One buddy's sign request as the editor sees it, in the order of the dive's people. */
-export type SignRequest = {
-  person: string;
-  state: SignRequestState;
-  sent_at: string | null;
-  expires_at: string | null;
-  signed_at: string | null;
-};
+export type SignRequest = Schemas['SignRequestOut'];
 
 /** Why `POST /admin/dives/{n}/sign-requests` mailed a buddy nothing. */
-export type SignSkipReason = 'open' | 'expired' | 'signed' | 'no_email' | 'not_a_buddy';
+export type SignSkipReason = Schemas['SignSkip']['reason'];
 
 /** Body of `POST /admin/dives/{n}/sign-requests`; `resend` needs explicit `people`. */
-export type SignRequestsIn = { people: string[] | null; resend: boolean };
+export type SignRequestsIn = Required<Schemas['SignRequestsIn']>;
 
 /** `POST /admin/dives/{n}/sign-requests`: who was mailed, who not and why, the new states. */
-export type SignRequestsOut = {
-  sent: string[];
-  skipped: { person: string; reason: SignSkipReason }[];
-  sign_requests: SignRequest[];
-};
+export type SignRequestsOut = Schemas['SignRequestsOut'];
+
+/** The buddy a sign link belongs to. */
+export type Signer = Schemas['Signer'];
 
 /** `GET /dive/sign/{token}`: the dive as its public page shows it, for the buddy signing. */
-export type SignPage = {
-  state: 'open' | 'used';
-  signer: { slug: string; first_name: string };
-  expires_at: string;
-  note: BuddyNote | null;
-  dive: Dive;
-};
+export type SignPage = Narrow<Schemas['SignPageOut'], { note: BuddyNote | null; dive: Dive }>;
 
-/** Body of `POST /dive/sign/{token}`: at least one of comment and strokes. */
-export type SignIn = {
-  comment: string | null;
-  strokes: number[][][] | null;
-  public: boolean;
-};
+/**
+ * Body of `POST /dive/sign/{token}`: at least one of comment and strokes. Hand-narrowed: the
+ * pad records plain number arrays, which the API reads as its point pairs.
+ */
+export type SignIn = { comment: string | null; strokes: Strokes | null; public: boolean };
 
 /** Overrides shared by `Dive` and `DiveAdmin`: narrowed literals and narrowed nested records. */
 type DiveNarrowing = {

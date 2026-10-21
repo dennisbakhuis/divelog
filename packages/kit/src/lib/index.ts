@@ -21,6 +21,7 @@ export { default as MapKey } from './components/dive/MapKey.svelte';
 export { default as MapLegend } from './components/dive/MapLegend.svelte';
 export { default as MapOptions } from './components/dive/MapOptions.svelte';
 export { default as MapPanel } from './components/dive/MapPanel.svelte';
+export { default as SignBox } from './components/dive/SignBox.svelte';
 export { default as SiteLocatorMap } from './components/dive/SiteLocatorMap.svelte';
 export { default as SiteMapThumb } from './components/dive/SiteMapThumb.svelte';
 export { default as SiteMapView } from './components/dive/SiteMapView.svelte';

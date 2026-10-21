@@ -1,5 +1,6 @@
 /** Pure dive log logic: config and URLs, API types, view models, map geometry, admin client. */
 export * from './dive/back.js';
+export * from './dive/buddy-notes.js';
 export * from './dive/charts-view.js';
 export * from './dive/config.js';
 export * from './dive/context.js';

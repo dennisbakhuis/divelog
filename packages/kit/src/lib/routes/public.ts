@@ -3,8 +3,9 @@
  * only: the loaders project the world map, so page components import just
  * the data types from here.
  */
-import { error } from '@sveltejs/kit';
+import { error, type RequestEvent } from '@sveltejs/kit';
 import type {
+  BuddyNote,
   Dive,
   DiveEnvelope,
   DiveStats,
@@ -13,6 +14,8 @@ import type {
   Person,
   PersonDetail,
   Region,
+  SignPage,
+  Signer,
   Site,
   SiteDetail,
   TripDetail,
@@ -29,6 +32,8 @@ import {
   spherePath,
 } from '$lib/core/map/world.js';
 import { defineRedirect, defineRoute, type PageOwner } from './table.js';
+import { ApiError } from '../server/api.js';
+import type { Divelog } from '../server/divelog.js';
 
 export type Dot = MapSite & { point: { x: number; y: number } };
 
@@ -141,14 +146,64 @@ export const logRoute = defineRoute({
   },
 });
 
+/**
+ * A dive page opened from a buddy's mailed sign link (`?sign=<token>`): the link is open (the
+ * sign box shows) or used (the buddy signed), or it no longer works (`expired`, also for an
+ * unknown token). `number` is the dive the link belongs to.
+ */
+export type DiveSigning =
+  | {
+      state: 'open' | 'used';
+      number: number;
+      token: string;
+      signer: Signer;
+      expires_at: string;
+      note: BuddyNote | null;
+    }
+  | { state: 'expired'; number: number };
+
+/** The sign page behind a token; `gone` when it expired or never existed, null on any other failure. */
+async function signPageOf(
+  divelog: Divelog,
+  event: RequestEvent,
+  token: string,
+): Promise<SignPage | 'gone' | null> {
+  try {
+    return await divelog.api<SignPage>(
+      event.fetch,
+      divelog.urls.api(`/dive/sign/${encodeURIComponent(token)}`),
+    );
+  } catch (err) {
+    if (err instanceof ApiError && (err.status === 410 || err.status === 404)) return 'gone';
+    return null;
+  }
+}
+
+type DiveData = { dive: Dive; editHref: string; signing: DiveSigning | null };
+
 export const diveRoute = defineRoute({
   page: 'dive',
   pattern: /^(\d+)$/,
-  load: async (divelog, [n], event) => {
+  load: async (divelog, [n], event): Promise<DiveData> => {
     const number = Number(n);
     if (!Number.isInteger(number) || number < 1) error(404, 'Dive not found');
+    const editHref = divelog.urls.admin.dive(number);
+    const token = event.url.searchParams.get('sign');
+    let signing: DiveSigning | null = null;
+    if (token) {
+      event.setHeaders({
+        'cache-control': 'private, no-store',
+        'x-robots-tag': 'noindex, nofollow',
+      });
+      const page = await signPageOf(divelog, event, token);
+      if (page === 'gone') signing = { state: 'expired', number };
+      else if (page && page.dive.number === number) {
+        const { dive, ...rest } = page;
+        return { dive, editHref, signing: { ...rest, number, token } };
+      }
+    }
     const dive = await divelog.apiOrError<Dive>(event, divelog.urls.api(`/dive/dives/${number}`));
-    return { dive, editHref: divelog.urls.admin.dive(dive.number) };
+    return { dive, editHref, signing };
   },
   meta: ({ dive }, divelog) => ({
     title: `Dive #${dive.number}${dive.title ? ` — ${dive.title}` : ''} — ${titleSuffix(divelog.config)}`,

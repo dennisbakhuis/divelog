@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
+  import { replaceState } from '$app/navigation';
+  import { page } from '$app/state';
   import type { PublicDataFor } from '../public';
   import {
     flagEmoji,
@@ -11,7 +14,8 @@
     ordinal,
     pluralize,
   } from '$lib/core/dive/format';
-  import type { Attachment, Dive } from '$lib/core/dive/types';
+  import type { Attachment, BuddyNote, Dive } from '$lib/core/dive/types';
+  import SignBox from '$lib/components/dive/SignBox.svelte';
   import DiveFacts from '$lib/components/dive/DiveFacts.svelte';
   import DiveProfile from '$lib/components/dive/DiveProfile.svelte';
   import Gallery from '$lib/components/dive/Gallery.svelte';
@@ -38,12 +42,48 @@
   import { getDivelog } from '$lib/core/dive/context';
   import { followWithState, gotoWithState } from '$lib/components/dive/follow';
 
-  const { urls } = getDivelog();
+  const { config, urls } = getDivelog();
 
   const MAX_FACT_PILLS = 3;
 
   let { data }: { data: PublicDataFor<'dive'> } = $props();
   const dive = $derived(data.dive);
+
+  /** The mailed sign link this page was opened from, when it belongs to this dive. */
+  const signing = $derived(data.signing?.number === data.dive.number ? data.signing : null);
+  /** The note signed on this page, by the token it was signed with. */
+  let signedHere = $state<{ token: string; note: BuddyNote } | null>(null);
+  const ownNote = $derived(
+    signing && signing.state !== 'expired'
+      ? signedHere?.token === signing.token
+        ? signedHere.note
+        : signing.note
+      : null,
+  );
+
+  /**
+   * Once the page shows, the address bar loses the token: it stays out of the analytics path,
+   * of links copied from the page and of the history; the page keeps it in its state. A reload
+   * is the plain dive page, and the mailed link still works.
+   */
+  $effect(() => {
+    if (!signing) return;
+    untrack(() => {
+      const url = new URL(page.url);
+      if (!url.searchParams.has('sign')) return;
+      url.searchParams.delete('sign');
+      const plain = `${url.pathname}${url.search}${url.hash}`;
+      const state = {
+        ...page.state,
+        ...(signing.state === 'expired' ? {} : { sign: signing.token }),
+      } as Parameters<typeof replaceState>[1];
+      try {
+        replaceState(plain, state);
+      } catch {
+        history.replaceState(history.state, '', plain);
+      }
+    });
+  });
   const photos = $derived(dive.attachments.filter((a) => a.kind === 'photo'));
   const scans = $derived(dive.attachments.filter((a) => a.kind === 'scan'));
   const maps = $derived(dive.attachments.filter((a) => a.kind === 'map'));
@@ -195,6 +235,10 @@
 
 <svelte:window onkeydown={onPagerKey} />
 
+<svelte:head>
+  {#if signing}<meta name="robots" content="noindex, nofollow" />{/if}
+</svelte:head>
+
 <article class="dive dl-container dl-detail">
   <DetailTop
     back={{ href: urls.log(), label: 'Dive log' }}
@@ -268,6 +312,18 @@
       </p>
     {/if}
   </header>
+
+  {#if signing?.state === 'expired'}
+    <p class="sign-expired">This sign link has expired; ask {config.ownerName} for a new one.</p>
+  {:else if signing}
+    <SignBox
+      token={signing.token}
+      signer={signing.signer}
+      state={ownNote ? 'used' : signing.state}
+      note={ownNote}
+      onsigned={(note) => (signedHere = { token: signing.token, note })}
+    />
+  {/if}
 
   {#if hasPills}
     <ul class="pills">
@@ -1006,6 +1062,11 @@
   }
   .buddy-meta.faint {
     color: var(--dl-color-text-faint);
+  }
+  .sign-expired {
+    margin: 14px 0 0;
+    font-size: 14px;
+    color: var(--dl-color-text-muted);
   }
   .provenance {
     margin: 10px 0 0;
