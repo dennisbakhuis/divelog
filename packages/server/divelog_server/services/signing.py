@@ -193,8 +193,8 @@ async def _mail(
         link = sign_link(dive.number, target.token)
         if get_settings().DEBUG:
             logger.info("sign link for %s: %s", target.person.slug, link)
-        subject, text = invite_mail(store, dive, target.person, link)
         try:
+            subject, text = invite_mail(store, dive, target.person, link)
             await send_mail(target.person.email or "", subject, text)
         except Exception:
             logger.exception("sign invite for dive #%d to %s failed", dive.number, target.person.id)

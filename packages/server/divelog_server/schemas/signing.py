@@ -1,5 +1,6 @@
 """Buddies signing a dive through a mailed link: the owner's requests and the buddy's page."""
 
+import math
 from datetime import datetime
 from typing import Literal, Self
 
@@ -10,6 +11,16 @@ from divelog_server.schemas.dive import BuddyNoteOut, DiveOut, SignRequestOut
 from divelog_server.store.models import MAX_NOTE_COMMENT, Stroke, strokes_problem
 
 SkipReason = Literal["open", "expired", "signed", "no_email", "not_a_buddy"]
+
+
+def _whole(coordinate: object) -> object:
+    """A float rounded to a whole number; NaN and infinity become None, which no point accepts.
+
+    The refusal for a non-finite number would echo it back, and JSON cannot carry it.
+    """
+    if isinstance(coordinate, float):
+        return round(coordinate) if math.isfinite(coordinate) else None
+    return coordinate
 
 
 class SignRequestsIn(ApiModel):
@@ -66,7 +77,8 @@ class SignPageOut(ApiModel):
 class SignIn(ApiModel):
     """A buddy's note: a comment, a drawing, or both, and whether visitors may see it.
 
-    Points are rounded to whole numbers; an empty comment or drawing counts as none.
+    Points are rounded to whole numbers, a lone surrogate (which no file can hold) becomes a
+    question mark, and an empty comment or drawing counts as none.
     """
 
     comment: str | None = None
@@ -77,7 +89,7 @@ class SignIn(ApiModel):
     @classmethod
     def _blank_is_none(cls, value: object) -> object:
         if isinstance(value, str):
-            return value.strip() or None
+            return value.encode("utf-8", "replace").decode("utf-8").strip() or None
         return value
 
     @field_validator("comment")
@@ -93,12 +105,7 @@ class SignIn(ApiModel):
         if not isinstance(value, list):
             return value
         return [
-            [
-                [round(c) if isinstance(c, float) else c for c in point]
-                if isinstance(point, list)
-                else point
-                for point in stroke
-            ]
+            [[_whole(c) for c in point] if isinstance(point, list) else point for point in stroke]
             if isinstance(stroke, list)
             else stroke
             for stroke in value
