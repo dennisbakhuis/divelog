@@ -98,6 +98,8 @@ describe('SiteMapView on a dive', () => {
   });
 });
 
+const free: SiteMap = { ...map, kind: 'sitemap', edges: [] };
+
 function pointer(el: Element, type: string, init: PointerEventInit = {}) {
   el.dispatchEvent(
     new PointerEvent(type, { bubbles: true, cancelable: true, button: 0, pointerId: 1, ...init }),
@@ -112,6 +114,18 @@ function touchTap(el: Element, from: { x: number; y: number }, to = from, pointe
   pointer(el, 'pointerup', { ...init, clientX: to.x, clientY: to.y });
   el.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: to.x, clientY: to.y }));
   flushSync();
+}
+
+function stubCoarse(coarse: boolean) {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn((query: string) => ({
+      matches: coarse && query.includes('coarse'),
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
 }
 
 describe('SiteMapView with fingers', () => {
@@ -141,6 +155,26 @@ describe('SiteMapView with fingers', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     document.body.innerHTML = '';
+  });
+
+  it('dims nothing for an empty route, as a free-drawn track has', () => {
+    const { target, destroy } = render(SiteMapView, {
+      map: free,
+      route: new Set<string>(),
+      path: [
+        { x: 0, y: 0 },
+        { x: 30, y: 0 },
+      ],
+    });
+    expect(target.querySelector('svg.routed')).toBeNull();
+    expect(target.querySelectorAll('.node.off-route')).toHaveLength(0);
+    expect(target.querySelectorAll('.distance')).toHaveLength(0);
+    destroy();
+
+    const routed = render(SiteMapView, { map, route: new Set([edgeKey('a', 'b')]) });
+    expect(routed.target.querySelector('svg.routed')).not.toBeNull();
+    expect(routed.target.querySelectorAll('.node.off-route')).toHaveLength(1);
+    routed.destroy();
   });
 
   it('counts a touch tap that wanders a few pixels as a tap on the station', () => {
@@ -239,5 +273,66 @@ describe('SiteMapView with fingers', () => {
     touchTap(svg, { x: 5, y: 5 }, { x: 5, y: 5 }, 3);
     expect(svg.classList.contains('active')).toBe(true);
     destroy();
+  });
+
+  it('shows the first point of a track while editing, and every vertex', () => {
+    const one = render(SiteMapView, { map: free, editable: true, path: [{ x: 5, y: 5 }] });
+    expect(one.target.querySelector('.track-start')).not.toBeNull();
+    one.destroy();
+    const three = render(SiteMapView, {
+      map: free,
+      editable: true,
+      path: [
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+        { x: 20, y: 0 },
+      ],
+    });
+    expect(three.target.querySelectorAll('.track-point')).toHaveLength(2);
+    expect(three.target.querySelectorAll('.track-leg')).toHaveLength(2);
+    three.destroy();
+    const reader = render(SiteMapView, { map: free, path: [{ x: 5, y: 5 }] });
+    expect(reader.target.querySelector('.track')).toBeNull();
+    reader.destroy();
+  });
+
+  it('draws every overlaid track', () => {
+    const { target, destroy } = render(SiteMapView, {
+      map: free,
+      tracks: [
+        {
+          path: [
+            { x: 0, y: 0 },
+            { x: 10, y: 0 },
+          ],
+          turn: null,
+        },
+        {
+          path: [
+            { x: 0, y: 5 },
+            { x: 10, y: 5 },
+            { x: 10, y: 15 },
+          ],
+          turn: 1,
+        },
+      ],
+    });
+    expect(target.querySelectorAll('.track-leg.all')).toHaveLength(3);
+    destroy();
+  });
+
+  it('gives fingers larger station targets and can drop its zoom buttons', () => {
+    stubCoarse(true);
+    const { target, destroy } = render(SiteMapView, { map, editable: true, zoomControls: false });
+    const hit = target.querySelector('.node .hit')!;
+    const fine = Number(hit.getAttribute('r'));
+    expect(target.querySelector('button[aria-label="Zoom in"]')).toBeNull();
+    destroy();
+    stubCoarse(false);
+    const mouse = render(SiteMapView, { map, editable: true });
+    const r = Number(mouse.target.querySelector('.node .hit')!.getAttribute('r'));
+    expect(fine / r).toBeCloseTo(18 / 14);
+    expect(mouse.target.querySelector('button[aria-label="Zoom in"]')).not.toBeNull();
+    mouse.destroy();
   });
 });
