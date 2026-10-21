@@ -976,3 +976,58 @@ describe('DiveForm dialogs', () => {
   });
 });
 
+describe('DiveForm on a phone', () => {
+  it('opens the keypad that fits each number, and a full keyboard where a minus is needed', () => {
+    fakeFetch();
+    const { target, app } = render({ dive: null });
+    target.querySelector<HTMLButtonElement>('.tank-actions button')!.click();
+    flushSync();
+    const mode = (label: string) => control(target, label)!.getAttribute('inputmode');
+    const tank = (field: string) =>
+      target.querySelector(`#dl-dive-tanks-0-${field}`)!.getAttribute('inputmode');
+    expect(mode('Number')).toBe('numeric');
+    expect(mode('Duration (min)')).toBe('numeric');
+    expect(mode('Max depth (m)')).toBe('decimal');
+    expect(mode('Weights (kg)')).toBe('decimal');
+    expect(mode('Safety stop (min)')).toBe('numeric');
+    expect(mode('Thermocline (m)')).toBe('decimal');
+    expect(mode('Visibility (m)')).toBe('numeric');
+    expect(mode('Rating (1–5)')).toBe('numeric');
+    expect(tank('volume_l')).toBe('decimal');
+    expect(tank('o2_pct')).toBe('numeric');
+    expect(tank('o2_measured_pct')).toBe('decimal');
+    expect(tank('pressure_in_bar')).toBe('numeric');
+    expect(mode('Air temp (°C)')).toBeNull();
+    expect(mode('Water temp (°C)')).toBeNull();
+    expect(mode('Surface interval')).toBeNull();
+    unmount(app);
+  });
+
+  it('writes a surface interval typed as 1.15 as 1:15', () => {
+    fakeFetch();
+    const { target, app } = render({ dive: null });
+    const interval = control(target, 'Surface interval')!;
+    type(interval, '1.15');
+    interval.dispatchEvent(new Event('change', { bubbles: true }));
+    flushSync();
+    expect(interval.value).toBe('1:15');
+    unmount(app);
+  });
+
+  it('offers the camera for photos and any file for other kinds', () => {
+    fakeFetch();
+    const { target, app } = render({ dive: null });
+    const inputs = () => [...target.querySelectorAll<HTMLInputElement>('.photos input[type=file]')];
+    expect(inputs().map((i) => [i.accept, i.getAttribute('capture')])).toEqual([
+      ['image/*', null],
+      ['image/*', 'environment'],
+    ]);
+    const kind = target.querySelector<HTMLSelectElement>('#dl-dive-queue-kind')!;
+    kind.value = 'scan';
+    kind.dispatchEvent(new Event('change', { bubbles: true }));
+    flushSync();
+    expect(inputs().map((i) => [i.accept, i.getAttribute('capture')])).toEqual([['', null]]);
+    unmount(app);
+  });
+});
+

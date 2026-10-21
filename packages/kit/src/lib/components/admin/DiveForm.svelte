@@ -18,6 +18,7 @@
     fieldId,
     filledCount,
     formSnapshot,
+    normalizeInterval,
     orderedErrors,
     presetsFor,
     previousDive,
@@ -141,6 +142,12 @@
   let queuePublic = $state(true);
 
   const dirty = $derived(formSnapshot(form, computerText) !== saved || queue.length > 0);
+
+  function queueFiles(e: Event & { currentTarget: HTMLInputElement }) {
+    const files = Array.from(e.currentTarget.files ?? []);
+    queue = [...queue, ...files.map((file) => ({ file, kind: queueKind, public: queuePublic }))];
+    e.currentTarget.value = '';
+  }
 
   let numberFrom = untrack(() => nextNumber);
   $effect(() => {
@@ -1144,7 +1151,13 @@
             </Field>
             <Field label="Volume (L)" id={fieldId(`${p}.volume_l`)} error={err(`${p}.volume_l`)}>
               {#snippet children(c)}
-                <input {...c} type="number" step="0.1" bind:value={tank.volume_l} />
+                <input
+                  {...c}
+                  type="number"
+                  step="0.1"
+                  inputmode="decimal"
+                  bind:value={tank.volume_l}
+                />
               {/snippet}
             </Field>
             <Field label="Standard gas" id={fieldId(`${p}.standard`)}>
@@ -1187,12 +1200,26 @@
             </Field>
             <Field label="O₂ %" id={fieldId(`${p}.o2_pct`)} error={err(`${p}.o2_pct`)}>
               {#snippet children(c)}
-                <input {...c} type="number" min="0" max="100" bind:value={tank.o2_pct} />
+                <input
+                  {...c}
+                  type="number"
+                  min="0"
+                  max="100"
+                  inputmode="numeric"
+                  bind:value={tank.o2_pct}
+                />
               {/snippet}
             </Field>
             <Field label="He %" id={fieldId(`${p}.he_pct`)} error={err(`${p}.he_pct`)}>
               {#snippet children(c)}
-                <input {...c} type="number" min="0" max="100" bind:value={tank.he_pct} />
+                <input
+                  {...c}
+                  type="number"
+                  min="0"
+                  max="100"
+                  inputmode="numeric"
+                  bind:value={tank.he_pct}
+                />
               {/snippet}
             </Field>
             <Field
@@ -1207,6 +1234,7 @@
                   step="0.1"
                   min="0"
                   max="100"
+                  inputmode="decimal"
                   bind:value={tank.o2_measured_pct}
                 />
               {/snippet}
@@ -1217,7 +1245,7 @@
               error={err(`${p}.pressure_in_bar`)}
             >
               {#snippet children(c)}
-                <input {...c} type="number" bind:value={tank.pressure_in_bar} />
+                <input {...c} type="number" inputmode="numeric" bind:value={tank.pressure_in_bar} />
               {/snippet}
             </Field>
             <Field
@@ -1226,7 +1254,12 @@
               error={err(`${p}.pressure_out_bar`)}
             >
               {#snippet children(c)}
-                <input {...c} type="number" bind:value={tank.pressure_out_bar} />
+                <input
+                  {...c}
+                  type="number"
+                  inputmode="numeric"
+                  bind:value={tank.pressure_out_bar}
+                />
               {/snippet}
             </Field>
             <button
@@ -1279,7 +1312,14 @@
         </Field>
         <Field label="Weights (kg)" id={fieldId('weights_kg')} error={err('weights_kg')}>
           {#snippet children(c)}
-            <input {...c} type="number" step="0.5" min="0" bind:value={form.weights_kg} />
+            <input
+              {...c}
+              type="number"
+              step="0.5"
+              min="0"
+              inputmode="decimal"
+              bind:value={form.weights_kg}
+            />
           {/snippet}
         </Field>
         <Field
@@ -1294,9 +1334,10 @@
             <input
               {...c}
               type="text"
-              inputmode="numeric"
+              autocomplete="off"
               bind:value={form.surface_interval}
               oninput={(e) => (intervalAuto = takeOver(e))}
+              onchange={() => (form.surface_interval = normalizeInterval(form.surface_interval))}
             />
           {/snippet}
           {#snippet extra()}
@@ -1318,7 +1359,13 @@
           error={err('safety_stop_min')}
         >
           {#snippet children(c)}
-            <input {...c} type="number" min="0" bind:value={form.safety_stop_min} />
+            <input
+              {...c}
+              type="number"
+              min="0"
+              inputmode="numeric"
+              bind:value={form.safety_stop_min}
+            />
           {/snippet}
         </Field>
       </div>
@@ -1367,12 +1414,25 @@
       </Field>
       <Field label="Thermocline (m)" id={fieldId('thermocline_m')} error={err('thermocline_m')}>
         {#snippet children(c)}
-          <input {...c} type="number" step="0.5" bind:value={form.thermocline_m} />
+          <input
+            {...c}
+            type="number"
+            step="0.5"
+            inputmode="decimal"
+            bind:value={form.thermocline_m}
+          />
         {/snippet}
       </Field>
       <Field label="Visibility (m)" id={fieldId('visibility_m')} error={err('visibility_m')}>
         {#snippet children(c)}
-          <input {...c} type="number" step="1" min="0" bind:value={form.visibility_m} />
+          <input
+            {...c}
+            type="number"
+            step="1"
+            min="0"
+            inputmode="numeric"
+            bind:value={form.visibility_m}
+          />
         {/snippet}
       </Field>
       <Field label="Difficulty" id={fieldId('difficulty')} error={err('difficulty')}>
@@ -1380,7 +1440,14 @@
       </Field>
       <Field label="Rating (1–5)" id={fieldId('rating')} error={err('rating')}>
         {#snippet children(c)}
-          <input {...c} type="number" min="1" max="5" bind:value={form.rating} />
+          <input
+            {...c}
+            type="number"
+            min="1"
+            max="5"
+            inputmode="numeric"
+            bind:value={form.rating}
+          />
         {/snippet}
       </Field>
       <Field label="Conditions" id={fieldId('conditions')} error={err('conditions')} class="wide">
@@ -1644,17 +1711,23 @@
             <input
               type="file"
               multiple
+              accept={queueKind === 'photo' ? 'image/*' : undefined}
               class="dl-visually-hidden"
-              onchange={(e) => {
-                const files = Array.from(e.currentTarget.files ?? []);
-                queue = [
-                  ...queue,
-                  ...files.map((file) => ({ file, kind: queueKind, public: queuePublic })),
-                ];
-                e.currentTarget.value = '';
-              }}
+              onchange={queueFiles}
             />
           </label>
+          {#if queueKind === 'photo'}
+            <label class="file">
+              <span class="dl-btn dl-btn-ghost dl-btn-sm">Take a photo</span>
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                class="dl-visually-hidden"
+                onchange={queueFiles}
+              />
+            </label>
+          {/if}
         </div>
         {#if queue.length}
           <ul class="queued">
@@ -2005,6 +2078,19 @@
   }
   .danger:hover {
     color: var(--dl-color-danger);
+  }
+  @media (pointer: coarse) {
+    .derive,
+    .chips .dl-tag,
+    .chip {
+      min-height: 44px;
+    }
+    .derive {
+      padding: 0 var(--dl-space-2);
+    }
+    .danger {
+      color: var(--dl-color-danger);
+    }
   }
   form.mini {
     display: flex;
