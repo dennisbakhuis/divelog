@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { flushSync } from 'svelte';
 import ComboboxProbe from './__fixtures__/ComboboxProbe.svelte';
 import { key, render, settle } from './__fixtures__/test-utils.js';
@@ -21,6 +21,19 @@ function parts(target: HTMLElement) {
       ? document.getElementById(input.getAttribute('aria-activedescendant')!)?.textContent?.trim()
       : undefined;
   return { input, list, options, activeText };
+}
+
+function press(el: Element) {
+  el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+  const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+  el.dispatchEvent(down);
+  return down;
+}
+
+/** The input loses focus to nothing, as iOS Safari does when a button is tapped. */
+function blurToNothing(input: HTMLInputElement) {
+  input.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }));
+  flushSync();
 }
 
 function type(input: HTMLInputElement, text: string) {
@@ -274,5 +287,177 @@ describe('Combobox', () => {
     expect(input.getAttribute('aria-expanded')).toBe('false');
     destroy();
     expect(aborted).toEqual(['', 'noh']);
+  });
+
+  describe('on a phone', () => {
+    afterEach(() => {
+      Reflect.deleteProperty(window, 'visualViewport');
+    });
+
+    it('keeps the list when a tap on the footer blurs the input before the click', () => {
+      const onfooter = vi.fn();
+      const { target, destroy } = render(ComboboxProbe, { options: SITES, onfooter });
+      const { input } = parts(target);
+      input.focus();
+      type(input, 'hemmoor');
+      const footer = () => target.querySelector<HTMLButtonElement>('.new');
+      expect(press(footer()!).defaultPrevented).toBe(true);
+      blurToNothing(input);
+      expect(input.getAttribute('aria-expanded')).toBe('true');
+      footer()!.click();
+      flushSync();
+      expect(onfooter).toHaveBeenCalledWith('hemmoor');
+      expect(input.getAttribute('aria-expanded')).toBe('false');
+      destroy();
+    });
+
+    it('closes the list with the toggle even when the tap blurred the input', () => {
+      const { target, destroy } = render(ComboboxProbe, { options: SITES, value: 'nld-vinkeveen' });
+      const { input } = parts(target);
+      const toggle = target.querySelector<HTMLButtonElement>('.dl-combobox-toggle')!;
+      const clear = target.querySelector<HTMLButtonElement>('.dl-combobox-clear')!;
+      press(toggle);
+      toggle.click();
+      flushSync();
+      expect(input.getAttribute('aria-expanded')).toBe('true');
+      expect(press(toggle).defaultPrevented).toBe(true);
+      blurToNothing(input);
+      expect(input.getAttribute('aria-expanded')).toBe('true');
+      toggle.click();
+      flushSync();
+      expect(input.getAttribute('aria-expanded')).toBe('false');
+      expect(press(clear).defaultPrevented).toBe(true);
+      destroy();
+    });
+
+    it('closes on a press outside and on a blur that no press inside caused', () => {
+      const onchange = vi.fn();
+      const { target, destroy } = render(ComboboxProbe, {
+        options: SITES,
+        value: 'nld-vinkeveen',
+        onchange,
+      });
+      const { input, list } = parts(target);
+      input.focus();
+      type(input, 'garbage');
+      press(list);
+      input.blur();
+      blurToNothing(input);
+      expect(input.getAttribute('aria-expanded')).toBe('true');
+      press(target.querySelector('.after')!);
+      flushSync();
+      expect(input.getAttribute('aria-expanded')).toBe('false');
+      expect(input.value).toBe('Vinkeveen');
+      expect(onchange).not.toHaveBeenCalled();
+
+      input.focus();
+      press(input);
+      input.click();
+      flushSync();
+      expect(input.getAttribute('aria-expanded')).toBe('true');
+      blurToNothing(input);
+      expect(input.getAttribute('aria-expanded')).toBe('false');
+      destroy();
+    });
+
+    it('clears only the typed text with × in multiple mode', () => {
+      const onchange = vi.fn();
+      const { target, destroy } = render(ComboboxProbe, {
+        options: SITES,
+        multiple: true,
+        values: ['mex-nohoch', 'nld-vinkeveen'],
+        onchange,
+      });
+      const { input } = parts(target);
+      expect(target.querySelector('.dl-combobox-clear')).toBeNull();
+      input.focus();
+      type(input, 'cal');
+      target.querySelector<HTMLButtonElement>('.dl-combobox-clear')!.click();
+      flushSync();
+      expect(input.value).toBe('');
+      expect(target.querySelectorAll('.dl-combobox-chip')).toHaveLength(2);
+      expect(onchange).not.toHaveBeenCalled();
+      destroy();
+    });
+
+    it('removes a chip without focusing the input when it had no focus', () => {
+      const { target, destroy } = render(ComboboxProbe, {
+        options: SITES,
+        multiple: true,
+        values: ['mex-nohoch', 'nld-vinkeveen'],
+      });
+      const { input } = parts(target);
+      const remove = target.querySelector<HTMLButtonElement>('.dl-combobox-chip-remove')!;
+      expect(press(remove).defaultPrevented).toBe(true);
+      remove.click();
+      flushSync();
+      expect(target.querySelectorAll('.dl-combobox-chip')).toHaveLength(1);
+      expect(document.activeElement).not.toBe(input);
+
+      const next = target.querySelector<HTMLButtonElement>('.dl-combobox-chip-remove')!;
+      next.focus();
+      next.click();
+      flushSync();
+      expect(document.activeElement).toBe(input);
+      destroy();
+    });
+
+    it('closes the keyboard on Enter with the list closed instead of submitting', () => {
+      const { target, destroy } = render(ComboboxProbe, { options: SITES });
+      const { input } = parts(target);
+      expect(input.getAttribute('enterkeyhint')).toBe('done');
+      expect(input.getAttribute('autocorrect')).toBe('off');
+      input.focus();
+      key(input, 'ArrowDown');
+      key(input, 'Enter');
+      expect(input.value).toBe('Nohoch Nah Chich');
+      expect(document.activeElement).toBe(input);
+      const enter = key(input, 'Enter');
+      expect(enter.defaultPrevented).toBe(true);
+      expect(document.activeElement).not.toBe(input);
+      expect(key(input, 'Enter', { isComposing: true }).defaultPrevented).toBe(false);
+      destroy();
+    });
+
+    it('names the list after the field label and selects the label on focus', () => {
+      const { target, destroy } = render(ComboboxProbe, { options: SITES, value: 'nld-vinkeveen' });
+      const { input, list } = parts(target);
+      const labelledBy = document.getElementById(list.getAttribute('aria-labelledby')!);
+      expect(labelledBy?.tagName).toBe('LABEL');
+      expect(labelledBy?.textContent).toContain('Site');
+      input.focus();
+      flushSync();
+      expect([input.selectionStart, input.selectionEnd]).toEqual([0, 'Vinkeveen'.length]);
+      destroy();
+    });
+
+    it('fits the list into the visual viewport, above the input when there is more room', () => {
+      const viewport = Object.assign(new EventTarget(), { height: 300, offsetTop: 0 });
+      Object.defineProperty(window, 'visualViewport', { configurable: true, value: viewport });
+      const { target, destroy } = render(ComboboxProbe, { options: SITES });
+      const { input } = parts(target);
+      const control = target.querySelector<HTMLElement>('.dl-combobox-control')!;
+      const popup = target.querySelector<HTMLElement>('.dl-combobox-popup')!;
+      let rect = { top: 20, bottom: 60 };
+      control.getBoundingClientRect = () => ({ ...rect }) as DOMRect;
+
+      input.click();
+      flushSync();
+      expect(popup.classList.contains('dl-combobox-popup--above')).toBe(false);
+      expect(popup.style.maxHeight).toBe('228px');
+
+      rect = { top: 240, bottom: 280 };
+      viewport.dispatchEvent(new Event('resize'));
+      flushSync();
+      expect(popup.classList.contains('dl-combobox-popup--above')).toBe(true);
+      expect(popup.style.maxHeight).toBe('228px');
+
+      viewport.height = 200;
+      rect = { top: 150, bottom: 190 };
+      viewport.dispatchEvent(new Event('resize'));
+      flushSync();
+      expect(popup.style.maxHeight).toBe('138px');
+      destroy();
+    });
   });
 });

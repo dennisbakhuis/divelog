@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import type { HTMLInputAttributes } from 'svelte/elements';
   import {
     filterOptions,
@@ -77,6 +77,17 @@
   const listId = `${uid}-list`;
   const optionId = (index: number) => `${uid}-opt-${index}`;
 
+  /** Tallest the list grows, in pixels, before the visual viewport caps it further. */
+  const POPUP_MAX = 320;
+  /** Smallest cap on the list: a few rows stay reachable even with the keyboard up. */
+  const POPUP_MIN = 96;
+  /** Below this much room under the input the list opens above it, if there is more room there. */
+  const POPUP_FLIP = 200;
+  const POPUP_GAP = 4;
+  const VIEWPORT_MARGIN = 8;
+
+  let root = $state<HTMLElement>();
+  let control = $state<HTMLElement>();
   let input = $state<HTMLInputElement>();
   let expanded = $state(false);
   let typed = $state(false);
@@ -84,6 +95,11 @@
   let active = $state(-1);
   let loading = $state(false);
   let remote = $state<ComboOption[]>([]);
+  let above = $state(false);
+  let maxHeight = $state<number | null>(null);
+  let labelId = $state('');
+  let pressInside = false;
+  let focusClick = false;
   const seen: Record<string, ComboOption> = {};
 
   function remember(list: readonly ComboOption[]) {
@@ -179,20 +195,22 @@
     onchange?.(value, o);
   }
 
+  function focusInside(): boolean {
+    return !!root && root.contains(document.activeElement);
+  }
+
   function removeValue(v: string) {
+    const refocus = focusInside();
     values = values.filter((x) => x !== v);
     onchange?.(values, null);
-    input?.focus();
+    if (refocus) input?.focus();
   }
 
   function clear() {
     query = '';
     typed = false;
     if (multiple) {
-      if (values.length) {
-        values = [];
-        onchange?.(values, null);
-      }
+      if (source && expanded) fetchRemote('', 0);
     } else if (value !== null) {
       value = null;
       onchange?.(null, null);
@@ -203,6 +221,7 @@
   function oninput(e: Event & { currentTarget: HTMLInputElement }) {
     query = e.currentTarget.value;
     typed = true;
+    focusClick = false;
     active = -1;
     if (!expanded) expanded = true;
     if (source) fetchRemote(query, debounce);
@@ -240,8 +259,12 @@
         }
         return;
       case 'Enter':
-        if (!expanded) return;
+        if (e.isComposing) return;
         e.preventDefault();
+        if (!expanded) {
+          input?.blur();
+          return;
+        }
         if (active >= 0 && shown[active]) choose(shown[active]);
         else if (shown.length === 1) choose(shown[0]);
         return;
@@ -268,9 +291,8 @@
     }
   }
 
-  function onfocusout(e: FocusEvent & { currentTarget: HTMLElement }) {
-    const next = e.relatedTarget as Node | null;
-    if (next && e.currentTarget.contains(next)) return;
+  /** Close the list and settle what was typed, as when focus leaves the field. */
+  function leave() {
     closeList();
     if (!multiple && typed) {
       if (!query.trim() && clearable && value !== null) {
@@ -285,20 +307,104 @@
     }
   }
 
+  function onfocusout(e: FocusEvent & { currentTarget: HTMLElement }) {
+    const next = e.relatedTarget as Node | null;
+    if (next && e.currentTarget.contains(next)) return;
+    if (!next && pressInside) return;
+    leave();
+  }
+
+  /*
+   * iOS Safari does not focus a tapped button, so a tap on the list, its
+   * footer or the buttons blurs the input (relatedTarget null) before the
+   * click arrives. A press that started inside keeps the list; a press
+   * outside closes it, also when the input had already lost focus.
+   */
+  function onWindowPointerdown(e: PointerEvent) {
+    const target = e.target as Node | null;
+    const inside = !!target && !!root?.contains(target);
+    pressInside = inside && target !== input;
+    if (!inside && (expanded || typed) && !focusInside()) leave();
+    else if (!inside && expanded) closeList();
+  }
+
+  function endPress() {
+    pressInside = false;
+  }
+
+  function onfocus() {
+    focusClick = true;
+    if (!multiple && !typed && query) input?.select();
+  }
+
+  function onInputClick() {
+    if (focusClick && !multiple && !typed && query) input?.select();
+    focusClick = false;
+    openList();
+  }
+
+  function place() {
+    if (!control) return;
+    const vv = window.visualViewport;
+    const top = vv?.offsetTop ?? 0;
+    const bottom = top + (vv?.height ?? window.innerHeight);
+    const rect = control.getBoundingClientRect();
+    const room = (edge: number) => edge - POPUP_GAP - VIEWPORT_MARGIN;
+    const below = room(bottom - rect.bottom);
+    const over = room(rect.top - top);
+    above = below < POPUP_FLIP && over > below;
+    maxHeight = Math.max(POPUP_MIN, Math.min(POPUP_MAX, above ? over : below));
+  }
+
+  $effect(() => {
+    if (!expanded || !control) return;
+    untrack(place);
+    const vv = window.visualViewport;
+    vv?.addEventListener('resize', place);
+    vv?.addEventListener('scroll', place);
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      vv?.removeEventListener('resize', place);
+      vv?.removeEventListener('scroll', place);
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  });
+
+  $effect(() => {
+    const el = input?.labels?.[0];
+    if (!el) {
+      labelId = '';
+      return;
+    }
+    if (!el.id) el.id = `${inputId}-label`;
+    labelId = el.id;
+  });
+
   const hasSelection = $derived(multiple ? values.length > 0 : value != null);
-  const showClear = $derived(clearable && !disabled && (hasSelection || query.length > 0));
+  const showClear = $derived(
+    clearable && !disabled && (multiple ? query.length > 0 : hasSelection || query.length > 0),
+  );
   const activeId = $derived(
     expanded && active >= 0 && shown[active] ? optionId(active) : undefined,
   );
 </script>
 
+<svelte:window
+  onpointerdowncapture={onWindowPointerdown}
+  onpointercancel={endPress}
+  onclick={endPress}
+/>
+
 <div
+  bind:this={root}
   class="dl-combobox"
   class:dl-combobox--multi={multiple}
   class:dl-combobox--disabled={disabled}
   {onfocusout}
 >
-  <div class="dl-combobox-control">
+  <div class="dl-combobox-control" bind:this={control}>
     {#if multiple && values.length}
       <ul class="dl-combobox-chips" aria-label="Selected">
         {#each values as v (v)}
@@ -309,6 +415,7 @@
               class="dl-combobox-chip-remove"
               aria-label="Remove {labelOf(v)}"
               {disabled}
+              onmousedown={(e) => e.preventDefault()}
               onclick={() => removeValue(v)}><span aria-hidden="true">×</span></button
             >
           </li>
@@ -322,7 +429,9 @@
       type="text"
       role="combobox"
       autocomplete="off"
+      autocorrect="off"
       spellcheck="false"
+      enterkeyhint="done"
       aria-label={label || undefined}
       aria-autocomplete="list"
       aria-expanded={expanded}
@@ -335,7 +444,8 @@
       value={query}
       {oninput}
       {onkeydown}
-      onclick={openList}
+      {onfocus}
+      onclick={onInputClick}
       class="dl-combobox-input"
     />
     {#if showClear}
@@ -343,6 +453,7 @@
         type="button"
         class="dl-combobox-clear"
         aria-label={label ? `Clear ${label}` : 'Clear'}
+        onmousedown={(e) => e.preventDefault()}
         onclick={clear}><span aria-hidden="true">×</span></button
       >
     {/if}
@@ -354,6 +465,7 @@
       aria-controls={listId}
       aria-expanded={expanded}
       {disabled}
+      onmousedown={(e) => e.preventDefault()}
       onclick={() => {
         if (expanded) closeList();
         else openList();
@@ -362,12 +474,19 @@
     >
   </div>
 
-  <div class="dl-combobox-popup" hidden={!expanded}>
+  <div
+    class="dl-combobox-popup"
+    class:dl-combobox-popup--above={above}
+    style:max-height={maxHeight === null ? undefined : `${maxHeight}px`}
+    hidden={!expanded}
+    onmousedown={(e) => e.preventDefault()}
+    role="presentation"
+  >
     <div
       id={listId}
       role="listbox"
       aria-label={label || undefined}
-      aria-labelledby={label ? undefined : inputId}
+      aria-labelledby={label ? undefined : labelId || undefined}
       aria-multiselectable={multiple || undefined}
       class="dl-combobox-list"
     >
@@ -529,6 +648,10 @@
     background: var(--dl-color-bg-elevated);
     box-shadow: var(--dl-shadow-md);
   }
+  .dl-combobox-popup--above {
+    top: auto;
+    bottom: calc(100% + var(--dl-space-1));
+  }
   .dl-combobox-popup[hidden] {
     display: none;
   }
@@ -572,10 +695,28 @@
     color: var(--dl-color-text-muted);
   }
   .dl-combobox-footer {
+    position: sticky;
+    bottom: 0;
     display: flex;
     flex-wrap: wrap;
     gap: var(--dl-space-2);
     padding: var(--dl-space-2);
     border-top: 1px solid var(--dl-color-border);
+    background: var(--dl-color-bg-elevated);
+  }
+  @media (pointer: coarse) {
+    .dl-combobox .dl-combobox-input {
+      font-size: max(16px, 1rem);
+    }
+    .dl-combobox-chip-remove,
+    .dl-combobox-clear,
+    .dl-combobox-toggle {
+      min-width: var(--dl-tap-min, 44px);
+      min-height: var(--dl-tap-min, 44px);
+    }
+    .dl-combobox-option {
+      min-height: var(--dl-tap-min, 44px);
+      justify-content: center;
+    }
   }
 </style>
