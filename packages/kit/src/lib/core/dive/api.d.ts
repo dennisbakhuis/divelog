@@ -113,6 +113,33 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/v1/dive/sign/{token}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Sign Page
+     * @description The dive a mailed sign link opens, for that buddy and no session, private dives too.
+     *
+     *     Looking never spends the link. 410 when it is unknown or expired, or its buddy is no
+     *     longer on the dive.
+     */
+    get: operations['sign_page_api_v1_dive_sign__token__get'];
+    put?: never;
+    /**
+     * Sign Dive
+     * @description Store the buddy's note on the dive and spend the link: 409 once it was used.
+     */
+    post: operations['sign_dive_api_v1_dive_sign__token__post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/dive/sites': {
     parameters: {
       query?: never;
@@ -275,7 +302,12 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Magic Link */
+    /**
+     * Magic Link
+     * @description Mail a sign-in link to the owner and say how many minutes it works.
+     *
+     *     The answer is the same for any address, so it does not reveal the owner's.
+     */
     post: operations['magic_link_api_v1_auth_magic_link_post'];
     delete?: never;
     options?: never;
@@ -290,10 +322,22 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** Verify */
+    /**
+     * Verify
+     * @description Open the mailed link.
+     *
+     *     A browser opening it as a page (``Sec-Fetch-Mode: navigate`` with ``Sec-Fetch-Dest:
+     *     document``) is signed in at once and sent to ``/admin``. Any other fetch (a mail
+     *     scanner, a link preview, a prefetch) gets a small page whose button posts the token to
+     *     ``POST /verify``, so fetching the link never spends it.
+     */
     get: operations['verify_api_v1_auth_verify_get'];
     put?: never;
-    post?: never;
+    /**
+     * Verify Post
+     * @description Redeem the mailed link's token from the sign-in page and send the browser on.
+     */
+    post: operations['verify_post_api_v1_auth_verify_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -490,10 +534,22 @@ export interface paths {
     };
     /** Admin Get Dive */
     get: operations['admin_get_dive_api_v1_admin_dives__number__get'];
-    /** Admin Update Dive */
+    /**
+     * Admin Update Dive
+     * @description Replace a dive with the form's fields, over the dive as stored at the moment of writing.
+     *
+     *     Attachments come from the stored dive, so a photo uploaded while the form was open stays.
+     *     A ``cover_attachment_id`` that names none of the dive's attachments keeps the stored cover.
+     *     ``buddy_notes`` None keeps the notes; a list keeps the notes it names, with their
+     *     ``public``, and deletes the rest. Sign invites follow a new number; a buddy taken off the
+     *     dive loses theirs.
+     */
     put: operations['admin_update_dive_api_v1_admin_dives__number__put'];
     post?: never;
-    /** Admin Delete Dive */
+    /**
+     * Admin Delete Dive
+     * @description Delete a dive, its files no other record uses, and the invites to sign it.
+     */
     delete: operations['admin_delete_dive_api_v1_admin_dives__number__delete'];
     options?: never;
     head?: never;
@@ -507,6 +563,72 @@ export interface paths {
     patch: operations['admin_patch_dive_api_v1_admin_dives__number__patch'];
     trace?: never;
   };
+  '/api/v1/admin/dives/{number}/sign-requests': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Admin Request Signatures
+     * @description Mail the dive's buddies a one-time link to sign it.
+     *
+     *     Without ``resend`` only buddies with an e-mail who were never asked for this dive and
+     *     left no note are mailed (every buddy when ``people`` is null), so saving again mails
+     *     only a newly added buddy. ``resend`` mails the named ``people`` a new link and kills the
+     *     old one; a buddy who signed is never mailed again. A draft is refused with 422; a mail
+     *     that cannot be sent gives 502 and leaves that buddy's invite as it was.
+     */
+    post: operations['admin_request_signatures_api_v1_admin_dives__number__sign_requests_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/dives/{number}/sign-requests/{person}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Admin Withdraw Sign Request
+     * @description Withdraw the invite of the buddy with slug ``person``; its link stops working.
+     */
+    delete: operations['admin_withdraw_sign_request_api_v1_admin_dives__number__sign_requests__person__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/dives/{number}/buddy-notes/{person}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Admin Delete Buddy Note
+     * @description Delete the note of the buddy with slug ``person``.
+     */
+    delete: operations['admin_delete_buddy_note_api_v1_admin_dives__number__buddy_notes__person__delete'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/v1/admin/dives/{number}/attachments': {
     parameters: {
       query?: never;
@@ -516,7 +638,13 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Admin Upload Attachment */
+    /**
+     * Admin Upload Attachment
+     * @description Store a file and attach it to a dive; the first photo becomes the cover.
+     *
+     *     Photos are recognised by their bytes, whatever type was declared. Without ``public`` a
+     *     photo is public unless it is a scan; a file that is not a photo is private.
+     */
     post: operations['admin_upload_attachment_api_v1_admin_dives__number__attachments_post'];
     delete?: never;
     options?: never;
@@ -533,7 +661,10 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** Admin Upload Site Attachment */
+    /**
+     * Admin Upload Site Attachment
+     * @description Store a file and attach it to a site; without ``public`` only a photo is public.
+     */
     post: operations['admin_upload_site_attachment_api_v1_admin_sites__site_id__attachments_post'];
     delete?: never;
     options?: never;
@@ -656,8 +787,12 @@ export interface paths {
      * Admin Create Site
      * @description Create a personal site.
      *
-     *     The id must match ``{iso3}-{slug}`` (422 naming the pattern otherwise) and be free (409).
-     *     Existing sites keep whatever id they have, so the check is on create only.
+     *     The id must match ``{iso3}-{slug}`` (422 naming the pattern otherwise) and be free (409,
+     *     saying whether the log or the commons has it). The country must be a known ISO 3166
+     *     alpha-3 code (stored in capitals) and the id starts with it in lower case, or with
+     *     ``xxx-`` when there is no country; the region must exist. Those 422s list the fields like
+     *     a validation error. Existing sites keep whatever id they have, so the checks are on create
+     *     only.
      */
     post: operations['admin_create_site_api_v1_admin_sites_post'];
     delete?: never;
@@ -854,7 +989,10 @@ export interface paths {
     };
     /** Admin Get Trip */
     get: operations['admin_get_trip_api_v1_admin_trips__slug__get'];
-    /** Admin Update Trip */
+    /**
+     * Admin Update Trip
+     * @description Change an override's name, dates and description; ``merge`` and ``cover`` are kept.
+     */
     put: operations['admin_update_trip_api_v1_admin_trips__slug__put'];
     post?: never;
     /**
@@ -1463,6 +1601,40 @@ export interface components {
       /** File */
       file: string;
     };
+    /** Body_verify_post_api_v1_auth_verify_post */
+    Body_verify_post_api_v1_auth_verify_post: {
+      /** Token */
+      token: string;
+    };
+    /**
+     * BuddyNoteIn
+     * @description The owner's say over an existing note: keep it (public or not); leaving it out deletes it.
+     */
+    BuddyNoteIn: {
+      /** Person */
+      person: string;
+      /** Public */
+      public: boolean;
+    };
+    /**
+     * BuddyNoteOut
+     * @description A buddy's note on a dive; ``person`` is the buddy's slug.
+     */
+    BuddyNoteOut: {
+      /** Person */
+      person: string;
+      /** Comment */
+      comment: string | null;
+      /** Strokes */
+      strokes: [number, number][][] | null;
+      /**
+       * Signed At
+       * Format: date-time
+       */
+      signed_at: string;
+      /** Public */
+      public: boolean;
+    };
     /**
      * BuddyOut
      * @description A buddy on a dive page, with what the two of us have logged together.
@@ -1743,6 +1915,8 @@ export interface components {
       same_day: components['schemas']['SameDayDive'][];
       /** Context Facts */
       context_facts: string[];
+      /** Buddy Notes */
+      buddy_notes: components['schemas']['BuddyNoteOut'][];
       private: components['schemas']['DivePrivate'] | null;
       /** Id */
       id: number;
@@ -1756,6 +1930,8 @@ export interface components {
       gear_setup_id: string | null;
       /** Country */
       country: string | null;
+      /** Sign Requests */
+      sign_requests: components['schemas']['SignRequestOut'][];
       /**
        * Body Html
        * @description The dive story as sanitised HTML.
@@ -1906,6 +2082,8 @@ export interface components {
       /** Profile */
       profile?: components['schemas']['ProfileSample-Input'][] | null;
       map_annotation?: components['schemas']['DiveMapAnnotation-Input'] | null;
+      /** Buddy Notes */
+      buddy_notes?: components['schemas']['BuddyNoteIn'][] | null;
     };
     /**
      * DiveListItem
@@ -2179,6 +2357,8 @@ export interface components {
       same_day: components['schemas']['SameDayDive'][];
       /** Context Facts */
       context_facts: string[];
+      /** Buddy Notes */
+      buddy_notes: components['schemas']['BuddyNoteOut'][];
       private: components['schemas']['DivePrivate'] | null;
       /**
        * Body Html
@@ -2398,6 +2578,8 @@ export interface components {
       /** Profile */
       profile: components['schemas']['ProfileSample-Output'][] | null;
       map_annotation: components['schemas']['DiveMapAnnotation-Output'] | null;
+      /** Buddy Notes */
+      buddy_notes: components['schemas']['BuddyNoteIn'][] | null;
     };
     /**
      * DiveTemplateOut
@@ -2716,6 +2898,19 @@ export interface components {
        * Format: email
        */
       email: string;
+    };
+    /**
+     * MagicLinkSent
+     * @description The answer to a sign-in request: how many minutes a mailed link works.
+     */
+    MagicLinkSent: {
+      /**
+       * Status
+       * @default sent
+       */
+      status: string;
+      /** Valid Minutes */
+      valid_minutes: number;
     };
     /**
      * MapArea
@@ -3698,6 +3893,119 @@ export interface components {
       time_in: string | null;
     };
     /**
+     * SignIn
+     * @description A buddy's note: a comment, a drawing, or both, and whether visitors may see it.
+     *
+     *     Points are rounded to whole numbers; an empty comment or drawing counts as none.
+     */
+    SignIn: {
+      /** Comment */
+      comment?: string | null;
+      /** Strokes */
+      strokes?: [number, number][][] | null;
+      /**
+       * Public
+       * @default true
+       */
+      public?: boolean;
+    };
+    /**
+     * SignPageOut
+     * @description What the mailed link opens: the dive as visitors see it, and the buddy's own note.
+     *
+     *     ``state`` is ``used`` once the buddy signed; the link keeps showing the dive until it
+     *     expires. ``dive`` has no links to other dives.
+     */
+    SignPageOut: {
+      /**
+       * State
+       * @enum {string}
+       */
+      state: 'open' | 'used';
+      signer: components['schemas']['Signer'];
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string;
+      note: components['schemas']['BuddyNoteOut'] | null;
+      dive: components['schemas']['DiveOut'];
+    };
+    /**
+     * SignRequestOut
+     * @description Where asking one buddy to sign the dive stands; ``person`` is the buddy's slug.
+     *
+     *     ``signed`` wins once the buddy's note exists. ``sent_at`` and ``expires_at`` describe the
+     *     last invite mailed, ``signed_at`` the note.
+     */
+    SignRequestOut: {
+      /** Person */
+      person: string;
+      /**
+       * State
+       * @enum {string}
+       */
+      state: 'none' | 'open' | 'expired' | 'signed' | 'no_email';
+      /** Sent At */
+      sent_at: string | null;
+      /** Expires At */
+      expires_at: string | null;
+      /** Signed At */
+      signed_at: string | null;
+    };
+    /**
+     * SignRequestsIn
+     * @description Whom to mail a link to sign the dive.
+     *
+     *     Without ``resend`` only buddies never asked are mailed (all buddies when ``people`` is
+     *     None). ``resend`` mails the named ``people`` a new link, and the old one stops working.
+     */
+    SignRequestsIn: {
+      /** People */
+      people?: string[] | null;
+      /**
+       * Resend
+       * @default false
+       */
+      resend?: boolean;
+    };
+    /**
+     * SignRequestsOut
+     * @description Who was mailed (slugs), who was not and why, and every buddy's request afterwards.
+     */
+    SignRequestsOut: {
+      /** Sent */
+      sent: string[];
+      /** Skipped */
+      skipped: components['schemas']['SignSkip'][];
+      /** Sign Requests */
+      sign_requests: components['schemas']['SignRequestOut'][];
+    };
+    /**
+     * SignSkip
+     * @description A buddy who got no mail, and why.
+     */
+    SignSkip: {
+      /** Person */
+      person: string;
+      /**
+       * Reason
+       * @enum {string}
+       */
+      reason: 'open' | 'expired' | 'signed' | 'no_email' | 'not_a_buddy';
+    };
+    /** SignedOut */
+    SignedOut: {
+      note: components['schemas']['BuddyNoteOut'];
+    };
+    /** Signer */
+    Signer: {
+      /** Slug */
+      slug: string;
+      /** First Name */
+      first_name: string;
+    };
+    /**
      * SiteDetail
      * @description A site page: the site, the dives the viewer may see there, and what surrounds it.
      */
@@ -4336,7 +4644,10 @@ export interface components {
       /** Map Sites */
       map_sites: components['schemas']['MapSite'][];
     };
-    /** TripIn */
+    /**
+     * TripIn
+     * @description A trip override as the editor sends it; ``slug`` names its file, so it is a plain slug.
+     */
     TripIn: {
       /** Slug */
       slug: string;
@@ -4653,6 +4964,72 @@ export interface operations {
       };
     };
   };
+  sign_page_api_v1_dive_sign__token__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        token: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SignPageOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  sign_dive_api_v1_dive_sign__token__post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        token: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SignIn'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SignedOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
   list_sites_api_v1_dive_sites_get: {
     parameters: {
       query?: never;
@@ -4896,9 +5273,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          'application/json': {
-            [key: string]: string;
-          };
+          'application/json': components['schemas']['MagicLinkSent'];
         };
       };
       /** @description Validation Error */
@@ -4922,6 +5297,39 @@ export interface operations {
       cookie?: never;
     };
     requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': unknown;
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  verify_post_api_v1_auth_verify_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/x-www-form-urlencoded': components['schemas']['Body_verify_post_api_v1_auth_verify_post'];
+      };
+    };
     responses: {
       /** @description Successful Response */
       200: {
@@ -5327,6 +5735,101 @@ export interface operations {
       };
     };
   };
+  admin_request_signatures_api_v1_admin_dives__number__sign_requests_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        number: number;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SignRequestsIn'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['SignRequestsOut'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  admin_withdraw_sign_request_api_v1_admin_dives__number__sign_requests__person__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        number: number;
+        person: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  admin_delete_buddy_note_api_v1_admin_dives__number__buddy_notes__person__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        number: number;
+        person: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
   admin_upload_attachment_api_v1_admin_dives__number__attachments_post: {
     parameters: {
       query?: {
@@ -5369,7 +5872,7 @@ export interface operations {
     parameters: {
       query?: {
         kind?: string;
-        public?: boolean;
+        public?: boolean | null;
       };
       header?: never;
       path: {
