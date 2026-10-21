@@ -142,4 +142,65 @@ describe('AdminShell bar', () => {
     expect(document.activeElement).toBe(menu);
     destroy();
   });
+
+  it('opens the repo and commons panels in the flow of the Menu on a narrow screen', async () => {
+    stubMedia(true);
+    const { target, destroy } = await shellAt('/admin');
+    target.querySelector<HTMLButtonElement>('.menu-trigger')!.click();
+    flushSync();
+    await new Promise((r) => setTimeout(r, 0));
+    const menu = target.querySelector('.menu-body')!;
+    const repo = menu.querySelector<HTMLButtonElement>('button.repo')!;
+    repo.click();
+    flushSync();
+    const repoPanel = document.getElementById(repo.getAttribute('aria-controls')!)!;
+    expect(menu.contains(repoPanel)).toBe(true);
+    expect(repoPanel.classList.contains('repo-panel--inline')).toBe(true);
+    const notices = [...menu.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
+      b.textContent?.includes('notices'),
+    )!;
+    notices.click();
+    flushSync();
+    const noticePanel = document.getElementById(notices.getAttribute('aria-controls')!)!;
+    expect(menu.contains(noticePanel)).toBe(true);
+    expect(noticePanel.classList.contains('popover--inline')).toBe(true);
+    destroy();
+  });
+
+  it('keeps the panels floating on a wide screen', async () => {
+    stubMedia(false);
+    const { target, destroy } = await shellAt('/admin');
+    const repo = target.querySelector<HTMLButtonElement>('.cluster button.repo')!;
+    repo.click();
+    flushSync();
+    const panel = document.getElementById(repo.getAttribute('aria-controls')!)!;
+    expect(panel.classList.contains('repo-panel')).toBe(true);
+    expect(panel.classList.contains('repo-panel--inline')).toBe(false);
+    destroy();
+  });
+
+  it('publishes the bar height for the toasts and removes it on unmount', async () => {
+    stubMedia(true);
+    const observers: (() => void)[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(private readonly cb: () => void) {
+          observers.push(() => this.cb());
+        }
+        observe() {
+          this.cb();
+        }
+        disconnect() {}
+      },
+    );
+    const { target, destroy } = await shellAt('/admin');
+    const bar = target.querySelector<HTMLElement>('header.bar')!;
+    Object.defineProperty(bar, 'offsetHeight', { configurable: true, value: 97 });
+    observers.forEach((run) => run());
+    const root = document.documentElement;
+    expect(root.style.getPropertyValue('--dl-admin-bar-h')).toBe('97px');
+    destroy();
+    expect(root.style.getPropertyValue('--dl-admin-bar-h')).toBe('');
+  });
 });
