@@ -32,13 +32,13 @@ class LogRepo:
     """Personal records of the log repository at ``root``, with their writers.
 
     Every writer takes the lock, rewrites one file, refreshes the indexes through
-    :meth:`_index` and commits.
+    :meth:`_index` and commits. The lock is the git repository's, so a background rebase waits
+    for a write and its commit, and a write waits for the rebase.
     """
 
     def __init__(self, root: Path, git: GitRepo | None = None) -> None:
         self.root = root
         self.git = git or GitRepo(root, author_name="", author_email="", enabled=False)
-        self.lock = asyncio.Lock()
         self.errors: list[str] = []
         self.dives: dict[int, DiveRecord] = {}
         self.people: dict[str, PersonRecord] = {}
@@ -49,6 +49,11 @@ class LogRepo:
         self.imports: dict[str, ImportRecord] = {}
         self.manifest: Manifest | None = None
         self._sparks: dict[tuple[str, int], list[int] | None] = {}
+
+    @property
+    def lock(self) -> asyncio.Lock:
+        """The write lock: the git repository's lock around file writes and commits."""
+        return self.git.lock
 
     # ── paths ──────────────────────────────────────────────────────────────
 
