@@ -5,6 +5,8 @@ import secrets
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
+from fastapi import Response
+
 from divelog_server.core.config import get_settings
 from divelog_server.services.email import send_mail
 from divelog_server.store.state import AdminSession, AuthState, MagicToken
@@ -105,20 +107,44 @@ async def create_session(state: AuthState, email: str, user_agent: str) -> str:
 
 async def resolve_session(state: AuthState, token: str) -> AdminSession | None:
     """Look up a live session and slide its expiry when it is past halfway."""
+    session, _ = await resolve_and_renew(state, token)
+    return session
+
+
+async def resolve_and_renew(state: AuthState, token: str) -> tuple[AdminSession | None, bool]:
+    """A live session, sliding its expiry when it is past halfway, and whether it slid.
+
+    When it slid the browser's cookie has to be issued again: its ``max_age`` was set when the
+    cookie was, and it would otherwise end before the session does.
+    """
     settings = get_settings()
     session = state.sessions.get(_hash(token))
     now = _now()
     if session is None or session.revoked_at is not None or session.expires_at < now:
-        return None
+        return None, False
     lifetime = timedelta(days=settings.SESSION_DAYS)
     if session.expires_at - now < lifetime / 2:
         async with state.lock:
             session.expires_at = now + lifetime
             session.last_seen_at = now
             state.save()
-    else:
-        session.last_seen_at = now
-    return session
+        return session, True
+    session.last_seen_at = now
+    return session, False
+
+
+def set_session_cookie(response: Response, token: str) -> None:
+    """Give the browser the session cookie for the whole session lifetime."""
+    settings = get_settings()
+    response.set_cookie(
+        settings.SESSION_COOKIE_NAME,
+        token,
+        max_age=settings.SESSION_DAYS * 86400,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite="lax",
+        path="/",
+    )
 
 
 async def revoke_session(state: AuthState, token: str) -> None:
