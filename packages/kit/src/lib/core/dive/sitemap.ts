@@ -1059,12 +1059,14 @@ export function extendRouteAlong(
   return { ...annotation, route: [...annotation.route, ...legs] };
 }
 
-/** Drop the last `count` legs. */
+/** Drop the last `count` legs, and the turn point when it was on the legs dropped. */
 export function trimRoute(annotation: DiveMapAnnotation, count: number): DiveMapAnnotation {
-  return {
-    ...annotation,
-    route: annotation.route.slice(0, Math.max(0, annotation.route.length - count)),
-  };
+  const route = annotation.route.slice(0, Math.max(0, annotation.route.length - count));
+  const passes = (legs: MapEdgeRef[], id: string) =>
+    legs.some((leg) => leg.from === id || leg.to === id);
+  const turn = annotation.turn;
+  const lost = turn !== null && passes(annotation.route, turn) && !passes(route, turn);
+  return { ...annotation, route, turn: lost ? null : turn };
 }
 
 /** Drop route legs, the turn and nothing else that the given map no longer has. */

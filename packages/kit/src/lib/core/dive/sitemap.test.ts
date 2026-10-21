@@ -504,6 +504,16 @@ describe('directed routes', () => {
     expect(trimRoute(out, 1).route).toEqual([{ from: 'a', to: 'b' }]);
     expect(trimRoute(out, 5).route).toEqual([]);
   });
+
+  it('drops the turn point with the legs that reached it, and keeps one set elsewhere', () => {
+    const out = { ...extendRoute(map, empty, 'c'), turn: 'c' };
+    expect(trimRoute(out, 1).turn).toBeNull();
+    const atB = { ...out, turn: 'b' };
+    expect(trimRoute(atB, 1).turn).toBe('b');
+    expect(trimRoute(atB, 2).turn).toBeNull();
+    const offRoute = { ...out, turn: 'd' };
+    expect(trimRoute(offRoute, 2).turn).toBe('d');
+  });
 });
 
 describe('way in and way out', () => {
