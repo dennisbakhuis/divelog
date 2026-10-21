@@ -42,6 +42,22 @@ unchanged; the server adds `POST /auth/verify`, `pillow-heif`, and stricter vali
   upload survive; the backup is written when the page is hidden; photos offer the camera.
 - Toasts sit under the admin bar on a phone instead of over the save bar, at most three at a
   time; the Menu's repository and commons panels open inside the Menu.
+- Buddies sign a dive by e-mail. Tick "E-mail buddies to sign" next to Save and every buddy
+  with an e-mail address in their person record gets a mail with a link to the dive page
+  (`/dive/{n}?sign=…`), valid for 7 days. The page shows the dive, also a private one, with a
+  sign box: a short comment, a finger-drawn signature or doodle, and a choice whether the note
+  is shown on the dive page. Submitting stores the note on the dive and spends the link; the
+  page then says "You signed this dive on …". A buddy is mailed once per dive, saving again
+  mails only buddies never asked, there are no reminders, and only the editor's Resend sends a
+  new link. The editor shows per buddy whether a request is open, expired or signed, sets a
+  note public or private, deletes it or withdraws a request. The public dive page lists the
+  notes under the buddies. Format: `buddy_notes` on a dive (person, comment, strokes in a
+  1000 × 400 box, signed_at, public); server: `POST /admin/dives/{n}/sign-requests`,
+  `DELETE …/sign-requests/{person}`, `DELETE …/buddy-notes/{person}`, public
+  `GET|POST /dive/sign/{token}`, settings `SIGN_INVITE_DAYS` and `SIGN_MAIL_SUBJECT`, invites
+  in the auth state file. A form save sets `public` on the notes it names and never deletes.
+- A magic link works for two minutes (`MAGIC_LINK_MINUTES`, still an env setting) and the
+  login page says so from the request's `valid_minutes`.
 - Server: a save during a photo upload no longer undoes the other (uploads change the stored
   dive under the lock); a commit made during a running push is pushed; writes, commits and
   rebases share one repository lock and a failed `add` is an error; the mailed link signs in
