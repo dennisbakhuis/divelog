@@ -1,7 +1,8 @@
 /**
  * Coordinates as people paste them: "52.09, 5.12", "5.12 52.09" (the order told
- * by the ranges), "52°05'24"N 5°07'12"E", "N 52° 5.4' E 5° 7.2'", a map link with
- * "@52.09,5.12" or "mlat=…&mlon=…". All end up as decimal degrees.
+ * by the ranges), "52°05'24"N 5°07'12"E", "N 52° 5.4' E 5° 7.2'", "20 30 00 N 87 18 00 W",
+ * a map link with "!3d52.09!4d5.12", "@52.09,5.12", "q=52.09,5.12" or "mlat=…&mlon=…".
+ * All end up as decimal degrees.
  */
 
 export interface LatLon {
@@ -17,21 +18,49 @@ export function validLatLon(lat: unknown, lon: unknown): boolean {
   return typeof lat === 'number' && typeof lon === 'number' && inRange({ lat, lon });
 }
 
-function fromUrl(text: string): LatLon | null {
-  const at = /@(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)/.exec(text);
-  if (at) return { lat: Number(at[1]), lon: Number(at[2]) };
-  const lat = /[?&#]m?lat=(-?\d{1,3}(?:\.\d+)?)/.exec(text);
-  const lon = /[?&#]m?(?:lon|lng)=(-?\d{1,3}(?:\.\d+)?)/.exec(text);
+const NUM = String.raw`(-?\d{1,3}(?:\.\d+)?)`;
+const PIN = new RegExp(String.raw`!3d${NUM}!4d${NUM}`);
+const QUERY = new RegExp(String.raw`[?&](?:q|query|ll)=(?:loc:)?\s*${NUM}\s*,\s*${NUM}(?![\d.])`);
+const AT = new RegExp(String.raw`@${NUM},\s*${NUM}`);
+const LAT = new RegExp(String.raw`[?&#]m?lat=${NUM}`);
+const LON = new RegExp(String.raw`[?&#]m?(?:lon|lng)=${NUM}`);
+const OSM_MAP = new RegExp(String.raw`[#&]map=\d+(?:\.\d+)?/${NUM}/${NUM}`);
+const GEOJSON = new RegExp(String.raw`"coordinates"\s*:\s*\[\s*${NUM}\s*,\s*${NUM}`);
+
+function decoded(text: string): string {
+  try {
+    return decodeURIComponent(text.replace(/\+/g, ' '));
+  } catch {
+    return text;
+  }
+}
+
+/**
+ * The position in a map link or a GeoJSON snippet. A Google place link carries the pin in
+ * `!3d…!4d…` and only the view centre after the `@`, so the pin is read first.
+ */
+function fromLink(raw: string): LatLon | null {
+  const text = decoded(raw);
+  const json = GEOJSON.exec(text);
+  if (json) return { lat: Number(json[2]), lon: Number(json[1]) };
+  const match = PIN.exec(text) ?? QUERY.exec(text) ?? AT.exec(text);
+  if (match) return { lat: Number(match[1]), lon: Number(match[2]) };
+  const lat = LAT.exec(text);
+  const lon = LON.exec(text);
   if (lat && lon) return { lat: Number(lat[1]), lon: Number(lon[1]) };
-  const map = /[#&]map=\d+(?:\.\d+)?\/(-?\d{1,3}(?:\.\d+)?)\/(-?\d{1,3}(?:\.\d+)?)/.exec(text);
+  const map = OSM_MAP.exec(text);
   if (map) return { lat: Number(map[1]), lon: Number(map[2]) };
   return null;
 }
 
+type Unit = 'deg' | 'min' | 'sec';
+type Num = { value: number; negative: boolean; unit: Unit | null };
+type Run = { nums: Num[]; lead?: string; trail?: string };
+type Item = { kind: 'run'; run: Run } | { kind: 'hemi'; letter: string } | { kind: 'break' };
 type Part = { value: number; axis: 'lat' | 'lon' | null };
+type Group = { nums: Num[]; letter?: string; marked: boolean; run: Run };
 
-const PART =
-  /([NSEW])?\s*(-?\d{1,3}(?:\.\d+)?)\s*(?:°|º|˚|\bdeg\b|d(?=\s*\d))\s*(?:(\d{1,2}(?:\.\d+)?)\s*(?:'|′|’|\bmin\b|m(?=\s*\d)))?\s*(?:(\d{1,2}(?:\.\d+)?)\s*(?:"|″|''|”|\bsec\b|s\b))?\s*([NSEW])?|([NSEW])\s*(-?\d{1,3}(?:\.\d+)?)|(-?\d{1,3}(?:\.\d+)?)\s*([NSEW])\b/gi;
+const TOKEN = /(\s+)|([-+\u2212]?\d+(?:\.\d+)?)|(''|["″”])|(['′’])|([°º˚])|([A-Za-z]+)|([\s\S])/gu;
 
 function hemisphere(letter: string | undefined): { axis: 'lat' | 'lon'; sign: 1 | -1 } | null {
   switch ((letter ?? '').toUpperCase()) {
@@ -48,33 +77,153 @@ function hemisphere(letter: string | undefined): { axis: 'lat' | 'lon'; sign: 1 
   }
 }
 
-function dmsParts(text: string): Part[] {
-  const parts: Part[] = [];
-  for (const m of text.matchAll(PART)) {
-    let degrees: number;
-    let minutes = 0;
-    let seconds = 0;
-    let letter: string | undefined;
-    if (m[2] !== undefined) {
-      degrees = Number(m[2]);
-      minutes = m[3] ? Number(m[3]) : 0;
-      seconds = m[4] ? Number(m[4]) : 0;
-      letter = m[1] ?? m[5];
-    } else if (m[7] !== undefined) {
-      degrees = Number(m[7]);
-      letter = m[6];
-    } else {
-      degrees = Number(m[8]);
-      letter = m[9];
+function wordUnit(word: string, run: Run | null, digitNext: boolean): Unit | null {
+  const lower = word.toLowerCase();
+  if (lower === 'deg') return 'deg';
+  if (lower === 'min') return 'min';
+  if (lower === 'sec') return 'sec';
+  const last = run?.nums.at(-1);
+  if (!run || !last || last.unit) return null;
+  if (word === 'd' && digitNext) return 'deg';
+  if (word === 'm' && digitNext) return 'min';
+  if (word === 's' && run.nums.some((n) => n.unit === 'min')) return 'sec';
+  return null;
+}
+
+/** The text as runs of numbers with their units, hemisphere letters, and breaks. */
+function tokenize(text: string): Item[] | null {
+  const items: Item[] = [];
+  let run: Run | null = null;
+  for (const m of text.matchAll(TOKEN)) {
+    if (m[1]) continue;
+    if (m[2]) {
+      const raw = m[2].replace('\u2212', '-');
+      if (!run) {
+        run = { nums: [] };
+        items.push({ kind: 'run', run });
+      }
+      run.nums.push({ value: Number(raw), negative: raw.startsWith('-'), unit: null });
+      continue;
     }
-    if (minutes >= 60 || seconds >= 60) return [];
-    const negative = degrees < 0 || Object.is(degrees, -0);
-    const magnitude = Math.abs(degrees) + minutes / 60 + seconds / 3600;
-    const hemi = hemisphere(letter);
-    const sign = hemi ? hemi.sign : negative ? -1 : 1;
-    parts.push({ value: sign * magnitude, axis: hemi?.axis ?? null });
+    const digitNext = /^\s*\d/.test(text.slice((m.index ?? 0) + m[0].length));
+    const symbol: Unit | null = m[3] ? 'sec' : m[4] ? 'min' : m[5] ? 'deg' : null;
+    const unit = symbol ?? (m[6] ? wordUnit(m[6], run, digitNext) : null);
+    if (unit) {
+      const last = run?.nums.at(-1);
+      if (!last || last.unit) return null;
+      last.unit = unit;
+      continue;
+    }
+    run = null;
+    if (m[6]?.length === 1 && hemisphere(m[6])) items.push({ kind: 'hemi', letter: m[6] });
+    else items.push({ kind: 'break' });
   }
-  return parts;
+  return items;
+}
+
+/**
+ * Hang each hemisphere letter on a run: after it ("52.09N 5.12E") when the text starts
+ * with a number, before it ("N52.09 E5.12") when it starts with a letter. A letter with
+ * no number after it trails the run before it in either style. False on a stray letter.
+ */
+function attachLetters(items: Item[]): boolean {
+  const first = items.find((i) => i.kind !== 'break');
+  const leading = first?.kind === 'hemi';
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (item.kind !== 'hemi') continue;
+    const before = items[i - 1]?.kind === 'run' ? (items[i - 1] as { run: Run }).run : null;
+    const after = items[i + 1]?.kind === 'run' ? (items[i + 1] as { run: Run }).run : null;
+    if (before && !before.trail && (!leading || !after)) before.trail = item.letter;
+    else if (after && !after.lead) after.lead = item.letter;
+    else return false;
+  }
+  return true;
+}
+
+/**
+ * Split a run into coordinates. A number joins the one before as its minutes or seconds
+ * when the run is marked (a unit or a hemisphere letter), it is not negative, the one
+ * before is whole, and it is below 60 or carries the matching unit. Null when a unit is
+ * out of place or minutes or seconds reach 60.
+ */
+function groupsOf(run: Run): Group[] | null {
+  const signal = !!(run.lead || run.trail || run.nums.some((n) => n.unit));
+  const groups: Group[] = [];
+  for (const num of run.nums) {
+    const cur = groups.at(-1);
+    const prev = cur?.nums.at(-1);
+    const slot = cur ? cur.nums.length : 0;
+    const joins =
+      signal &&
+      cur &&
+      prev &&
+      slot < 3 &&
+      num.unit !== 'deg' &&
+      !num.negative &&
+      prev.unit !== 'sec' &&
+      Number.isInteger(prev.value) &&
+      (num.unit === 'min' ? slot === 1 : num.unit === 'sec' ? true : num.value < 60);
+    if (joins) {
+      if (num.value >= 60) return null;
+      if (num.unit === 'sec' && slot === 1)
+        cur.nums.push({ value: 0, negative: false, unit: 'min' });
+      cur.nums.push(num);
+      continue;
+    }
+    if (num.unit === 'min' || num.unit === 'sec') return null;
+    groups.push({ nums: [num], marked: false, run });
+  }
+  if (!groups.length) return groups;
+  const head = groups[0];
+  const tail = groups[groups.length - 1];
+  if (run.lead && run.trail && head === tail) return null;
+  if (run.lead) head.letter = run.lead;
+  if (run.trail) tail.letter = run.trail;
+  for (const g of groups) g.marked = !!g.letter || g.nums.some((n) => n.unit);
+  return groups;
+}
+
+function partOf(group: Group): Part {
+  const [degrees, minutes, seconds] = group.nums.map((n) => n.value);
+  const negative = group.nums[0].negative;
+  const magnitude = Math.abs(degrees) + (minutes ?? 0) / 60 + (seconds ?? 0) / 3600;
+  const hemi = hemisphere(group.letter);
+  const sign = hemi ? hemi.sign : negative ? -1 : 1;
+  return { value: sign * magnitude, axis: hemi?.axis ?? null };
+}
+
+/**
+ * The two coordinates written with degree marks or hemisphere letters; `undefined` when
+ * fewer than two numbers carry them (plain decimals, "24°C at 12.15, -68.28"), null when
+ * they do not read as one position (numbers left over beside them, minutes past 60, a
+ * stray letter).
+ */
+function dmsPair(text: string): LatLon | null | undefined {
+  const items = tokenize(text);
+  if (!items) return null;
+  const runs = items.flatMap((i) => (i.kind === 'run' ? [i.run] : []));
+  const marked =
+    items.some((i) => i.kind === 'hemi') || runs.some((r) => r.nums.some((n) => n.unit));
+  if (!marked) return undefined;
+  if (!attachLetters(items)) return null;
+  const groups: Group[] = [];
+  for (const run of runs) {
+    const found = groupsOf(run);
+    if (!found) return null;
+    groups.push(...found);
+  }
+  if (groups.length === 2) return pair(partOf(groups[0]), partOf(groups[1]));
+  const picked = groups.filter((g) => g.marked);
+  if (picked.length < 2) return undefined;
+  if (picked.length > 2) return null;
+  const near = new Set(picked.map((g) => g.run));
+  items.forEach((item, i) => {
+    if (item.kind !== 'hemi') return;
+    for (const side of [items[i - 1], items[i + 1]]) if (side?.kind === 'run') near.add(side.run);
+  });
+  if (groups.some((g) => !g.marked && near.has(g.run))) return null;
+  return pair(partOf(picked[0]), partOf(picked[1]));
 }
 
 function pair(a: Part, b: Part): LatLon | null {
@@ -90,17 +239,20 @@ function pair(a: Part, b: Part): LatLon | null {
 const round = (value: number) => Math.round(value * 1e7) / 1e7;
 
 /**
- * The position in a pasted text, or null when it holds none. Latitude comes
- * first unless hemisphere letters or the ranges say otherwise ("5.12, 52.09"
- * stays lat 5.12, but "120.5, 10.2" is read as lon, lat).
+ * The position in a pasted text, or null when it holds none. Latitude comes first
+ * unless hemisphere letters or the ranges say otherwise ("5.12, 52.09" stays lat 5.12,
+ * but "120.5, 10.2" is read as lon, lat); only GeoJSON's `"coordinates": [lon, lat]` is
+ * read longitude first. Text with degree marks or hemisphere letters must hold exactly
+ * one position: anything left over gives null rather than a guess.
  */
 export function parseLatLon(input: string): LatLon | null {
   const text = input.trim();
   if (!text) return null;
-  let found = fromUrl(text);
+  let found = fromLink(text);
   if (!found) {
-    const parts = dmsParts(text);
-    if (parts.length === 2) found = pair(parts[0], parts[1]);
+    const dms = dmsPair(text);
+    if (dms === null) return null;
+    if (dms) found = dms;
   }
   if (!found) {
     const plain =
