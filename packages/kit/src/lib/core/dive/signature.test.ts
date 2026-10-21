@@ -47,6 +47,58 @@ describe('signaturePath', () => {
   });
 });
 
+describe('signaturePath with hostile strokes', () => {
+  const path = (strokes: unknown) => signaturePath(strokes as never);
+
+  it('leaves NaN, infinity and non-numbers out of the path', () => {
+    expect(
+      path([
+        [
+          [NaN, 1],
+          [2, 3],
+          [Infinity, 4],
+          [5, -Infinity],
+          ['6', 7],
+          [8, 9],
+        ],
+      ]),
+    ).toBe('M2 3 L8 9');
+    expect(path([[[NaN, NaN]]])).toBe('');
+  });
+
+  it('does not throw on null or odd strokes and points', () => {
+    expect(path([null, 5, 'abc', { length: 2 }, [null, undefined, {}, [1]], [[7, 8]]])).toBe(
+      'M7 8 L7 8',
+    );
+    expect(path('abc')).toBe('');
+    expect(path({ length: 3 })).toBe('');
+    expect(path(7)).toBe('');
+  });
+
+  it('writes only numbers, so text in a point cannot reach the path data', () => {
+    const d = path([
+      [
+        ['1"><script>alert(1)</script>', 'x'],
+        [2, 3],
+        [4, 5],
+      ],
+    ]);
+    expect(d).toBe('M2 3 L4 5');
+    expect(d).toMatch(/^[ML\d. -]+$/);
+  });
+
+  it('keeps negative and huge values as plain numbers for the viewBox to clip', () => {
+    expect(
+      path([
+        [
+          [-5, -9],
+          [1e30, 2],
+        ],
+      ]),
+    ).toBe('M-5 -9 L1e+30 2');
+  });
+});
+
 describe('clampToBox', () => {
   it('rounds and keeps the point inside the box', () => {
     expect(clampToBox(12.4, 300.6)).toEqual([12, 301]);

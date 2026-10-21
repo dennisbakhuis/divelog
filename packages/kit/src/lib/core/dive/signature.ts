@@ -18,16 +18,24 @@ export type SignatureStroke = SignaturePoint[];
 /** The `viewBox` attribute for the signature box. */
 export const SIGNATURE_VIEWBOX = `0 0 ${SIGNATURE_BOX.width} ${SIGNATURE_BOX.height}`;
 
+/** Whether `value` is an `[x, y]` pair of finite numbers. */
+function drawable(value: unknown): value is SignaturePoint {
+  return Array.isArray(value) && Number.isFinite(value[0]) && Number.isFinite(value[1]);
+}
+
 /**
  * SVG path data for the strokes: `M x y L x y …` per stroke. A one-point stroke becomes a
- * zero-length segment, which a round line cap draws as a dot.
+ * zero-length segment, which a round line cap draws as a dot. The strokes may come from a
+ * hand-edited file, so anything that is not a list of lists of finite `[x, y]` pairs is
+ * skipped instead of throwing or writing `NaN` into the path.
  */
 export function signaturePath(strokes: readonly SignatureStroke[] | null | undefined): string {
-  if (!strokes) return '';
+  if (!Array.isArray(strokes)) return '';
   return strokes
-    .filter((stroke) => stroke.length > 0)
-    .map((stroke) => {
-      const [first, ...rest] = stroke.length === 1 ? [stroke[0], stroke[0]] : stroke;
+    .map((stroke) => (Array.isArray(stroke) ? stroke.filter(drawable) : []))
+    .filter((points) => points.length > 0)
+    .map((points) => {
+      const [first, ...rest] = points.length === 1 ? [points[0], points[0]] : points;
       return [`M${first[0]} ${first[1]}`, ...rest.map((p) => `L${p[0]} ${p[1]}`)].join(' ');
     })
     .join(' ');
