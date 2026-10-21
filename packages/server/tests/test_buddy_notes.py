@@ -10,7 +10,7 @@ from httpx import AsyncClient
 from pydantic import ValidationError
 
 from divelog_server.cli import openapi_document
-from divelog_server.store.files import read_markdown
+from divelog_server.store.files import read_markdown, write_markdown
 from divelog_server.store.log_repo import frontmatter
 from divelog_server.store.models import BuddyNoteRecord, DiveRecord, PersonRecord
 from divelog_server.store.store import Store
@@ -276,3 +276,87 @@ async def test_the_new_dive_template_does_not_copy_notes(
     template = (await owner_client.get(f"{ADMIN}/dives/template?date=2026-10-25")).json()
     assert template["previous"]["number"] == 4
     assert template["previous"]["buddy_notes"] is None
+
+
+async def test_the_form_names_a_note_by_slug_or_id_and_keeps_what_the_buddy_wrote(
+    owner_client: AsyncClient, store: Store
+) -> None:
+    drawn = note("kim_de_boer", comment="Cold", strokes=SCRIBBLE, public=True)
+    await with_notes(store, 1, drawn, note("alex"))
+    edits = [{"person": "kim_de_boer", "public": False}, {"person": "alex", "public": True}]
+    body = await form_body(owner_client, 1, buddy_notes=edits)
+    assert (await owner_client.put(f"{ADMIN}/dives/1", json=body)).status_code == 200
+    assert store.dives[1].buddy_notes == [
+        drawn.model_copy(update={"public": False}),
+        note("alex"),
+    ]
+
+
+async def test_the_form_cannot_create_a_note_for_a_buddy_who_has_none(
+    owner_client: AsyncClient, store: Store
+) -> None:
+    await with_notes(store, 1, note("alex"))
+    edits = [
+        {"person": "alex", "public": True},
+        {"person": "kim", "public": True},
+        {"person": "nobody", "public": True},
+    ]
+    body = await form_body(owner_client, 1, buddy_notes=edits)
+    assert (await owner_client.put(f"{ADMIN}/dives/1", json=body)).status_code == 200
+    assert store.dives[1].buddy_notes == [note("alex")]
+
+
+async def test_saving_the_same_notes_twice_changes_nothing(
+    owner_client: AsyncClient, store: Store
+) -> None:
+    await with_notes(store, 1, note("alex", strokes=SCRIBBLE))
+    edits = [{"person": "alex", "public": False}]
+    body = await form_body(owner_client, 1, buddy_notes=edits)
+    first = (await owner_client.put(f"{ADMIN}/dives/1", json=body)).json()
+    second = (await owner_client.put(f"{ADMIN}/dives/1", json=body)).json()
+    assert first["buddy_notes"] == second["buddy_notes"]
+    assert len(store.dives[1].buddy_notes) == 1
+
+
+async def test_an_empty_list_deletes_every_note_and_no_list_keeps_them(
+    owner_client: AsyncClient, store: Store
+) -> None:
+    await with_notes(store, 1, note("alex"), note("kim_de_boer"))
+    await owner_client.put(f"{ADMIN}/dives/1", json=await form_body(owner_client, 1))
+    assert len(store.dives[1].buddy_notes) == 2
+    body = await form_body(owner_client, 1, buddy_notes=[])
+    await owner_client.put(f"{ADMIN}/dives/1", json=body)
+    assert store.dives[1].buddy_notes == []
+
+
+async def test_a_patch_keeps_the_notes_and_the_requests(
+    owner_client: AsyncClient, store: Store
+) -> None:
+    await with_notes(store, 1, note("alex"))
+    patched = await owner_client.patch(f"{ADMIN}/dives/1", json={"cover_attachment_id": None})
+    assert patched.status_code == 200, patched.text
+    assert [n["person"] for n in patched.json()["buddy_notes"]] == ["alex"]
+    assert [r["state"] for r in patched.json()["sign_requests"]] == ["none", "signed", "no_email"]
+
+
+async def test_the_public_page_never_shows_a_private_note_to_the_owner_either(
+    owner_client: AsyncClient, store: Store
+) -> None:
+    await with_notes(store, 1, note("alex", public=False), note("kim_de_boer"))
+    public = (await owner_client.get("/api/v1/dive/dives/1")).json()
+    assert [n["person"] for n in public["buddy_notes"]] == ["kim"]
+    editor = (await owner_client.get(f"{ADMIN}/dives/1")).json()
+    assert sorted(n["person"] for n in editor["buddy_notes"]) == ["alex", "kim"]
+
+
+async def test_a_dive_file_with_two_notes_for_one_person_is_reported_not_loaded(
+    store: Store,
+) -> None:
+    await with_notes(store, 1, note("alex"))
+    path = store.dive_path(1)
+    meta, body = read_markdown(path)
+    meta["buddy_notes"] = [meta["buddy_notes"][0], meta["buddy_notes"][0]]
+    write_markdown(path, meta, body)
+    await store.reload()
+    assert 1 not in store.dives
+    assert store.errors
