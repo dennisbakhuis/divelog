@@ -68,9 +68,10 @@ def apply_note_edits(
 ) -> list[BuddyNoteRecord]:
     """The notes to store after a form save.
 
-    ``edits`` None keeps every note; a list keeps only the notes it names (by slug or id),
-    with the ``public`` it gives. Notes of people no longer on the dive go either way. A note's
-    comment, strokes and time never change here.
+    ``edits`` None keeps every note; a list sets ``public`` on the notes it names (by slug or
+    id) and leaves the others as they are, so a form opened before a buddy signed never
+    deletes that note. Deleting is the DELETE endpoint's job. Notes of people no longer on the
+    dive go either way. A note's comment, strokes and time never change here.
     """
     kept = [n for n in notes if n.person in people]
     if edits is None:
@@ -80,7 +81,7 @@ def apply_note_edits(
         for note in kept:
             if edit.person in (note.person, person_slug(store, note.person)):
                 wanted[note.person] = edit.public
-    return [n.model_copy(update={"public": wanted[n.person]}) for n in kept if n.person in wanted]
+    return [n.model_copy(update={"public": wanted.get(n.person, n.public)}) for n in kept]
 
 
 def request_state(

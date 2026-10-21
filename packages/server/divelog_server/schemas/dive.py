@@ -727,7 +727,8 @@ class DiveIn(ApiModel):
     profile: list[ProfileSample] | None = None
     map_annotation: DiveMapAnnotation | None = None
     buddy_notes: list[BuddyNoteIn] | None = Field(default=None, max_length=50)
-    """None leaves the notes as stored; a list is every note to keep, with its ``public``."""
+    """None leaves the notes as stored; a list sets ``public`` on the notes it names and
+    leaves the rest, so an editor opened before a buddy signed cannot drop that note."""
 
     @field_validator("buddy_notes")
     @classmethod

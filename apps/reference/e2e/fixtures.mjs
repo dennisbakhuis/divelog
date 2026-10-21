@@ -1337,15 +1337,15 @@ export function signBook({ adminDive, publicDive, siteUrl, ownerName = 'Sam' }) 
       return { ...body, buddy_notes: publicNotes(n) };
     },
 
-    /** A form save: `buddy_notes` keeps the named notes with their `public`; people taken off go. */
+    /** A form save: `buddy_notes` sets `public` on the named notes, the rest stay; people taken off go. */
     applyForm(n, input) {
       const people = input?.people_ids ?? adminDive(n)?.people_ids ?? [];
       let kept = notesOf(n).filter((note) => people.includes(note.person));
       if (Array.isArray(input?.buddy_notes)) {
         const wanted = new Map(input.buddy_notes.map((edit) => [edit.person, edit.public]));
-        kept = kept
-          .filter((note) => wanted.has(note.person))
-          .map((note) => ({ ...note, public: wanted.get(note.person) === true }));
+        kept = kept.map((note) =>
+          wanted.has(note.person) ? { ...note, public: wanted.get(note.person) === true } : note,
+        );
       }
       notes.set(n, kept);
       for (const [token, invite] of invites)

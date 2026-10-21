@@ -198,20 +198,35 @@ async def test_a_save_without_buddy_notes_keeps_them(
     assert store.dives[1].buddy_notes == [note("alex")]
 
 
-async def test_the_form_sets_public_and_deletes_by_leaving_out(
+async def test_the_form_sets_public_and_keeps_the_notes_it_does_not_name(
     owner_client: AsyncClient, store: Store
 ) -> None:
     await with_notes(store, 1, note("alex"), note("kim_de_boer"))
     edits = [{"person": "kim", "public": False}]
     body = await form_body(owner_client, 1, buddy_notes=edits)
     saved = (await owner_client.put(f"{ADMIN}/dives/1", json=body)).json()
-    assert [(n["person"], n["public"]) for n in saved["buddy_notes"]] == [("kim", False)]
-    assert store.dives[1].buddy_notes == [note("kim_de_boer", public=False)]
+    assert [(n["person"], n["public"]) for n in saved["buddy_notes"]] == [
+        ("alex", True),
+        ("kim", False),
+    ]
+    assert store.dives[1].buddy_notes == [note("alex"), note("kim_de_boer", public=False)]
 
     body = await form_body(owner_client, 1, buddy_notes=[])
     await owner_client.put(f"{ADMIN}/dives/1", json=body)
-    meta, _ = read_markdown(store.dive_path(1))
-    assert "buddy_notes" not in meta
+    assert store.dives[1].buddy_notes == [note("alex"), note("kim_de_boer", public=False)]
+
+
+async def test_a_note_signed_after_the_form_opened_survives_the_save(
+    owner_client: AsyncClient, store: Store
+) -> None:
+    await with_notes(store, 1, note("alex"))
+    body = await form_body(owner_client, 1, buddy_notes=[{"person": "alex", "public": False}])
+    await with_notes(store, 1, note("alex"), note("kim_de_boer"))
+    saved = (await owner_client.put(f"{ADMIN}/dives/1", json=body)).json()
+    assert [(n["person"], n["public"]) for n in saved["buddy_notes"]] == [
+        ("alex", False),
+        ("kim", True),
+    ]
 
 
 async def test_the_form_cannot_write_a_note(owner_client: AsyncClient, store: Store) -> None:
@@ -318,7 +333,7 @@ async def test_saving_the_same_notes_twice_changes_nothing(
     assert len(store.dives[1].buddy_notes) == 1
 
 
-async def test_an_empty_list_deletes_every_note_and_no_list_keeps_them(
+async def test_neither_an_empty_list_nor_no_list_deletes_a_note(
     owner_client: AsyncClient, store: Store
 ) -> None:
     await with_notes(store, 1, note("alex"), note("kim_de_boer"))
@@ -326,7 +341,7 @@ async def test_an_empty_list_deletes_every_note_and_no_list_keeps_them(
     assert len(store.dives[1].buddy_notes) == 2
     body = await form_body(owner_client, 1, buddy_notes=[])
     await owner_client.put(f"{ADMIN}/dives/1", json=body)
-    assert store.dives[1].buddy_notes == []
+    assert len(store.dives[1].buddy_notes) == 2
 
 
 async def test_a_patch_keeps_the_notes_and_the_requests(
