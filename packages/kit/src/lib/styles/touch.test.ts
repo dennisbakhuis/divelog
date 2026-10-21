@@ -109,4 +109,14 @@ describe('phone styles', () => {
       /min-height:\s*var\(--dl-tap-min, 44px\)/,
     );
   });
+
+  it('keeps checkbox labels in the admin pages in a row against the global column label rule', () => {
+    const admin = rule(read('styles/divelog.css'), '.divelog .dl-admin-body label');
+    expect(admin).toMatch(/flex-direction:\s*column/);
+    for (const path of [
+      'components/admin/BuddyNotesPanel.svelte',
+      'components/admin/DiveForm.svelte',
+    ])
+      expect(rule(read(path), '  .check')).toMatch(/flex-direction:\s*row !important/);
+  });
 });

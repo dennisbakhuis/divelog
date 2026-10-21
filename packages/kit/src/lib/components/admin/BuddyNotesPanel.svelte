@@ -305,6 +305,7 @@
   }
   .check {
     display: inline-flex;
+    flex-direction: row !important;
     align-items: center;
     gap: 6px;
     min-height: 32px;
