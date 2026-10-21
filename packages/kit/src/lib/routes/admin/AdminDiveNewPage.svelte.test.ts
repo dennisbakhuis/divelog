@@ -13,6 +13,7 @@ import AdminDiveNewPage from './AdminDiveNewPage.svelte';
 import type { AdminDataFor } from '../admin';
 import type { DiveTemplateOut } from '$lib/core/dive/types.js';
 import { fakeDiveAdmin } from '$lib/components/admin/__fixtures__/dive.js';
+import { backupKey, emptyDiveInput, serializeBackup } from '$lib/core/admin/dive-input.js';
 import { fakeSite } from '$lib/testing/sharing.js';
 
 function memoryStorage(): Storage {
@@ -135,6 +136,25 @@ describe('AdminDiveNewPage', () => {
     props.data = pageData(10);
     await settle();
     expect(field(target, 'number').value).toBe('20');
+    unmount(app);
+  });
+
+  it('discards a restored backup to a clean form with the current number', async () => {
+    const backup = { ...emptyDiveInput(8), date: '2026-02-08', title: 'Half typed' };
+    sessionStorage.setItem(backupKey(null), serializeBackup(backup, ''));
+    const { target, app, props } = render(8);
+    await settle();
+    expect(field(target, 'title').value).toBe('Half typed');
+    props.data = pageData(9);
+    await settle();
+    const discard = [...target.querySelectorAll('button')].find(
+      (b) => b.textContent?.trim() === 'Discard them',
+    )!;
+    discard.click();
+    flushSync();
+    expect(field(target, 'title').value).toBe('');
+    expect(field(target, 'number').value).toBe('9');
+    expect(target.querySelector('.save-bar .unsaved')).toBeNull();
     unmount(app);
   });
 });

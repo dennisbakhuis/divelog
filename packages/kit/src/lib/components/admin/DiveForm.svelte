@@ -723,12 +723,13 @@
     form = { ...structuredClone(initial), number: isNew ? numberFrom : initial.number };
     computerText = initial.computer.join(', ');
     useAutoFlags(initialAuto);
+    saved = formSnapshot(form, computerText);
     clearBackup(storageKey);
     restoredAt = null;
     announce('Restored changes discarded');
   }
 
-  // ── New site, commons, new trip, map refresh (dialogs unchanged) ──
+  // ── New site, commons, new trip, map refresh ──
 
   let newSite = $state<Partial<SiteDraft>>({});
   let siteDialogOpen = $state(false);
