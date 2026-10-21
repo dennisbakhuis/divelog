@@ -410,6 +410,35 @@
   outline: none;
 }
 
+/*
+ * Coarse pointers (phones, tablets): 44 px buttons, and form text of at least
+ * 16 px, below which iOS Safari zooms the page on focus. The text floor is
+ * `!important` because component styles set their own smaller sizes.
+ */
+@media (pointer: coarse) {
+  :where(.divelog) .dl-btn {
+    min-height: var(--dl-tap-min);
+  }
+  :where(.divelog)
+    :is(
+      input:not(
+        [type='checkbox'],
+        [type='radio'],
+        [type='range'],
+        [type='color'],
+        [type='file'],
+        [type='button'],
+        [type='submit'],
+        [type='reset'],
+        [type='image']
+      ),
+      select,
+      textarea
+    ) {
+    font-size: max(16px, 1rem) !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   :where(.divelog) *,
   :where(.divelog) *::before,

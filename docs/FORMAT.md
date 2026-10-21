@@ -70,6 +70,22 @@ pressures, `profiles` lists repository paths of profile files, `media` attached 
 against, `route` legs `{from, to}` by node id, `turn`, `pins`, free `path`). Fields ending in
 `_raw` keep the original logbook text next to a normalised value.
 
+`buddy_notes` holds what buddies wrote when they signed the dive through a mailed link, at
+most one note per person: `person` (an id from `people`), `comment` (up to 200 characters),
+`strokes` (a drawn signature or doodle: up to 60 polylines of `[x, y]` integer points in a
+1000 × 400 box, up to 4000 points in all), `signed_at` (ISO 8601 with offset) and `public`
+(shown on the public dive page). A note has a comment, strokes or both; a missing key reads as
+`null`. Notes of people who are no longer on the dive are dropped on the next save.
+
+```yaml
+buddy_notes:
+  - person: alex
+    comment: Great vis, cold feet.
+    strokes: [[[12, 300], [18, 290], [30, 284]], [[400, 200]]]
+    signed_at: '2026-10-27T19:40:00+02:00'
+    public: true
+```
+
 ```markdown
 ---
 number: 412
@@ -101,7 +117,8 @@ optionally, `temp_c`, `ndl_min`, `tts_min`, `stop_depth_m`, plus metadata such a
 
 - `people/<id>.md`: `id`, `slug` (URL), `first_name`, optional `last_name`, `alias`,
   `aliases` (spellings that match on import), `display` (`alias-or-first`, `full`, `hidden`),
-  `avatar`, `media`, `notes` (private). The body is the person's bio.
+  `avatar`, `media`, `notes` (private), `email` (private; where a request to sign a dive
+  goes). The body is the person's bio.
 - `trips/<slug>.md`: trips are derived from runs of dives abroad (see `HOME_COUNTRIES`). A
   file with `start_date` and `end_date` claims every dive in its window; one without renames,
   describes or (with `merge: [slug, ...]`) joins derived trips. Body: the trip description.

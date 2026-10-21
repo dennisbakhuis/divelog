@@ -37,8 +37,8 @@ async def admin_commons_pull(store: StoreDep) -> CommonsPullOut:
     if head:
         async with store.lock:
             pinned = pin_manifest(store.root, head)
-        if pinned:
-            await store.git.commit(f"Pin the commons at {head}")
+            if pinned:
+                await store.git.commit(f"Pin the commons at {head}")
     await store.reload()
     stale = newly_stale(before, stale_sites(store))
     return CommonsPullOut(

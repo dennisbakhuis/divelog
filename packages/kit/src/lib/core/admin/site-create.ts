@@ -76,6 +76,9 @@ export function emptySiteDraft(seed: Partial<SiteDraft> = {}): SiteDraft {
   };
 }
 
+/** The longest site id the server takes (`SiteIn.site_id`). */
+export const SITE_ID_MAX = 120;
+
 /** The id the draft will get, or '' while it has no name. */
 export function draftSiteId(draft: Pick<SiteDraft, 'country' | 'name'>): string {
   return draft.name.trim() ? siteIdFor(draft.country, draft.name) : '';
@@ -116,6 +119,8 @@ export function siteCreateBody(draft: SiteDraft) {
 export function validateDraft(draft: SiteDraft): Record<string, string> {
   const errors: Record<string, string> = {};
   if (!draft.name.trim()) errors.name = 'Give the site a name.';
+  else if (draftSiteId(draft).length > SITE_ID_MAX)
+    errors.name = `The name makes an id longer than ${SITE_ID_MAX} characters; shorten it.`;
   if (!/^[A-Za-z]{3}$/.test(draft.country.trim()))
     errors.country = 'Pick the country, or place the pin and it is filled in.';
   if ((draft.lat === null) !== (draft.lon === null))
@@ -130,7 +135,7 @@ export function validateDraft(draft: SiteDraft): Record<string, string> {
 
 /** Whether a site id is free: `free` on a 404, `taken` when a site answers, null when unsure. */
 export async function siteIdStatus(id: string): Promise<'free' | 'taken' | null> {
-  if (!SITE_ID.test(id)) return null;
+  if (!SITE_ID.test(id) || id.length > SITE_ID_MAX) return null;
   try {
     await adminJson<Site>(adminApi('sites', id));
     return 'taken';

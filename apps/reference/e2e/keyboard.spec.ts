@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { OWNER_COOKIE, SITE_NAME } from './fixtures.mjs';
+import { openSignLink } from './sign-link';
 
 test.use({ reducedMotion: 'reduce' });
 
@@ -203,4 +204,39 @@ test.describe('keyboard only, signed in', () => {
     await expect(page.getByRole('switch', { name: 'Enable single-key shortcuts' })).toBeVisible();
     await page.keyboard.press('Escape');
   });
+});
+
+test('the sign box is usable by keyboard: Undo and Clear work and focus is not lost', async ({
+  page,
+  request,
+}) => {
+  await page.goto(await openSignLink(request));
+  await page.waitForLoadState('networkidle');
+  const pad = page.getByRole('img', { name: 'Your signature or a doodle' });
+  await pad.scrollIntoViewIfNeeded();
+  const area = (await pad.boundingBox())!;
+  const stroke = async (fromX: number) => {
+    await page.mouse.move(area.x + fromX, area.y + 40);
+    await page.mouse.down();
+    await page.mouse.move(area.x + fromX + 60, area.y + 90, { steps: 4 });
+    await page.mouse.up();
+  };
+  await stroke(30);
+  await stroke(140);
+  await expect(page.locator('.dl-signature-hint')).toContainText('2 strokes drawn.');
+
+  const undo = page.getByRole('button', { name: 'Undo', exact: true });
+  const clear = page.getByRole('button', { name: 'Clear', exact: true });
+  await undo.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.dl-signature-hint')).toContainText('1 stroke drawn.');
+  await expect(undo).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(clear).toBeFocused();
+  await page.keyboard.press('Space');
+  await expect(page.locator('.dl-signature-hint')).toContainText('Nothing drawn yet.');
+  await expect(clear).toBeDisabled();
+  await expect(pad).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.getByLabel('Comment')).toBeFocused();
 });

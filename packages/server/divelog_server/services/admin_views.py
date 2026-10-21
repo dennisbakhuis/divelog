@@ -2,12 +2,13 @@
 dive list and the possible duplicates of a site being created."""
 
 from collections import Counter
+from collections.abc import Mapping
 from datetime import date, timedelta
 from typing import Any
 
 from pydantic import ValidationError
 
-from divelog_server.importers.site_match import MATCH_RADIUS_M, nearby
+from divelog_server.importers.site_match import MATCH_RADIUS_M, SiteMatch, nearby
 from divelog_server.schemas.admin import (
     AdminDivePage,
     AdminDiveRow,
@@ -23,7 +24,8 @@ from divelog_server.schemas.admin import (
 )
 from divelog_server.schemas.dive import DiveIn, TripOut, TripRef
 from divelog_server.services import dives as dive_service
-from divelog_server.store.models import DiveRecord, TripRecord
+from divelog_server.store.models import DiveRecord, SiteRecord, TripRecord
+from divelog_server.store.site_search import words
 from divelog_server.store.store import Store
 from divelog_server.store.trips import Trip
 
@@ -58,14 +60,16 @@ def _logged_before(dive: DiveRecord, anchor: DiveRecord) -> bool:
 
 
 def dive_input(dive: DiveRecord) -> DiveTemplateDive:
-    """A stored dive as the form's input, without its profile.
+    """A stored dive as the form's input, without its profile and its buddies' notes.
 
     Values a hand-edited file holds outside the input's ranges are dropped (or, for the
     required duration and depth, clamped) so the result always validates.
     """
     record = dive.model_dump(mode="json")
     payload: dict[str, Any] = {
-        name: record[name] for name in DiveIn.model_fields if name in record and name != "profile"
+        name: record[name]
+        for name in DiveIn.model_fields
+        if name in record and name not in ("profile", "buddy_notes")
     }
     for stored, field in RENAMED.items():
         payload[field] = record.get(stored)
@@ -297,10 +301,13 @@ def nearby_sites(
     The log list covers every site the log lists (its own, forks and commons sites it dived
     or overlays); the commons list the remaining commons sites. Both list the sites whose
     name or alias matches every word of ``name`` (typos allowed, as in the admin search) and
-    those placed within ``radius_m``.
+    those placed within ``radius_m``, nearest first. A site whose name or alias is exactly the
+    one typed always makes the ``limit``; nearer sites that only match by distance never push
+    it out.
     """
     log_ids = {sid for sid in store.sites if store.in_log(sid)}
     log_hits = nearby(name, lat, lon, (store.sites[s] for s in log_ids), radius_m)
+    log_hits = within_limit(log_hits, name, store.sites, limit)
     log = [
         NearbyLogSite(
             site_id=hit.site_id,
@@ -314,10 +321,12 @@ def nearby_sites(
             origin=store.site_origin.get(hit.site_id, "log"),
             dives=len(store.dives_by_site.get(hit.site_id, [])),
         )
-        for hit in log_hits[:limit]
+        for hit in log_hits
     ]
     commons_sites = store.commons.sites if store.commons is not None else {}
     unused = (record for sid, record in commons_sites.items() if sid not in log_ids)
+    commons_hits = nearby(name, lat, lon, unused, radius_m, store.commons_index())
+    commons_hits = within_limit(commons_hits, name, commons_sites, limit)
     commons = [
         NearbyCommonsSite(
             site_id=hit.site_id,
@@ -330,6 +339,28 @@ def nearby_sites(
             matched_by=hit.matched_by if hit.matched_by != "uuid" else "name",
             distance_m=hit.distance_m,
         )
-        for hit in nearby(name, lat, lon, unused, radius_m, store.commons_index())[:limit]
+        for hit in commons_hits
     ]
     return NearbySitesOut(log=log, commons=commons)
+
+
+def within_limit(
+    hits: list[SiteMatch], name: str | None, sites: Mapping[str, SiteRecord], limit: int
+) -> list[SiteMatch]:
+    """At most ``limit`` hits in their order, taking exact name matches first.
+
+    A hit matches exactly when its name, full or short name or an alias is ``name`` word for
+    word; the places left go to the other hits in order.
+    """
+    wanted = words(name or "")
+
+    def exact(hit: SiteMatch) -> bool:
+        site = sites[hit.site_id]
+        names = (site.name, site.full_name, site.short_name, *site.aliases)
+        return any(words(n) == wanted for n in names if n)
+
+    first = [hit for hit in hits if exact(hit)] if wanted else []
+    taken = {id(hit) for hit in first}
+    ranked = [*first, *(hit for hit in hits if id(hit) not in taken)]
+    kept = {id(hit) for hit in ranked[:limit]}
+    return [hit for hit in hits if id(hit) in kept]

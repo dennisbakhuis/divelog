@@ -117,16 +117,60 @@ export type Tank = Schemas['TankOut'];
 
 export type DivePrivate = Schemas['DivePrivate'];
 
+/** A signature's strokes: polylines of integer `[x, y]` points in the 1000 × 400 box. */
+type Strokes = number[][][];
+
+/**
+ * A buddy's note on a dive, signed through a mailed link: a comment, a drawn signature or
+ * both. The API types a point as a pair; the kit reads and draws plain number arrays.
+ */
+export type BuddyNote = Narrow<Schemas['BuddyNoteOut'], { strokes: Strokes | null }>;
+
+/** What the dive form sends per note: only `public` is the owner's to change. */
+export type BuddyNoteInput = Schemas['BuddyNoteIn'];
+
+/** Where the request to sign stands for one buddy; `signed` wins once a note exists. */
+export type SignRequestState = Schemas['SignRequestOut']['state'];
+
+/** One buddy's sign request as the editor sees it, in the order of the dive's people. */
+export type SignRequest = Schemas['SignRequestOut'];
+
+/** Why `POST /admin/dives/{n}/sign-requests` mailed a buddy nothing. */
+export type SignSkipReason = Schemas['SignSkip']['reason'];
+
+/** Body of `POST /admin/dives/{n}/sign-requests`; `resend` needs explicit `people`. */
+export type SignRequestsIn = Required<Schemas['SignRequestsIn']>;
+
+/** `POST /admin/dives/{n}/sign-requests`: who was mailed, who not and why, the new states. */
+export type SignRequestsOut = Schemas['SignRequestsOut'];
+
+/** The buddy a sign link belongs to. */
+export type Signer = Schemas['Signer'];
+
+/** `GET /dive/sign/{token}`: the dive as its public page shows it, for the buddy signing. */
+export type SignPage = Narrow<Schemas['SignPageOut'], { note: BuddyNote | null; dive: Dive }>;
+
+/**
+ * Body of `POST /dive/sign/{token}`: at least one of comment and strokes. Hand-narrowed: the
+ * pad records plain number arrays, which the API reads as its point pairs.
+ */
+export type SignIn = { comment: string | null; strokes: Strokes | null; public: boolean };
+
 /** Overrides shared by `Dive` and `DiveAdmin`: narrowed literals and narrowed nested records. */
 type DiveNarrowing = {
   site: Site | null;
   attachments: Attachment[];
   visibility: Required<Schemas['DiveIn']>['visibility'];
+  /** The public notes on `Dive`; every note on `DiveAdmin`. */
+  buddy_notes?: BuddyNote[];
 };
 
 export type Dive = Narrow<Schemas['DiveOut'], DiveNarrowing>;
 
-export type DiveAdmin = Narrow<Schemas['DiveAdminOut'], DiveNarrowing>;
+export type DiveAdmin = Narrow<
+  Schemas['DiveAdminOut'],
+  DiveNarrowing & { sign_requests?: SignRequest[] }
+>;
 
 /** A row of `GET /admin/dives`: what the editor's list shows; the full record is `DiveAdmin`. */
 export type AdminDiveListItem = Narrow<

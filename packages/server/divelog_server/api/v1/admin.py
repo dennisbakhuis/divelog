@@ -1,8 +1,10 @@
 """Owner-only endpoints behind the session cookie: everything that writes."""
 
+import asyncio
 import logging
 import re
 import unicodedata
+from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Literal
 from uuid import uuid4
@@ -12,7 +14,7 @@ from fastapi.responses import FileResponse
 
 from divelog_server.api.v1.public import region_out
 from divelog_server.core.config import get_settings
-from divelog_server.core.deps import StoreDep, require_owner
+from divelog_server.core.deps import StateDep, StoreDep, require_owner
 from divelog_server.importers.shearwater import gas_of, parse_shearwater
 from divelog_server.importers.site_match import MATCH_RADIUS_M, match_site
 from divelog_server.importers.subsurface import gas_for, parse_subsurface
@@ -55,9 +57,11 @@ from divelog_server.schemas.dive import (
     TripOut,
 )
 from divelog_server.schemas.gear import GearItemIn, GearItemOut, GearSetupIn, GearSetupOut
-from divelog_server.services import admin_views
+from divelog_server.schemas.signing import SignRequestsIn, SignRequestsOut
+from divelog_server.services import admin_views, signing
+from divelog_server.services import buddy_notes as notes_service
 from divelog_server.services import dives as dive_service
-from divelog_server.services.images import IMAGE_MIMES, process_image
+from divelog_server.services.images import IMAGE_MIMES, image_format, process_image
 from divelog_server.services.markdown import render
 from divelog_server.services.overpass import OverpassClient, OverpassError, get_overpass_client
 from divelog_server.services.storage import (
@@ -68,6 +72,7 @@ from divelog_server.services.storage import (
     media_url,
     variant_key,
 )
+from divelog_server.store.countries import COUNTRIES
 from divelog_server.store.models import (
     DiveRecord,
     GearItemRecord,
@@ -88,9 +93,10 @@ from divelog_server.store.overlay import (
     PERSONAL_FIELDS,
     PREFERENCE_FIELDS,
 )
-from divelog_server.store.slug import SITE_ID, site_id_for
+from divelog_server.store.slug import SITE_ID, UNKNOWN_COUNTRY, site_id_for
 from divelog_server.store.sources import PERSONAL_MAP_ID
-from divelog_server.store.store import NothingToPinError, Store
+from divelog_server.store.state import AuthState
+from divelog_server.store.store import NothingToPinError, SiteIdTakenError, Store
 from divelog_server.store.trips import Trip
 from divelog_server.tools.sitemap_osm import RADIUS, starter_map
 
@@ -121,12 +127,12 @@ async def admin_next_number(store: StoreDep) -> NextDiveNumber:
 
 
 @router.post("/dives", response_model=DiveAdminOut, status_code=status.HTTP_201_CREATED)
-async def admin_create_dive(body: DiveIn, store: StoreDep) -> DiveAdminOut:
+async def admin_create_dive(body: DiveIn, store: StoreDep, state: StateDep) -> DiveAdminOut:
     if body.number in store.dives:
         raise HTTPException(status_code=409, detail=f"Dive #{body.number} already exists")
     record = _apply_dive(store, None, body)
     await store.save_dive(record, f"Add dive #{record.number}")
-    return dive_service.dive_admin_out(store, record)
+    return _admin_out(store, state, record)
 
 
 @router.get("/dives/template", response_model=DiveTemplateOut)
@@ -186,46 +192,127 @@ async def admin_publish_dives(body: DivesPublishIn, store: StoreDep) -> DivesPub
 
 
 @router.get("/dives/{number}", response_model=DiveAdminOut)
-async def admin_get_dive(number: int, store: StoreDep) -> DiveAdminOut:
-    return dive_service.dive_admin_out(store, _dive_or_404(store, number))
+async def admin_get_dive(number: int, store: StoreDep, state: StateDep) -> DiveAdminOut:
+    return _admin_out(store, state, _dive_or_404(store, number))
 
 
 @router.put("/dives/{number}", response_model=DiveAdminOut)
-async def admin_update_dive(number: int, body: DiveIn, store: StoreDep) -> DiveAdminOut:
-    dive = _dive_or_404(store, number)
-    if body.number != number and body.number in store.dives:
-        raise HTTPException(status_code=409, detail=f"Dive #{body.number} already exists")
-    record = _apply_dive(store, dive, body)
-    await store.save_dive(record, f"Update dive #{record.number}", previous_number=number)
-    return dive_service.dive_admin_out(store, record)
+async def admin_update_dive(
+    number: int, body: DiveIn, store: StoreDep, state: StateDep
+) -> DiveAdminOut:
+    """Replace a dive with the form's fields, over the dive as stored at the moment of writing.
+
+    Attachments come from the stored dive, so a photo uploaded while the form was open stays.
+    A ``cover_attachment_id`` that names none of the dive's attachments keeps the stored cover.
+    ``buddy_notes`` None keeps the notes; a list keeps the notes it names, with their
+    ``public``, and deletes the rest. Sign invites follow a new number; a buddy taken off the
+    dive loses theirs.
+    """
+
+    def change(dive: DiveRecord) -> DiveRecord:
+        if body.number != number and body.number in store.dives:
+            raise HTTPException(status_code=409, detail=f"Dive #{body.number} already exists")
+        record = _apply_dive(store, dive, body)
+        if record.cover is not None and all(m.id != record.cover for m in record.media):
+            logger.warning("dive #%d: cover %s is not one of its attachments", number, record.cover)
+            record.cover = dive.cover
+        return record
+
+    record = await _update_dive(store, number, change, f"Update dive #{body.number}")
+    await signing.follow_dive(state, number, record)
+    return _admin_out(store, state, record)
 
 
 @router.delete("/dives/{number}", status_code=status.HTTP_204_NO_CONTENT)
-async def admin_delete_dive(number: int, store: StoreDep) -> None:
+async def admin_delete_dive(number: int, store: StoreDep, state: StateDep) -> None:
+    """Delete a dive, its files no other record uses, and the invites to sign it."""
     dive = _dive_or_404(store, number)
     storage = get_storage()
     for media in dive.media:
         if len(store.media_referrers(media.key)) == 1:
             await _delete_files(storage, media)
     await store.delete_dive(number, f"Delete dive #{number}")
+    await signing.follow_dive(state, number, None)
 
 
 @router.patch("/dives/{number}", response_model=DiveAdminOut)
-async def admin_patch_dive(number: int, body: DivePatch, store: StoreDep) -> DiveAdminOut:
+async def admin_patch_dive(
+    number: int, body: DivePatch, store: StoreDep, state: StateDep
+) -> DiveAdminOut:
     """Change the fields that live outside the dive form, leaving everything else as stored.
 
     Only the fields present in the body are written; ``cover_attachment_id`` must name one of
     the dive's attachments, or be ``null`` for no cover.
     """
-    dive = _dive_or_404(store, number).model_copy(deep=True)
+    dive = _dive_or_404(store, number)
     if "cover_attachment_id" not in body.model_fields_set:
-        return dive_service.dive_admin_out(store, dive)
+        return _admin_out(store, state, dive)
     cover = body.cover_attachment_id
-    if cover is not None and all(m.id != cover for m in dive.media):
-        raise HTTPException(status_code=422, detail=f"Dive #{number} has no attachment {cover}")
-    dive.cover = cover
-    await store.save_dive(dive, f"Set cover of dive #{number}")
-    return dive_service.dive_admin_out(store, dive)
+
+    def change(dive: DiveRecord) -> DiveRecord:
+        if cover is not None and all(m.id != cover for m in dive.media):
+            raise HTTPException(status_code=422, detail=f"Dive #{number} has no attachment {cover}")
+        dive.cover = cover
+        return dive
+
+    saved = await _update_dive(store, number, change, f"Set cover of dive #{number}")
+    return _admin_out(store, state, saved)
+
+
+@router.post("/dives/{number}/sign-requests", response_model=SignRequestsOut)
+async def admin_request_signatures(
+    number: int, body: SignRequestsIn, store: StoreDep, state: StateDep
+) -> SignRequestsOut:
+    """Mail the dive's buddies a one-time link to sign it.
+
+    Without ``resend`` only buddies with an e-mail who were never asked for this dive and
+    left no note are mailed (every buddy when ``people`` is null), so saving again mails
+    only a newly added buddy. ``resend`` mails the named ``people`` a new link and kills the
+    old one; a buddy who signed is never mailed again. A draft is refused with 422; a mail
+    that cannot be sent gives 502 and leaves that buddy's invite as it was.
+    """
+    dive = _dive_or_404(store, number)
+    try:
+        return await signing.request_signatures(store, state, dive, body.people, body.resend)
+    except signing.DraftDive as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except signing.MailFailed as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.delete("/dives/{number}/sign-requests/{person}", status_code=status.HTTP_204_NO_CONTENT)
+async def admin_withdraw_sign_request(
+    number: int, person: str, store: StoreDep, state: StateDep
+) -> None:
+    """Withdraw the invite of the buddy with slug ``person``; its link stops working."""
+    buddy = _buddy_or_404(store, _dive_or_404(store, number), person)
+    if not await signing.withdraw(state, number, buddy.id):
+        raise HTTPException(status_code=404, detail=f"{buddy.first_name} was not asked")
+
+
+@router.delete("/dives/{number}/buddy-notes/{person}", status_code=status.HTTP_204_NO_CONTENT)
+async def admin_delete_buddy_note(number: int, person: str, store: StoreDep) -> None:
+    """Delete the note of the buddy with slug ``person``."""
+    buddy = _buddy_or_404(store, _dive_or_404(store, number), person)
+
+    def change(dive: DiveRecord) -> DiveRecord:
+        if notes_service.note_of(dive, buddy.id) is None:
+            raise HTTPException(status_code=404, detail=f"{buddy.first_name} left no note")
+        dive.buddy_notes = [n for n in dive.buddy_notes if n.person != buddy.id]
+        return dive
+
+    await _update_dive(store, number, change, f"Delete {buddy.first_name}'s note on dive #{number}")
+
+
+def _admin_out(store: Store, state: AuthState, dive: DiveRecord) -> DiveAdminOut:
+    return dive_service.dive_admin_out(store, dive, signing.dive_invites(state, dive.number))
+
+
+def _buddy_or_404(store: Store, dive: DiveRecord, person: str) -> PersonRecord:
+    buddy = notes_service.dive_person(store, dive, person)
+    if buddy is None:
+        raise HTTPException(status_code=404, detail=f"{person} is not on dive #{dive.number}")
+    return buddy
 
 
 def _apply_dive(store: Store, dive: DiveRecord | None, body: DiveIn) -> DiveRecord:
@@ -240,6 +327,16 @@ def _dive_or_404(store: Store, number: int) -> DiveRecord:
     if dive is None:
         raise HTTPException(status_code=404, detail="Dive not found")
     return dive
+
+
+async def _update_dive(
+    store: Store, number: int, change: Callable[[DiveRecord], DiveRecord], message: str
+) -> DiveRecord:
+    """:meth:`Store.update_dive`, with a dive that is gone answered as 404."""
+    try:
+        return await store.update_dive(number, change, message)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Dive not found") from None
 
 
 # ── Attachments ─────────────────────────────────────────────────────────────
@@ -257,13 +354,26 @@ async def admin_upload_attachment(
     kind: str = "photo",
     public: bool | None = None,
 ) -> AttachmentOut:
-    dive = _dive_or_404(store, number)
-    media = await _store_upload(file, kind, public if public is not None else kind != "scan")
-    media.sort = len(dive.media)
-    dive.media.append(media)
-    if kind == "photo" and dive.cover is None:
-        dive.cover = media.id
-    await store.save_dive(dive, f"Attach {kind} to dive #{number}")
+    """Store a file and attach it to a dive; the first photo becomes the cover.
+
+    Photos are recognised by their bytes, whatever type was declared. Without ``public`` a
+    photo is public unless it is a scan; a file that is not a photo is private.
+    """
+    _dive_or_404(store, number)
+    media = await _store_upload(file, kind, public, image_public=kind != "scan")
+
+    def change(dive: DiveRecord) -> DiveRecord:
+        media.sort = len(dive.media)
+        dive.media.append(media)
+        if kind == "photo" and dive.cover is None:
+            dive.cover = media.id
+        return dive
+
+    try:
+        await store.update_dive(number, change, f"Attach {kind} to dive #{number}")
+    except KeyError:
+        await _delete_files(get_storage(), media)
+        raise HTTPException(status_code=404, detail="Dive not found") from None
     return dive_service.attachment_out(media)
 
 
@@ -277,13 +387,22 @@ async def admin_upload_site_attachment(
     store: StoreDep,
     file: UploadFile = File(...),
     kind: str = "photo",
-    public: bool = True,
+    public: bool | None = None,
 ) -> AttachmentOut:
-    site = _site_or_404(store, site_id)
-    media = await _store_upload(file, kind, public)
-    media.sort = len(site.media)
-    site.media.append(media)
-    await store.save_site(site, f"Attach {kind} to site {site_id}")
+    """Store a file and attach it to a site; without ``public`` only a photo is public."""
+    _site_or_404(store, site_id)
+    media = await _store_upload(file, kind, public, image_public=True)
+
+    def change(site: SiteRecord) -> SiteRecord:
+        media.sort = len(site.media)
+        site.media.append(media)
+        return site
+
+    try:
+        await store.update_site(site_id, change, f"Attach {kind} to site {site_id}")
+    except KeyError:
+        await _delete_files(get_storage(), media)
+        raise HTTPException(status_code=404, detail="Site not found") from None
     return dive_service.attachment_out(media)
 
 
@@ -296,15 +415,17 @@ async def admin_order_site_attachments(
     Unknown ids are ignored; attachments left out keep their relative order after the listed
     ones.
     """
-    site = _site_or_404(store, site_id).model_copy(deep=True)
-    position = {media_id: i for i, media_id in enumerate(body)}
-    current = sorted(site.media, key=lambda m: m.sort)
-    ordered = sorted(current, key=lambda m: position.get(m.id, len(body)))
-    for i, media in enumerate(ordered):
-        media.sort = i
-    site.media = ordered
-    await store.save_site(site, f"Reorder attachments of site {site_id}")
-    return [dive_service.attachment_out(m) for m in ordered]
+    _site_or_404(store, site_id)
+
+    def change(site: SiteRecord) -> SiteRecord:
+        site.media = _in_order(site.media, body)
+        return site
+
+    try:
+        saved = await store.update_site(site_id, change, f"Reorder attachments of site {site_id}")
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Site not found") from None
+    return [dive_service.attachment_out(m) for m in sorted(saved.media, key=lambda m: m.sort)]
 
 
 @router.post(
@@ -320,7 +441,7 @@ async def admin_upload_avatar(
     for old in [m for m in person.media if m.kind == "avatar"]:
         await _delete_files(storage, old)
         person.media.remove(old)
-    media = await _store_upload(file, "avatar", True)
+    media = await _store_upload(file, "avatar", True, image_only=True)
     person.media.append(media)
     person.avatar = media.id
     await store.save_person(person, f"Set avatar for {person.id}")
@@ -341,7 +462,7 @@ async def admin_upload_gear_photo(
     storage = get_storage()
     for old in list(item.media):
         await _delete_files(storage, old)
-    item.media = [await _store_upload(file, "photo", True)]
+    item.media = [await _store_upload(file, "photo", True, image_only=True)]
     await store.save_gear(f"Set photo for gear item {item_id}")
     return dive_service.attachment_out(item.media[0])
 
@@ -355,14 +476,24 @@ async def admin_order_attachments(
     Unknown ids are ignored; attachments left out keep their relative order after the listed
     ones.
     """
-    dive = _dive_or_404(store, number).model_copy(deep=True)
-    position = {media_id: i for i, media_id in enumerate(body)}
-    current = sorted(dive.media, key=lambda m: m.sort)
-    ordered = sorted(current, key=lambda m: position.get(m.id, len(body)))
-    for i, media in enumerate(ordered):
-        media.sort = i
-    await store.save_dive(dive, f"Reorder attachments of dive #{number}")
-    return [dive_service.attachment_out(m) for m in ordered]
+    _dive_or_404(store, number)
+
+    def change(dive: DiveRecord) -> DiveRecord:
+        _in_order(dive.media, body)
+        return dive
+
+    saved = await _update_dive(store, number, change, f"Reorder attachments of dive #{number}")
+    return [dive_service.attachment_out(m) for m in sorted(saved.media, key=lambda m: m.sort)]
+
+
+def _in_order(media: list[MediaRef], ids: list[str]) -> list[MediaRef]:
+    """Renumber ``sort`` to follow ``ids``; the unlisted keep their order after the listed."""
+    position = {media_id: i for i, media_id in enumerate(ids)}
+    current = sorted(media, key=lambda m: m.sort)
+    ordered = sorted(current, key=lambda m: position.get(m.id, len(ids)))
+    for i, item in enumerate(ordered):
+        item.sort = i
+    return ordered
 
 
 CREDIT_FIELDS = ("licence", "author", "source")
@@ -374,19 +505,50 @@ async def admin_patch_attachment(
 ) -> AttachmentOut:
     """Change caption, credit, kind, order, visibility or the licence, author and source."""
     owner, record, media = _media_or_404(store, media_id)
+    message = f"Update attachment on {owner[0]} {owner[1]}"
+    if isinstance(record, DiveRecord):
+
+        def change(dive: DiveRecord) -> DiveRecord:
+            _patch_media(_dive_media_or_404(dive, media_id), body)
+            return dive
+
+        saved = await _update_dive(store, record.number, change, message)
+        return dive_service.attachment_out(_dive_media_or_404(saved, media_id))
+    _patch_media(media, body)
+    await _save_owner(store, owner, record, message)
+    return dive_service.attachment_out(media)
+
+
+def _patch_media(media: MediaRef, body: AttachmentPatch) -> None:
     for key, value in body.model_dump(exclude_none=True).items():
         if key in CREDIT_FIELDS:
             value = value.strip() or None
         setattr(media, key, value)
-    await _save_owner(store, owner, record, f"Update attachment on {owner[0]} {owner[1]}")
-    return dive_service.attachment_out(media)
+
+
+def _dive_media_or_404(dive: DiveRecord, media_id: str) -> MediaRef:
+    media = next((m for m in dive.media if m.id == media_id), None)
+    if media is None:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    return media
 
 
 @router.delete("/attachments/{media_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def admin_delete_attachment(media_id: str, store: StoreDep) -> None:
     owner, record, media = _media_or_404(store, media_id)
-    if isinstance(record, DiveRecord) and record.cover == media.id:
-        record.cover = None
+    if isinstance(record, DiveRecord):
+
+        def change(dive: DiveRecord) -> DiveRecord:
+            dive.media.remove(_dive_media_or_404(dive, media_id))
+            if dive.cover == media_id:
+                dive.cover = None
+            return dive
+
+        message = f"Remove attachment from {owner[0]} {owner[1]}"
+        await _update_dive(store, record.number, change, message)
+        if not store.media_referrers(media.key):
+            await _delete_files(get_storage(), media)
+        return
     if isinstance(record, PersonRecord) and record.avatar == media.id:
         record.avatar = None
     record.media.remove(media)
@@ -435,7 +597,21 @@ async def _save_owner(
         await store.save_gear(message)
 
 
-async def _store_upload(file: UploadFile, kind: str, public: bool) -> MediaRef:
+async def _store_upload(
+    file: UploadFile,
+    kind: str,
+    public: bool | None,
+    *,
+    image_public: bool = True,
+    image_only: bool = False,
+) -> MediaRef:
+    """Store an upload: a photo processed into a clean original and variants, anything else as is.
+
+    A photo is recognised by its bytes; the declared type only decides that bytes Pillow cannot
+    read are an error (400). Without ``public`` a photo gets ``image_public`` and any other
+    file stays private, since only photos lose their metadata here. ``image_only`` refuses a
+    file that is not a photo.
+    """
     settings = get_settings()
     data = await file.read()
     if len(data) > settings.MAX_UPLOAD_BYTES:
@@ -449,10 +625,13 @@ async def _store_upload(file: UploadFile, kind: str, public: bool) -> MediaRef:
     variants: list[str] = []
     width = height = None
     taken_at = None
+    is_image = image_format(data) is not None
+    if not is_image and (image_only or mime in IMAGE_MIMES):
+        raise HTTPException(status_code=400, detail="Could not read image")
 
-    if mime in IMAGE_MIMES:
+    if is_image:
         try:
-            processed = process_image(data, square=kind == "avatar")
+            processed = await asyncio.to_thread(process_image, data, square=kind == "avatar")
         except Exception as exc:
             raise HTTPException(status_code=400, detail="Could not read image") from exc
         ext = "png" if processed.original_mime == "image/png" else "jpg"
@@ -482,7 +661,7 @@ async def _store_upload(file: UploadFile, kind: str, public: bool) -> MediaRef:
         width=width,
         height=height,
         taken_at=taken_at,
-        public=public,
+        public=public if public is not None else is_image and image_public,
         variants=variants,
         original_name=(file.filename or "")[:255],
     )
@@ -541,18 +720,44 @@ async def admin_get_site(site_id: str, store: StoreDep) -> SiteOut:
 async def admin_create_site(body: SiteIn, store: StoreDep) -> SiteOut:
     """Create a personal site.
 
-    The id must match ``{iso3}-{slug}`` (422 naming the pattern otherwise) and be free (409).
-    Existing sites keep whatever id they have, so the check is on create only.
+    The id must match ``{iso3}-{slug}`` (422 naming the pattern otherwise) and be free (409,
+    saying whether the log or the commons has it). The country must be a known ISO 3166
+    alpha-3 code (stored in capitals) and the id starts with it in lower case, or with
+    ``xxx-`` when there is no country; the region must exist. Those 422s list the fields like
+    a validation error. Existing sites keep whatever id they have, so the checks are on create
+    only.
     """
     if not SITE_ID.match(body.site_id):
         raise HTTPException(
             status_code=422, detail=f"Site id {body.site_id!r} does not match {SITE_ID.pattern}"
         )
-    if body.site_id in store.sites:
-        raise HTTPException(status_code=409, detail="Site id already in use")
+    country = body.country.upper() if body.country else None
+    errors: dict[str, str] = {}
+    if country is not None and country not in COUNTRIES:
+        errors["country"] = f"Unknown country code {country!r}"
+    prefix = country.lower() if country else UNKNOWN_COUNTRY
+    if not errors and body.site_id.split("-", 1)[0] != prefix:
+        errors["site_id"] = f"A site id here starts with {prefix}-"
+    if body.region and body.region not in store.regions:
+        errors["region"] = f"Unknown region {body.region!r}"
+    if errors:
+        raise HTTPException(
+            status_code=422,
+            detail=[
+                {"loc": ["body", field], "msg": msg, "type": "value_error"}
+                for field, msg in errors.items()
+            ],
+        )
     record = _site_from(body, None)
-    await store.save_site(record, f"Add site {record.site_id}")
-    return dive_service.site_out(store, record, True)
+    record.country = country
+    try:
+        saved = await store.create_site(record, f"Add site {record.site_id}")
+    except SiteIdTakenError as exc:
+        where = "the commons" if exc.origin == "commons" else "your log"
+        raise HTTPException(
+            status_code=409, detail=f"Site id {exc.site_id} is already in use in {where}"
+        ) from None
+    return dive_service.site_out(store, saved, True)
 
 
 @router.put("/sites/{site_id}", response_model=SiteOut)
@@ -803,10 +1008,13 @@ async def admin_create_trip(body: TripIn, store: StoreDep) -> TripOut:
 
 @router.put("/trips/{slug}", response_model=TripOut)
 async def admin_update_trip(slug: str, body: TripIn, store: StoreDep) -> TripOut:
-    if slug not in store.trips:
+    """Change an override's name, dates and description; ``merge`` and ``cover`` are kept."""
+    existing = store.trips.get(slug)
+    if existing is None:
         raise HTTPException(status_code=404, detail="Trip not found")
-    trip = TripRecord(**body.model_dump(exclude={"description_md"}), body_md=body.description_md)
-    trip.slug = slug
+    payload = existing.model_dump() | body.model_dump(exclude={"description_md"}) | {"slug": slug}
+    trip = TripRecord.model_validate(payload)
+    trip.body_md = body.description_md
     await store.save_trip(trip, f"Update trip {slug}")
     return _trip_out(trip, store.trip_index(True).trips.get(slug))
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { matchRoute } from './table.js';
 import {
   diveOgRedirect,
@@ -19,6 +19,8 @@ import {
 } from './public.js';
 import { DEFAULT_CONFIG } from '$lib/core/dive/config.js';
 import { fakeDivelog, fakeEvent, thrown } from '../testing/fake.js';
+import { ApiError } from '../server/api.js';
+import { error } from '@sveltejs/kit';
 import type { Region, Site } from '$lib/core/dive/types.js';
 
 const API = '/api/v1/dive';
@@ -127,6 +129,175 @@ describe('public loaders', () => {
     expect(data.meta).toEqual({
       title: 'Dive #7 — Blue — Diver',
       description: '30 m for 42 minutes at Ressel on 2026-01-02.',
+    });
+  });
+
+  describe('a dive opened from a mailed sign link', () => {
+    const privateDive = {
+      number: 9,
+      title: '',
+      max_depth_m: 20,
+      duration_min: 40,
+      date: '2026-10-25',
+      site: null,
+      visibility: 'private',
+    };
+    const signPage = {
+      state: 'open',
+      signer: { slug: 'alex', first_name: 'Alex' },
+      expires_at: '2026-11-01T10:00:00Z',
+      note: null,
+      dive: privateDive,
+    };
+    const signUrl = (token: string) => `/api/v1/dive/sign/${token}`;
+    const notFound = (divelog: ReturnType<typeof fakeDivelog>) => {
+      divelog.apiOrError = vi.fn(async () => error(404, 'Not found')) as typeof divelog.apiOrError;
+    };
+
+    it('renders a private dive from the sign page, private and unindexed', async () => {
+      const divelog = fakeDivelog({ [signUrl('t0k')]: signPage });
+      notFound(divelog);
+      const event = fakeEvent('/dive/9?sign=t0k');
+      const data = await diveRoute.load(divelog, ['9'], event);
+      expect(data.dive).toEqual(privateDive);
+      expect(data.signing).toEqual({
+        state: 'open',
+        number: 9,
+        token: 't0k',
+        signer: { slug: 'alex', first_name: 'Alex' },
+        expires_at: '2026-11-01T10:00:00Z',
+        note: null,
+      });
+      expect(event.setHeaders).toHaveBeenCalledWith({
+        'cache-control': 'private, no-store',
+        'x-robots-tag': 'noindex, nofollow',
+      });
+      expect(divelog.api).toHaveBeenCalledWith(event.fetch, signUrl('t0k'));
+    });
+
+    it('404s the same private dive without a token', async () => {
+      const divelog = fakeDivelog({ [signUrl('t0k')]: signPage });
+      notFound(divelog);
+      const event = fakeEvent('/dive/9');
+      expect(await thrown(diveRoute.load(divelog, ['9'], event))).toMatchObject({ status: 404 });
+      expect(divelog.api).not.toHaveBeenCalled();
+      expect(event.setHeaders).not.toHaveBeenCalled();
+    });
+
+    it('loads the page as usual when the token belongs to another dive', async () => {
+      const divelog = fakeDivelog({
+        [signUrl('t0k')]: signPage,
+        [`${API}/dives/7`]: { ...privateDive, number: 7, visibility: 'public' },
+      });
+      const data = await diveRoute.load(divelog, ['7'], fakeEvent('/dive/7?sign=t0k'));
+      expect(data.dive.number).toBe(7);
+      expect(data.signing).toBeNull();
+    });
+
+    it('marks an expired or unknown token on a public dive', async () => {
+      const divelog = fakeDivelog({
+        [signUrl('old')]: new ApiError(410, 'This sign link has expired'),
+        [`${API}/dives/7`]: { ...privateDive, number: 7, visibility: 'public' },
+      });
+      const data = await diveRoute.load(divelog, ['7'], fakeEvent('/dive/7?sign=old'));
+      expect(data.dive.number).toBe(7);
+      expect(data.signing).toEqual({ state: 'expired', number: 7 });
+    });
+
+    it('404s an expired token on a private dive', async () => {
+      const divelog = fakeDivelog({ [signUrl('old')]: new ApiError(410, 'gone') });
+      notFound(divelog);
+      expect(
+        await thrown(diveRoute.load(divelog, ['9'], fakeEvent('/dive/9?sign=old'))),
+      ).toMatchObject({ status: 404 });
+    });
+
+    it('loads the page without a box when the sign page fails otherwise', async () => {
+      const divelog = fakeDivelog({
+        [signUrl('t0k')]: new ApiError(502, 'down'),
+        [`${API}/dives/7`]: { ...privateDive, number: 7, visibility: 'public' },
+      });
+      const data = await diveRoute.load(divelog, ['7'], fakeEvent('/dive/7?sign=t0k'));
+      expect(data.signing).toBeNull();
+    });
+
+    it('ignores an empty token: no request, no headers, no noindex', async () => {
+      const divelog = fakeDivelog({ [`${API}/dives/7`]: { ...privateDive, number: 7 } });
+      const event = fakeEvent('/dive/7?sign=');
+      const data = await diveRoute.load(divelog, ['7'], event);
+      expect(data.signing).toBeNull();
+      expect(divelog.api).not.toHaveBeenCalled();
+      expect(event.setHeaders).not.toHaveBeenCalled();
+    });
+
+    it('uses the first of several sign parameters', async () => {
+      const divelog = fakeDivelog({ [signUrl('first')]: signPage });
+      const data = await diveRoute.load(
+        divelog,
+        ['9'],
+        fakeEvent('/dive/9?sign=first&sign=second'),
+      );
+      expect(data.signing).toMatchObject({ token: 'first' });
+      expect(divelog.api).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the other dive private: a token for dive 9 shows nothing of 9 on dive 7', async () => {
+      const seven = { ...privateDive, number: 7, title: 'Seven', visibility: 'public' };
+      const divelog = fakeDivelog({ [signUrl('t0k')]: signPage, [`${API}/dives/7`]: seven });
+      const event = fakeEvent('/dive/7?sign=t0k');
+      const data = await diveRoute.load(divelog, ['7'], event);
+      expect(JSON.stringify(data)).not.toContain('"number":9');
+      expect(data).toMatchObject({ dive: seven, editHref: '/admin/dives/7', signing: null });
+      expect(event.setHeaders).toHaveBeenCalledWith({
+        'cache-control': 'private, no-store',
+        'x-robots-tag': 'noindex, nofollow',
+      });
+    });
+
+    it('404s a token for another dive when the dive in the address is private', async () => {
+      const divelog = fakeDivelog({ [signUrl('t0k')]: signPage });
+      notFound(divelog);
+      expect(
+        await thrown(diveRoute.load(divelog, ['7'], fakeEvent('/dive/7?sign=t0k'))),
+      ).toMatchObject({ status: 404 });
+    });
+
+    it.each([
+      ['a rate limit', new ApiError(429, 'slow down')],
+      ['a server error', new ApiError(500, 'boom')],
+      ['no answer at all', new TypeError('fetch failed')],
+    ])('loads the plain page on %s from the sign page', async (_name, failure) => {
+      const divelog = fakeDivelog({
+        [signUrl('t0k')]: failure,
+        [`${API}/dives/7`]: { ...privateDive, number: 7, visibility: 'public' },
+      });
+      const data = await diveRoute.load(divelog, ['7'], fakeEvent('/dive/7?sign=t0k'));
+      expect(data.signing).toBeNull();
+      expect(data.dive.number).toBe(7);
+    });
+
+    it('treats an unknown route (404) on an older server like an expired link', async () => {
+      const divelog = fakeDivelog({
+        [signUrl('t0k')]: new ApiError(404, 'Not Found'),
+        [`${API}/dives/7`]: { ...privateDive, number: 7, visibility: 'public' },
+      });
+      const data = await diveRoute.load(divelog, ['7'], fakeEvent('/dive/7?sign=t0k'));
+      expect(data.signing).toEqual({ state: 'expired', number: 7 });
+    });
+
+    it('keeps a used link: the dive with the buddy note and no box to sign', async () => {
+      const used = { ...signPage, state: 'used', note: { person: 'alex', comment: 'Hi' } };
+      const divelog = fakeDivelog({ [signUrl('t0k')]: used });
+      const data = await diveRoute.load(divelog, ['9'], fakeEvent('/dive/9?sign=t0k'));
+      expect(data.signing).toMatchObject({ state: 'used', note: { comment: 'Hi' } });
+    });
+
+    it('encodes the token into the API path', async () => {
+      const divelog = fakeDivelog({
+        [signUrl('a%2Fb')]: { ...signPage, dive: { ...privateDive } },
+      });
+      const data = await diveRoute.load(divelog, ['9'], fakeEvent('/dive/9?sign=a%2Fb'));
+      expect(data.signing).toMatchObject({ token: 'a/b' });
     });
   });
 

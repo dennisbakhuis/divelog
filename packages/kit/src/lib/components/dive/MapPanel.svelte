@@ -49,6 +49,14 @@
     if (selected) return routeKeys(selected.annotation);
     return new Set(dived.flatMap((r) => [...routeKeys(r.annotation)]));
   });
+  // Every dive together overlays the free-drawn tracks too, not just the legs on the line.
+  const tracks = $derived(
+    selected || shown === 'none'
+      ? []
+      : dived
+          .map((r) => ({ path: r.annotation.path ?? [], turn: r.annotation.turn_at ?? null }))
+          .filter((t) => t.path.length > 1),
+  );
 
   const LABEL: Record<MapRef['collection'], string> = {
     drawn: 'Drawn',
@@ -137,6 +145,7 @@
         legs={selected?.annotation.route ?? []}
         path={selected?.annotation.path ?? []}
         pathTurn={selected?.annotation.turn_at ?? null}
+        {tracks}
         turn={selected?.annotation.turn ?? null}
         pins={selected?.annotation.pins ?? []}
       />

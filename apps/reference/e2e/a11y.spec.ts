@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { OWNER_COOKIE, SITE_SLUG } from './fixtures.mjs';
 import { ADMIN_PAGES, PUBLIC_PAGES, SIGNED_OUT_ADMIN_PAGES } from './pages.mjs';
+import { openSignLink } from './sign-link';
 
 /*
  * The accessibility sweep: every public page signed out and signed in (with the owner bar),
@@ -55,6 +56,15 @@ for (const viewport of VIEWPORTS) {
         expect(await sweep(page, info)).toEqual([]);
       });
     }
+
+    test('the dive page from a sign link has no serious or critical axe violations', async ({
+      page,
+      request,
+    }, info) => {
+      await open(page, await openSignLink(request));
+      await expect(page.getByRole('button', { name: 'Sign the dive' })).toBeVisible();
+      expect(await sweep(page, info)).toEqual([]);
+    });
 
     for (const path of SIGNED_OUT_ADMIN_PAGES) {
       test(`${path} (signed out) has no serious or critical axe violations`, async ({

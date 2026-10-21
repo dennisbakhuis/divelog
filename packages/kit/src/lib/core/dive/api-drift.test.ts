@@ -9,6 +9,7 @@ import type {
   SiteMap,
   SiteMapOut,
 } from './sitemap.js';
+import type { BuddyNote, SignIn, SignPage, SignRequestsIn } from './types.js';
 
 type Schemas = components['schemas'];
 
@@ -27,5 +28,17 @@ describe('hand-written map types match the generated API schema', () => {
   it('sends what the API accepts', () => {
     expectTypeOf<SiteMap>().toExtend<Schemas['SiteMap']>();
     expectTypeOf<DiveMapAnnotation>().toExtend<Schemas['DiveMapAnnotation-Input']>();
+  });
+});
+
+describe('hand-narrowed sign types match the generated API schema', () => {
+  it('reads what the API sends', () => {
+    expectTypeOf<Schemas['BuddyNoteOut']>().toExtend<BuddyNote>();
+    expectTypeOf<Schemas['SignPageOut']['note']>().toExtend<SignPage['note']>();
+  });
+
+  it('sends what the API accepts', () => {
+    expectTypeOf<SignRequestsIn>().toExtend<Schemas['SignRequestsIn']>();
+    expectTypeOf<Omit<SignIn, 'strokes'>>().toExtend<Omit<Schemas['SignIn'], 'strokes'>>();
   });
 });

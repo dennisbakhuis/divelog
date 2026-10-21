@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { flushSync } from 'svelte';
+import Toolbar from './Toolbar.svelte';
 import ToolbarProbe from './__fixtures__/ToolbarProbe.svelte';
 import { key, render, settle } from './__fixtures__/test-utils.js';
 
@@ -90,6 +91,28 @@ describe('Toolbar', () => {
     key(connect, 'ArrowUp');
     await settle();
     expect(document.activeElement).toBe(add);
+    destroy();
+  });
+
+  it('describes each tool by its hint even when the tool value has spaces', () => {
+    const { target, destroy } = render(Toolbar, {
+      label: 'Annotation tool',
+      items: [
+        { value: 'free track', label: 'Track', hint: 'Tap along the way you swam' },
+        { value: 'turn point', label: 'Turn', hint: 'Tap where you turned' },
+        { value: 'pin', label: 'Pin' },
+      ],
+    });
+    const [track, turn, pin] = buttons(target);
+    for (const [button, hint] of [
+      [track, 'Tap along the way you swam'],
+      [turn, 'Tap where you turned'],
+    ] as const) {
+      const ids = button.getAttribute('aria-describedby')!;
+      expect(ids).not.toMatch(/\s/);
+      expect(document.getElementById(ids)?.textContent).toBe(hint);
+    }
+    expect(pin.hasAttribute('aria-describedby')).toBe(false);
     destroy();
   });
 });

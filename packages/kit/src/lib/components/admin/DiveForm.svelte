@@ -18,6 +18,8 @@
     fieldId,
     filledCount,
     formSnapshot,
+    isBlankTank,
+    normalizeInterval,
     orderedErrors,
     presetsFor,
     previousDive,
@@ -37,8 +39,11 @@
   } from '$lib/core/admin/dive-input';
   import { draftNeighbours } from '$lib/core/admin/dive-list';
   import { slugify } from '$lib/core/admin/slug';
+  import type { SiteDraft } from '$lib/core/admin/site-create';
+  import { DEFAULT_SITE_TYPE, waterDefault } from '$lib/core/dive/site-types';
   import type {
     Attachment,
+    BuddyNoteInput,
     CommonsSiteHit,
     DiveAdmin,
     DiveTemplateOut,
@@ -46,9 +51,13 @@
     MarkdownPreviewOut,
     PersonPrivate,
     Region,
+    SignRequestsIn,
+    SignRequestsOut,
     Site,
     Trip,
   } from '$lib/core/dive/types';
+  import { buddyRows, signRequestsMessage } from '$lib/core/dive/buddy-notes';
+  import { readFlag, writeFlag } from '$lib/core/admin/remembered-flag';
   import type { NewDiveParams } from '$lib/core/dive/config';
   import { formatDate } from '$lib/core/dive/format';
   import { toast } from '$lib/components/stores/toast.svelte';
@@ -56,12 +65,14 @@
   import { announce } from '$lib/core/ui/announce.js';
   import type { ComboOption } from '$lib/core/ui/combobox.js';
   import Combobox from '$lib/components/ui/Combobox.svelte';
+  import Dialog from '$lib/components/ui/Dialog.svelte';
   import Disclosure from '$lib/components/ui/Disclosure.svelte';
   import Field from '$lib/components/ui/Field.svelte';
   import DiveRouteEditor from './DiveRouteEditor.svelte';
   import AnnotationStale from './AnnotationStale.svelte';
   import CommonsSearch from './CommonsSearch.svelte';
   import SiteCreate from './SiteCreate.svelte';
+  import BuddyNotesPanel from './BuddyNotesPanel.svelte';
   import { legLabel } from '$lib/core/dive/sharing';
   import type { DiveMapAnnotation, MapEdgeRef } from '$lib/core/dive/sitemap';
   import { getDivelog } from '$lib/core/dive/context';
@@ -83,6 +94,7 @@
     prefill = null,
     drafts = [],
     attachments,
+    onSavedNew,
   }: {
     dive: DiveAdmin | null;
     nextNumber: number;
@@ -99,6 +111,8 @@
     drafts?: number[];
     /** The attachments panel of a saved dive, shown as the "Photos & files" section. */
     attachments?: Snippet;
+    /** Save & new reached the new-dive page; the page starts a blank form for the next dive. */
+    onSavedNew?: () => void;
   } = $props();
 
   /** A new dive: today (or the prefilled day), the prefilled site, trip and buddy. */
@@ -117,7 +131,7 @@
   const isNew = untrack(() => !dive);
   const isDraft = $derived(dive?.visibility === 'draft');
   const live = untrack(() => !dive || dive.visibility === 'draft');
-  const storageKey = untrack(() => backupKey(dive ? dive.number : null));
+  let storageKey = $state(untrack(() => backupKey(dive ? dive.number : null)));
 
   let form = $state(structuredClone(initial));
   let computerText = $state(initial.computer.join(', '));
@@ -135,6 +149,87 @@
   let queuePublic = $state(true);
 
   const dirty = $derived(formSnapshot(form, computerText) !== saved || queue.length > 0);
+
+  // ── Buddies signing: the checkbox by Save, the notes and requests of a saved dive ──
+
+  const ASK_KEY = 'dl-dive-ask-buddies';
+  let askBuddies = $state(false);
+  let notesOpen = $state(false);
+  /** The notes the form opened with, refreshed after each save; a save deletes none of them. */
+  let openedNotes = $state<BuddyNoteInput[]>(structuredClone(untrack(() => initial.buddy_notes)));
+  let storedNotes = $derived(dive?.buddy_notes ?? []);
+  let signRequests = $derived(dive?.sign_requests ?? []);
+  const buddyList = $derived(buddyRows(form.people_ids, people, storedNotes, signRequests));
+  const canAsk = $derived(form.people_ids.length > 0 && form.visibility !== 'draft');
+  const noEmail = $derived(buddyList.filter((row) => !row.email));
+
+  onMount(() => {
+    askBuddies = readFlag(ASK_KEY);
+  });
+
+  function rememberAsk(value: boolean) {
+    askBuddies = value;
+    writeFlag(ASK_KEY, value);
+  }
+
+  function firstNameOf(slug: string): string {
+    return people.find((p) => p.slug === slug)?.first_name ?? slug;
+  }
+
+  /** Mail the buddies never asked to sign the dive, and say who got a mail. */
+  async function askToSign(number: number) {
+    try {
+      const body: SignRequestsIn = { people: null, resend: false };
+      const result = await adminJson<SignRequestsOut>(
+        adminApi('dives', number, 'sign-requests'),
+        'POST',
+        body,
+      );
+      signRequests = result.sign_requests;
+      toast.show(signRequestsMessage(result, firstNameOf));
+    } catch (err) {
+      toast.show({
+        kind: 'error',
+        message: `Asking buddies to sign failed: ${err instanceof AdminApiError ? err.message : 'no answer'}`,
+      });
+    }
+  }
+
+  function setNotePublic(person: string, value: boolean) {
+    const choice = form.buddy_notes.find((n) => n.person === person);
+    if (choice) choice.public = value;
+    else form.buddy_notes = [...form.buddy_notes, { person, public: value }];
+  }
+
+  /** A note deleted on the server leaves the form without counting as an unsaved change. */
+  function forgetNote(person: string) {
+    const clean = formSnapshot(form, computerText) === saved;
+    form.buddy_notes = form.buddy_notes.filter((n) => n.person !== person);
+    openedNotes = openedNotes.filter((n) => n.person !== person);
+    storedNotes = storedNotes.filter((n) => n.person !== person);
+    if (clean) saved = formSnapshot(form, computerText);
+    void invalidateAll();
+  }
+
+  function queueFiles(e: Event & { currentTarget: HTMLInputElement }) {
+    const files = Array.from(e.currentTarget.files ?? []);
+    queue = [...queue, ...files.map((file) => ({ file, kind: queueKind, public: queuePublic }))];
+    e.currentTarget.value = '';
+  }
+
+  let numberFrom = untrack(() => nextNumber);
+  $effect(() => {
+    const next = nextNumber;
+    untrack(() => {
+      if (!isNew || next === numberFrom) return;
+      if (Number(form.number) === numberFrom) {
+        const clean = !dirty;
+        form.number = next;
+        if (clean) saved = formSnapshot(form, computerText);
+      }
+      numberFrom = next;
+    });
+  });
 
   let open = $state<Record<DiveSection, boolean>>({
     essentials: true,
@@ -159,16 +254,19 @@
   );
 
   let lastKey = untrack(() => `${initial.site_id ?? ''}|${initial.date}`);
+  let tplRequest = 0;
   $effect(() => {
     const site = form.site_id;
     const date = form.date;
     const key = `${site ?? ''}|${date}`;
     if (!live || key === lastKey || !date) return;
+    const request = tplRequest;
     const timer = setTimeout(async () => {
-      lastKey = key;
       try {
         const self = dive?.number ?? null;
         const next = await adminJson<DiveTemplateOut>(templatePath(site, date, self));
+        if (request !== tplRequest) return;
+        lastKey = key;
         tpl = {
           ...next,
           previous: next.previous?.number === self ? (tpl?.previous ?? null) : next.previous,
@@ -178,7 +276,10 @@
         // the form works without the template; derivations just stay empty
       }
     }, 250);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      tplRequest++;
+    };
   });
 
   // ── Derivations: shown with a "from …" hint, overridden by typing ──
@@ -189,33 +290,87 @@
   );
   const derivedWater = $derived(atSite?.water_temp_c ?? null);
 
-  let durationAuto = $state(
-    untrack(
-      () =>
-        initial.duration_min === null ||
-        initial.duration_min === durationFromTimes(initial.time_in, initial.time_out),
-    ),
+  type AutoFlags = { duration: boolean; interval: boolean; water: boolean; trip: boolean };
+
+  /**
+   * Which derived fields of `input` still follow their derivation: the empty ones, and a
+   * duration equal to the times. Only a new dive or a draft derives; a published dive is
+   * shown as stored. `tripFromDate` says the trip was filled from the date, not chosen.
+   */
+  function autoFlags(input: DiveInput, tripFromDate: boolean): AutoFlags {
+    return {
+      duration:
+        live &&
+        (input.duration_min === null ||
+          input.duration_min === durationFromTimes(input.time_in, input.time_out)),
+      interval: live && !input.surface_interval,
+      water: live && input.water_temp_c === null,
+      trip: live && (!input.trip_id || tripFromDate),
+    };
+  }
+
+  const initialAuto = untrack(() =>
+    autoFlags(initial, isNew && !!initial.trip_id && initial.trip_id !== prefill?.trip),
   );
-  let intervalAuto = $state(untrack(() => !initial.surface_interval));
-  let waterAuto = $state(untrack(() => initial.water_temp_c === null));
-  let tripAuto = $state(untrack(() => live && !initial.trip_id));
+  let durationAuto = $state(initialAuto.duration);
+  let intervalAuto = $state(initialAuto.interval);
+  let waterAuto = $state(initialAuto.water);
+  let tripAuto = $state(initialAuto.trip);
+
+  function useAutoFlags(flags: AutoFlags) {
+    durationAuto = flags.duration;
+    intervalAuto = flags.interval;
+    waterAuto = flags.water;
+    tripAuto = flags.trip;
+  }
+
+  /**
+   * A derived field follows its derivation while its auto flag is on: a value is written, and
+   * the field is emptied only when the derivation itself goes away. A derivation that was
+   * already empty leaves the field alone, so typing into it is never undone by the effect
+   * that runs between the binding and the input handler.
+   */
+  function follow<T>(
+    auto: boolean,
+    derived: T | null,
+    last: { value: T | null },
+    current: T | null,
+    set: (value: T | null) => void,
+  ) {
+    const gone = last.value !== null && derived === null;
+    last.value = derived;
+    if (!auto) return;
+    if (derived !== null ? current !== derived : gone) set(derived);
+  }
+
+  const lastDuration = { value: untrack(() => derivedDuration) };
+  const lastInterval = { value: untrack(() => derivedInterval) };
+  const lastWater = { value: untrack(() => derivedWater) };
+  const derivedTrip = $derived.by(() => {
+    const slug = tpl?.trip_for_date?.slug;
+    return slug && trips.some((t) => t.slug === slug) ? slug : null;
+  });
+  const lastTrip = { value: untrack(() => derivedTrip) };
 
   $effect(() => {
-    if (durationAuto && derivedDuration !== null && form.duration_min !== derivedDuration)
-      form.duration_min = derivedDuration;
+    follow(durationAuto, derivedDuration, lastDuration, form.duration_min, (v) => {
+      form.duration_min = v;
+    });
   });
   $effect(() => {
-    if (intervalAuto && derivedInterval !== null && form.surface_interval !== derivedInterval)
-      form.surface_interval = derivedInterval;
+    follow(intervalAuto, derivedInterval, lastInterval, form.surface_interval || null, (v) => {
+      form.surface_interval = v;
+    });
   });
   $effect(() => {
-    if (waterAuto && derivedWater !== null && form.water_temp_c !== derivedWater)
-      form.water_temp_c = derivedWater;
+    follow(waterAuto, derivedWater, lastWater, form.water_temp_c, (v) => {
+      form.water_temp_c = v;
+    });
   });
   $effect(() => {
-    const trip = tpl?.trip_for_date?.slug;
-    if (tripAuto && trip && form.trip_id !== trip && trips.some((t) => t.slug === trip))
-      form.trip_id = trip;
+    follow(tripAuto, derivedTrip, lastTrip, form.trip_id || null, (v) => {
+      form.trip_id = v;
+    });
   });
 
   /** Typing in a derived field takes it over; emptying it hands it back to the derivation. */
@@ -332,10 +487,13 @@
       })),
   );
 
+  let addingPerson = $state(false);
+
   async function addPerson(name: string, close: () => void) {
     const text = name.trim();
-    if (!text) return;
+    if (!text || addingPerson) return;
     const [first, ...rest] = text.split(/\s+/);
+    addingPerson = true;
     try {
       const person = await adminJson<PersonPrivate>(adminApi('people'), 'POST', {
         first_name: first,
@@ -350,7 +508,36 @@
         kind: 'error',
         message: err instanceof AdminApiError ? err.message : 'Could not add the person',
       });
+    } finally {
+      addingPerson = false;
     }
+  }
+
+  let siteBefore = untrack(() => initial.site_id);
+  $effect(() => {
+    siteBefore = form.site_id;
+  });
+
+  /**
+   * The owner picked another site: the section and a route drawn on the old site's map
+   * belong to that site, so they go (a section the new site also knows stays).
+   */
+  function siteChanged() {
+    const from = siteBefore;
+    siteBefore = form.site_id;
+    if (from === null || from === form.site_id) return;
+    const next = sites.find((s) => s.id === form.site_id);
+    const cleared: string[] = [];
+    if (form.section && !(next?.section_vocabulary ?? []).includes(form.section)) {
+      form.section = null;
+      cleared.push('section');
+    }
+    const maps = (next?.maps ?? []).flatMap((m) => (m.drawn ? [m.drawn.id] : []));
+    if (form.map_annotation && !maps.includes(form.map_annotation.map_id)) {
+      form.map_annotation = null;
+      cleared.push('route on the map');
+    }
+    if (cleared.length) announce(`Cleared the ${cleared.join(' and ')} of the previous site`);
   }
 
   // ── Gear setup ──
@@ -394,10 +581,23 @@
 
   const neighbours = $derived(dive && isDraft ? draftNeighbours(drafts, dive.number) : null);
 
-  function markSaved() {
-    saved = formSnapshot(form, computerText);
+  function markSaved(snapshot = formSnapshot(form, computerText)) {
+    saved = snapshot;
     clearBackup(storageKey);
     restoredAt = null;
+  }
+
+  /** Keep what was typed but not saved in the session backup, at once. */
+  function flushBackup(): boolean {
+    if (leaving || formSnapshot(form, computerText) === saved) return false;
+    writeBackup(storageKey, form, computerText);
+    return true;
+  }
+
+  /** The summary of a section, to focus when an error has no control of its own. */
+  function sectionSummary(section: DiveSection): HTMLElement | null {
+    const body = formEl?.querySelector(`[data-section="${section}"]`);
+    return body?.closest('details')?.querySelector<HTMLElement>(':scope > summary') ?? null;
   }
 
   async function showErrors(errors: Record<string, string>) {
@@ -409,9 +609,10 @@
     open[section] = true;
     if (section === 'transcription') open.story = true;
     await tick();
-    const control =
-      document.getElementById(fieldId(first)) ??
-      document.querySelector<HTMLElement>(`[data-section="${section}"] summary`);
+    unplaced = order
+      .filter((path) => !document.getElementById(fieldId(path)))
+      .map((path) => [path, errors[path]]);
+    const control = document.getElementById(fieldId(first)) ?? sectionSummary(section);
     control?.scrollIntoView?.({ block: 'center' });
     control?.focus();
     announce(
@@ -420,14 +621,14 @@
     );
   }
 
-  const unplaced = $derived(
-    Object.entries(fieldErrors).filter(([path]) => !KNOWN_CONTROLS.has(path.split('.')[0])),
-  );
-  const KNOWN_CONTROLS = new Set(Object.keys(initial));
+  /** Errors on paths without a control of their own (tags, the map, a whole tank). */
+  let unplaced = $state<[string, string][]>([]);
 
   type After = 'stay' | 'new' | 'next';
 
   async function persist(after: After = 'stay'): Promise<boolean> {
+    unplaced = [];
+    if (form.tanks.some(isBlankTank)) form.tanks = form.tanks.filter((t) => !isBlankTank(t));
     const missing = validateEssentials(form);
     if (Object.keys(missing).length) {
       error = '';
@@ -437,13 +638,14 @@
     busy = true;
     error = '';
     fieldErrors = {};
+    const sent = formSnapshot(form, computerText);
     try {
       let number: number;
       if (dive) {
         await adminJson(
           adminApi('dives', dive.number),
           'PUT',
-          savePayload(form, computerText, dive),
+          savePayload(form, computerText, dive, openedNotes),
         );
         number = Number(form.number);
       } else {
@@ -455,21 +657,35 @@
         number = created.number;
       }
       const uploads = queue;
+      const asking = askBuddies && canAsk;
       queue = [];
-      markSaved();
+      openedNotes = $state.snapshot(form.buddy_notes);
+      markSaved(sent);
+      if (!dive) storageKey = backupKey(number);
       savedAt = new Date();
       announce(`Dive #${number} ${dive ? 'saved' : 'created'}`);
       if (uploads.length) await uploadQueued(number, uploads);
+      if (asking) await askToSign(number);
+      const date = form.date;
       if (after === 'new') {
+        if (flushBackup())
+          toast.show({
+            kind: 'info',
+            message: `Changes made while saving are kept as unsaved changes on dive #${number}`,
+          });
         leaving = true;
-        await goto(urls.admin.newDive({ date: form.date }));
+        await goto(urls.admin.newDive({ date }), { invalidateAll: true });
+        onSavedNew?.();
       } else if (after === 'next' && neighbours?.next) {
+        flushBackup();
         leaving = true;
         await goto(urls.admin.dive(neighbours.next));
       } else if (!dive || number !== dive.number) {
+        flushBackup();
         leaving = true;
         await goto(urls.admin.dive(number), { invalidateAll: true });
       } else await invalidateAll();
+      leaving = false;
       return true;
     } catch (err) {
       if (err instanceof AdminApiError && Object.keys(err.fieldErrors).length) {
@@ -506,15 +722,22 @@
     await persist();
   }
 
+  /** Save as a draft; a save that does not go through keeps the visibility it had. */
   async function saveAsDraft() {
+    const before = form.visibility;
     form.visibility = 'draft';
-    await persist();
+    if (!(await persist())) form.visibility = before;
   }
 
   async function repin(annotation: DiveMapAnnotation, dropped: MapEdgeRef[]) {
     const map = siteMaps.find((m) => m.id === annotation.map_id);
+    const pending = formSnapshot(form, computerText) !== saved;
     form.map_annotation = annotation;
     if (!dive) return;
+    if (pending) {
+      announce(`Route re-pinned to map revision ${annotation.revision}; save the dive to keep it`);
+      return;
+    }
     const legs = dropped.map((leg) => legLabel(leg, map)).join(', ');
     if (await persist())
       toast.show({
@@ -533,11 +756,14 @@
       danger: true,
     });
     if (!ok) return;
+    busy = true;
     try {
       await adminJson(adminApi('dives', dive.number), 'DELETE');
     } catch (err) {
       error = err instanceof AdminApiError ? err.message : 'Delete failed';
       return;
+    } finally {
+      busy = false;
     }
     leaving = true;
     clearBackup(storageKey);
@@ -562,7 +788,8 @@
       if (!ok || !to) return;
       leaving = true;
       clearBackup(storageKey);
-      void goto(to);
+      if (nav.type === 'popstate' && nav.delta) history.go(nav.delta);
+      else void goto(to);
     });
   });
 
@@ -573,6 +800,7 @@
   onMount(() => {
     const backup = readBackup(storageKey);
     if (backup && formSnapshot(backup.form, backup.computerText) !== saved) {
+      useAutoFlags(autoFlags(backup.form, tripAuto && backup.form.trip_id === initial.trip_id));
       form = backup.form;
       computerText = backup.computerText;
       restoredAt = backup.savedAt;
@@ -581,23 +809,29 @@
 
   $effect(() => {
     const snapshot = formSnapshot(form, computerText);
+    const key = storageKey;
     if (snapshot === saved) return;
-    const timer = setTimeout(() => writeBackup(storageKey, form, computerText), 400);
+    const timer = setTimeout(() => writeBackup(key, form, computerText), 400);
     return () => clearTimeout(timer);
   });
 
+  function onVisibility() {
+    if (document.visibilityState === 'hidden') flushBackup();
+  }
+
   function discardRestored() {
-    form = structuredClone(initial);
+    form = { ...structuredClone(initial), number: isNew ? numberFrom : initial.number };
     computerText = initial.computer.join(', ');
+    useAutoFlags(initialAuto);
+    saved = formSnapshot(form, computerText);
     clearBackup(storageKey);
     restoredAt = null;
     announce('Restored changes discarded');
   }
 
-  // ── New site, commons, new trip, map refresh (dialogs unchanged) ──
+  // ── New site, commons, new trip, map refresh ──
 
-  let siteDialog = $state<HTMLDialogElement>();
-  let newSite = $state({ name: '', country: '', type: 'sea', region: '' });
+  let newSite = $state<Partial<SiteDraft>>({});
   let siteDialogOpen = $state(false);
   const recentSite = $derived(
     sites.reduce<Site | undefined>(
@@ -606,22 +840,28 @@
       undefined,
     ),
   );
+  /**
+   * The new-site dialog starts like the site in the form (or the last one dived): its
+   * country and region as a suggestion the pin may override, its type and water.
+   */
   function openSiteDialog(name = '') {
     const like = site ?? recentSite;
+    const type = like?.site_type || DEFAULT_SITE_TYPE;
     newSite = {
       name: name.trim(),
       country: like?.country ?? '',
-      type: 'sea',
       region: like?.region ?? '',
+      type,
+      water: like?.water ?? waterDefault(type) ?? 'salt',
     };
     siteDialogOpen = true;
-    siteDialog?.showModal();
   }
 
   function useNewSite(created: Site) {
     sites = [...sites.filter((s) => s.id !== created.id), created];
     form.site_id = created.id;
-    siteDialog?.close();
+    siteChanged();
+    siteDialogOpen = false;
   }
 
   let adopting = $state(false);
@@ -641,6 +881,7 @@
       const adopted = await adminJson<Site>(adminApi('sites', hit.id));
       sites = [...sites.filter((s) => s.id !== adopted.id), adopted];
       form.site_id = adopted.id;
+      siteChanged();
       adopting = false;
       toast.show({ kind: 'success', message: `${adopted.name} from the commons` });
     } catch (err) {
@@ -651,7 +892,7 @@
     }
   }
 
-  let tripDialog = $state<HTMLDialogElement>();
+  let tripDialogOpen = $state(false);
   let newTrip = $state({ name: '', start_date: '', end_date: '' });
   let tripError = $state('');
   let tripBusy = $state(false);
@@ -659,7 +900,7 @@
   function openTripDialog(name = '') {
     newTrip = { name: name.trim(), start_date: form.date, end_date: form.date };
     tripError = '';
-    tripDialog?.showModal();
+    tripDialogOpen = true;
   }
 
   async function createTrip(e: SubmitEvent) {
@@ -677,7 +918,7 @@
       trips = [...trips.filter((t) => t.slug !== created.slug), created];
       form.trip_id = created.slug;
       tripAuto = false;
-      tripDialog?.close();
+      tripDialogOpen = false;
       toast.show({ kind: 'success', message: `Trip ${created.name} created` });
     } catch (err) {
       tripError = err instanceof AdminApiError ? err.message : 'Could not create the trip';
@@ -719,11 +960,11 @@
 
   const NON_TEXT_INPUTS = new Set(['submit', 'button', 'reset', 'image']);
 
-  /** Ctrl/⌘-S saves the dive. */
+  /** Ctrl/⌘-S saves the dive, unless a dialog (new site, new trip, a confirm) is open. */
   function saveShortcut(e: KeyboardEvent) {
     if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== 's') return;
     e.preventDefault();
-    if (busy || siteDialog?.open || tripDialog?.open) return;
+    if (busy || document.querySelector('dialog[open]')) return;
     formEl?.requestSubmit();
   }
 
@@ -746,7 +987,8 @@
   );
 </script>
 
-<svelte:window onbeforeunload={beforeUnload} onkeydown={saveShortcut} />
+<svelte:window onbeforeunload={beforeUnload} onpagehide={flushBackup} onkeydown={saveShortcut} />
+<svelte:document onvisibilitychange={onVisibility} />
 
 {#if restoredAt}
   <div class="notice" role="status">
@@ -884,6 +1126,7 @@
               bind:value={form.site_id}
               options={siteOptions}
               placeholder="Type to find a site…"
+              onchange={siteChanged}
             >
               {#snippet footer({ query, close })}
                 <button
@@ -959,6 +1202,7 @@
                 <button
                   type="button"
                   class="dl-btn dl-btn-ghost dl-btn-sm"
+                  disabled={addingPerson}
                   onclick={() => addPerson(query, close)}>Add person “{query.trim()}”</button
                 >
               {:else}
@@ -1052,7 +1296,13 @@
             </Field>
             <Field label="Volume (L)" id={fieldId(`${p}.volume_l`)} error={err(`${p}.volume_l`)}>
               {#snippet children(c)}
-                <input {...c} type="number" step="0.1" bind:value={tank.volume_l} />
+                <input
+                  {...c}
+                  type="number"
+                  step="0.1"
+                  inputmode="decimal"
+                  bind:value={tank.volume_l}
+                />
               {/snippet}
             </Field>
             <Field label="Standard gas" id={fieldId(`${p}.standard`)}>
@@ -1095,12 +1345,26 @@
             </Field>
             <Field label="O₂ %" id={fieldId(`${p}.o2_pct`)} error={err(`${p}.o2_pct`)}>
               {#snippet children(c)}
-                <input {...c} type="number" min="0" max="100" bind:value={tank.o2_pct} />
+                <input
+                  {...c}
+                  type="number"
+                  min="0"
+                  max="100"
+                  inputmode="numeric"
+                  bind:value={tank.o2_pct}
+                />
               {/snippet}
             </Field>
             <Field label="He %" id={fieldId(`${p}.he_pct`)} error={err(`${p}.he_pct`)}>
               {#snippet children(c)}
-                <input {...c} type="number" min="0" max="100" bind:value={tank.he_pct} />
+                <input
+                  {...c}
+                  type="number"
+                  min="0"
+                  max="100"
+                  inputmode="numeric"
+                  bind:value={tank.he_pct}
+                />
               {/snippet}
             </Field>
             <Field
@@ -1115,6 +1379,7 @@
                   step="0.1"
                   min="0"
                   max="100"
+                  inputmode="decimal"
                   bind:value={tank.o2_measured_pct}
                 />
               {/snippet}
@@ -1125,7 +1390,7 @@
               error={err(`${p}.pressure_in_bar`)}
             >
               {#snippet children(c)}
-                <input {...c} type="number" bind:value={tank.pressure_in_bar} />
+                <input {...c} type="number" inputmode="numeric" bind:value={tank.pressure_in_bar} />
               {/snippet}
             </Field>
             <Field
@@ -1134,7 +1399,12 @@
               error={err(`${p}.pressure_out_bar`)}
             >
               {#snippet children(c)}
-                <input {...c} type="number" bind:value={tank.pressure_out_bar} />
+                <input
+                  {...c}
+                  type="number"
+                  inputmode="numeric"
+                  bind:value={tank.pressure_out_bar}
+                />
               {/snippet}
             </Field>
             <button
@@ -1187,7 +1457,14 @@
         </Field>
         <Field label="Weights (kg)" id={fieldId('weights_kg')} error={err('weights_kg')}>
           {#snippet children(c)}
-            <input {...c} type="number" step="0.5" min="0" bind:value={form.weights_kg} />
+            <input
+              {...c}
+              type="number"
+              step="0.5"
+              min="0"
+              inputmode="decimal"
+              bind:value={form.weights_kg}
+            />
           {/snippet}
         </Field>
         <Field
@@ -1202,9 +1479,10 @@
             <input
               {...c}
               type="text"
-              inputmode="numeric"
+              autocomplete="off"
               bind:value={form.surface_interval}
               oninput={(e) => (intervalAuto = takeOver(e))}
+              onchange={() => (form.surface_interval = normalizeInterval(form.surface_interval))}
             />
           {/snippet}
           {#snippet extra()}
@@ -1226,7 +1504,13 @@
           error={err('safety_stop_min')}
         >
           {#snippet children(c)}
-            <input {...c} type="number" min="0" bind:value={form.safety_stop_min} />
+            <input
+              {...c}
+              type="number"
+              min="0"
+              inputmode="numeric"
+              bind:value={form.safety_stop_min}
+            />
           {/snippet}
         </Field>
       </div>
@@ -1275,12 +1559,25 @@
       </Field>
       <Field label="Thermocline (m)" id={fieldId('thermocline_m')} error={err('thermocline_m')}>
         {#snippet children(c)}
-          <input {...c} type="number" step="0.5" bind:value={form.thermocline_m} />
+          <input
+            {...c}
+            type="number"
+            step="0.5"
+            inputmode="decimal"
+            bind:value={form.thermocline_m}
+          />
         {/snippet}
       </Field>
       <Field label="Visibility (m)" id={fieldId('visibility_m')} error={err('visibility_m')}>
         {#snippet children(c)}
-          <input {...c} type="number" step="1" min="0" bind:value={form.visibility_m} />
+          <input
+            {...c}
+            type="number"
+            step="1"
+            min="0"
+            inputmode="numeric"
+            bind:value={form.visibility_m}
+          />
         {/snippet}
       </Field>
       <Field label="Difficulty" id={fieldId('difficulty')} error={err('difficulty')}>
@@ -1288,7 +1585,14 @@
       </Field>
       <Field label="Rating (1–5)" id={fieldId('rating')} error={err('rating')}>
         {#snippet children(c)}
-          <input {...c} type="number" min="1" max="5" bind:value={form.rating} />
+          <input
+            {...c}
+            type="number"
+            min="1"
+            max="5"
+            inputmode="numeric"
+            bind:value={form.rating}
+          />
         {/snippet}
       </Field>
       <Field label="Conditions" id={fieldId('conditions')} error={err('conditions')} class="wide">
@@ -1529,6 +1833,19 @@
     </div>
   </Disclosure>
 
+  {#if dive && buddyList.length}
+    <BuddyNotesPanel
+      number={dive.number}
+      rows={buddyList}
+      choices={form.buddy_notes}
+      draft={isDraft}
+      bind:open={notesOpen}
+      onpublic={setNotePublic}
+      onrequests={(next) => (signRequests = next)}
+      ondeleted={forgetNote}
+    />
+  {/if}
+
   {#if attachments}
     <div class="photos">{@render attachments()}</div>
   {:else if isNew}
@@ -1552,17 +1869,23 @@
             <input
               type="file"
               multiple
+              accept={queueKind === 'photo' ? 'image/*' : undefined}
               class="dl-visually-hidden"
-              onchange={(e) => {
-                const files = Array.from(e.currentTarget.files ?? []);
-                queue = [
-                  ...queue,
-                  ...files.map((file) => ({ file, kind: queueKind, public: queuePublic })),
-                ];
-                e.currentTarget.value = '';
-              }}
+              onchange={queueFiles}
             />
           </label>
+          {#if queueKind === 'photo'}
+            <label class="file">
+              <span class="dl-btn dl-btn-ghost dl-btn-sm">Take a photo</span>
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                class="dl-visually-hidden"
+                onchange={queueFiles}
+              />
+            </label>
+          {/if}
         </div>
         {#if queue.length}
           <ul class="queued">
@@ -1608,6 +1931,27 @@
         onclick={() => persist('next')}>Save & next draft</button
       >
     {/if}
+    {#if canAsk}
+      <label class="check ask">
+        <input
+          type="checkbox"
+          bind:checked={askBuddies}
+          onchange={(e) => rememberAsk(e.currentTarget.checked)}
+          aria-describedby={askBuddies && noEmail.length ? 'dl-dive-ask-hint' : undefined}
+        />
+        E-mail buddies to sign
+      </label>
+      {#if askBuddies && noEmail.length}
+        <span class="ask-hint" id="dl-dive-ask-hint"
+          >No e-mail address for {#each noEmail as row, i (row.id)}{i
+              ? i === noEmail.length - 1
+                ? ' and '
+                : ', '
+              : ''}<a href={urls.admin.person(encodeURIComponent(row.id))}>{row.name}</a>{/each}, so
+          not asked.</span
+        >
+      {/if}
+    {/if}
     <span class="status" role="status">
       {#if dirty}<span class="unsaved">● Unsaved changes</span>{:else if savedLabel}<span
           class="saved">{savedLabel}</span
@@ -1629,37 +1973,30 @@
         rel="noopener"
         >View<span class="dl-visually-hidden"> dive #{dive.number} (new tab)</span> ↗</a
       >
-      <button type="button" class="dl-btn dl-btn-ghost dl-btn-sm danger" onclick={remove}
-        >Delete</button
+      <button
+        type="button"
+        class="dl-btn dl-btn-ghost dl-btn-sm danger"
+        disabled={busy}
+        onclick={remove}>Delete</button
       >
     {/if}
   </div>
 </form>
 
-<dialog
-  class="mini"
-  bind:this={siteDialog}
-  aria-labelledby="new-site-title"
-  style="width: min(880px, calc(100vw - 24px))"
-  onclose={() => (siteDialogOpen = false)}
->
-  <h2 id="new-site-title">New site</h2>
-  {#if siteDialogOpen}
-    <SiteCreate
-      compact
-      {regions}
-      near={nearSite}
-      initial={{ name: newSite.name, country: newSite.country, region: newSite.region }}
-      onCreated={useNewSite}
-      onUse={useNewSite}
-      onCancel={() => siteDialog?.close()}
-    />
-  {/if}
-</dialog>
+<Dialog bind:open={siteDialogOpen} title="New site" size="lg">
+  <SiteCreate
+    compact
+    {regions}
+    near={nearSite}
+    initial={newSite}
+    onCreated={useNewSite}
+    onUse={useNewSite}
+    onCancel={() => (siteDialogOpen = false)}
+  />
+</Dialog>
 
-<dialog class="mini" bind:this={tripDialog} aria-labelledby="new-trip-title">
-  <form onsubmit={createTrip}>
-    <h2 id="new-trip-title">New trip</h2>
+<Dialog bind:open={tripDialogOpen} title="New trip" size="sm">
+  <form class="mini" onsubmit={createTrip}>
     <label>Name<input type="text" bind:value={newTrip.name} required maxlength="200" /></label>
     <div class="field-row">
       <label>Start<input type="date" bind:value={newTrip.start_date} /></label>
@@ -1674,11 +2011,11 @@
       <button
         type="button"
         class="dl-btn dl-btn-ghost dl-btn-sm"
-        onclick={() => tripDialog?.close()}>Cancel</button
+        onclick={() => (tripDialogOpen = false)}>Cancel</button
       >
     </div>
   </form>
-</dialog>
+</Dialog>
 
 <style>
   .dive-form {
@@ -1907,6 +2244,22 @@
   .save-bar .error {
     margin: 0;
   }
+  .save-bar .ask {
+    display: inline-flex;
+    gap: 6px;
+    min-height: 32px;
+    font-size: var(--dl-text-sm);
+  }
+  @media (pointer: coarse) {
+    .save-bar .ask {
+      min-height: var(--dl-tap-min, 44px);
+    }
+  }
+  .ask-hint {
+    flex-basis: 100%;
+    font-size: var(--dl-text-sm);
+    color: var(--dl-color-text-muted);
+  }
   .unsaved,
   .saved {
     font-family: var(--dl-font-mono);
@@ -1921,26 +2274,23 @@
   .danger:hover {
     color: var(--dl-color-danger);
   }
-  dialog.mini {
-    width: min(460px, calc(100vw - 32px));
-    padding: 20px;
-    border: 1px solid var(--dl-color-border-strong);
-    border-radius: var(--dl-radius);
-    background: var(--dl-color-bg-elevated);
-    color: var(--dl-color-text);
-    box-shadow: var(--dl-shadow-md);
+  @media (pointer: coarse) {
+    .derive,
+    .chips .dl-tag,
+    .chip {
+      min-height: 44px;
+    }
+    .derive {
+      padding: 0 var(--dl-space-2);
+    }
+    .danger {
+      color: var(--dl-color-danger);
+    }
   }
-  dialog.mini::backdrop {
-    background: rgb(0 0 0 / 0.55);
-  }
-  dialog.mini form {
+  form.mini {
     display: flex;
     flex-direction: column;
     gap: 12px;
-  }
-  dialog.mini h2 {
-    margin: 0;
-    font-size: var(--dl-text-xl);
   }
   .mini-actions {
     display: flex;

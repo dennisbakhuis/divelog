@@ -90,6 +90,9 @@ export type QueryParams =
 
 export type OgKind = 'dive' | 'site';
 
+/** A dive page's `?sign=` token (from a buddy's mailed link) and `#hash`. */
+export type DiveUrlOptions = { sign?: string | null; hash?: string };
+
 /** Prefill for the new-dive editor: a site id, trip slug, person slug and/or `YYYY-MM-DD` date. */
 export type NewDiveParams = {
   site?: string | null;
@@ -142,7 +145,14 @@ export function createUrls(config: DivelogConfig) {
     base,
     log,
     filter: (params: QueryParams): string => log(params),
-    dive: (n: number | string, hash?: string): string => withHash(`${base}/${n}`, hash),
+    /**
+     * A dive page; a string is its `#hash`. `{ sign }` is the page opened from a buddy's
+     * mailed sign link: `/dive/675?sign=<token>`.
+     */
+    dive: (n: number | string, hashOrOptions?: string | DiveUrlOptions): string => {
+      const options = typeof hashOrOptions === 'string' ? { hash: hashOrOptions } : hashOrOptions;
+      return withHash(withQuery(`${base}/${n}`, { sign: options?.sign }), options?.hash);
+    },
     sites: (): string => `${base}/sites`,
     site: (slug: string): string => `${base}/sites/${slug}`,
     trips: (): string => `${base}/trips`,

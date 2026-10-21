@@ -19,9 +19,16 @@
     type TileIndex,
   } from '$lib/core/map/locator';
   import { countryBounds, loadCountries } from '$lib/core/map/countries';
-  import { formatLatLon, nudge, parseLatLon, type LatLon } from '$lib/core/map/coords';
+  import {
+    boundsContain,
+    formatDistance,
+    formatLatLon,
+    nudge,
+    parseLatLon,
+    type LatLon,
+  } from '$lib/core/map/coords';
   import type { GeoSource, PickedPoint } from '$lib/core/admin/site-create';
-  import { canLocate, LocateError, locateDevice } from '$lib/core/admin/geolocation';
+  import { canLocate, LocateError, locateDevice, ROUGH_FIX_M } from '$lib/core/admin/geolocation';
   import { announce } from '$lib/core/ui/announce';
   import { mapWorkerUrl } from '$lib/components/map-worker';
   import { getDivelog } from '$lib/core/dive/context';
@@ -71,6 +78,7 @@
   const inputId = $derived(`${uid}-coords`);
   const hintId = $derived(`${uid}-hint`);
   const errorId = $derived(`${uid}-error`);
+  const noticeId = $derived(`${uid}-notice`);
   const keysId = $derived(`${uid}-keys`);
 
   let container = $state<HTMLDivElement>();
@@ -84,10 +92,14 @@
   let text = $state(value ? formatLatLon(value.lat, value.lon) : '');
   let textFocused = $state(false);
   let pasteError = $state('');
+  let notice = $state('');
   let locating = $state(false);
   const locatable = canLocate();
 
   const shownError = $derived(pasteError || error);
+  const describedBy = $derived(
+    [shownError ? errorId : '', notice ? noticeId : '', hintId].filter(Boolean).join(' '),
+  );
 
   $effect(() => {
     const v = value;
@@ -99,6 +111,7 @@
 
   function emit(lat: number, lon: number, source: GeoSource) {
     pasteError = '';
+    notice = '';
     onchange({ lat, lon, source });
     announce(`${pinLabel} pin at ${formatLatLon(lat, lon, 5)}`);
   }
@@ -143,6 +156,8 @@
       const point = await locateDevice();
       emit(point.lat, point.lon, 'geolocation');
       flyTo(point);
+      if (point.accuracy !== undefined && point.accuracy > ROUGH_FIX_M)
+        notice = `The device puts you within about ${formatDistance(point.accuracy)}; drag the pin to the exact spot.`;
     } catch (err) {
       pasteError =
         err instanceof LocateError && err.reason === 'denied'
@@ -153,10 +168,12 @@
     }
   }
 
-  async function frameCountry() {
-    if (!map || !country) return;
-    const bounds = await countryBounds(country);
-    if (!bounds || !map) return;
+  /** Fit the map to the country; an automatic frame gives way to a pin placed meanwhile. */
+  async function frameCountry(auto = false) {
+    const key = country;
+    if (!map || !key) return;
+    const bounds = await countryBounds(key);
+    if (!bounds || !map || (auto && (value || country !== key))) return;
     const [w, s, e, n] = bounds;
     if (w > e) map.fitBounds([w - 360, s, e, n], { padding: 24, duration: 600, maxZoom: 9 });
     else map.fitBounds([w, s, e, n], { padding: 24, duration: 600, maxZoom: 9 });
@@ -165,7 +182,7 @@
   $effect(() => {
     const c = country;
     const ready = mapState === 'ready';
-    if (c && ready && !untrack(() => value)) void frameCountry();
+    if (c && ready && !untrack(() => value || near)) void frameCountry(true);
   });
 
   function flyTo(point: LatLon) {
@@ -195,7 +212,15 @@
     } else {
       pin.setLngLat([v.lon, v.lat]);
     }
-    if (!map.getBounds().contains([v.lon, v.lat])) map.easeTo({ center: [v.lon, v.lat] });
+    if (map.isMoving()) return;
+    const view = map.getBounds();
+    const shown: [number, number, number, number] = [
+      view.getWest(),
+      view.getSouth(),
+      view.getEast(),
+      view.getNorth(),
+    ];
+    if (!boundsContain(shown, v)) map.easeTo({ center: [v.lon, v.lat] });
   }
 
   const round = (n: number) => Math.round(n * 1e6) / 1e6;
@@ -224,7 +249,7 @@
   });
 
   function onMapKeydown(e: KeyboardEvent) {
-    if (!map) return;
+    if (!map || e.target !== map.getCanvas()) return;
     if (e.key === '+' || e.key === '=') {
       e.preventDefault();
       map.zoomIn();
@@ -264,7 +289,9 @@
     if (typeof WebGLRenderingContext === 'undefined') return false;
     try {
       const canvas = document.createElement('canvas');
-      return !!(canvas.getContext('webgl2') ?? canvas.getContext('webgl'));
+      const gl = canvas.getContext('webgl2') ?? canvas.getContext('webgl');
+      gl?.getExtension('WEBGL_lose_context')?.loseContext();
+      return !!gl;
     } catch {
       return false;
     }
@@ -293,7 +320,7 @@
       ]);
       // The 1:50m outlines (~750 kB) draw the land only when there is no world basemap;
       // otherwise they wait for the first pin, which needs them to name the country.
-      const countries = index?.world && basemaps ? [] : await loadCountries();
+      const countries = index?.world && basemaps ? [] : await loadCountries().catch(() => []);
       if (cancelled || !container) return;
       maplibreModule = maplibre;
       const workerUrl = mapWorkerUrl();
@@ -403,7 +430,7 @@
           spellcheck="false"
           placeholder="lat, lon"
           bind:value={text}
-          aria-describedby={shownError ? `${errorId} ${hintId}` : hintId}
+          aria-describedby={describedBy}
           aria-invalid={shownError ? 'true' : undefined}
           onfocus={() => (textFocused = true)}
           onblur={() => {
@@ -419,8 +446,9 @@
         >
       </div>
       {#if shownError}<p class="dl-picker-error" id={errorId}>{shownError}</p>{/if}
+      {#if notice}<p class="dl-picker-notice" id={noticeId}>{notice}</p>{/if}
       <p class="dl-picker-hint" id={hintId}>
-        Paste “lat, lon” in either order, degrees-minutes-seconds or a map link.
+        Paste “lat, lon” (latitude first), degrees-minutes-seconds with N/S/E/W, or a map link.
       </p>
     </div>
     <div class="dl-picker-actions">
@@ -433,7 +461,7 @@
         >
       {/if}
       {#if country && mapState === 'ready'}
-        <button type="button" class="dl-btn dl-btn-ghost dl-btn-sm" onclick={frameCountry}
+        <button type="button" class="dl-btn dl-btn-ghost dl-btn-sm" onclick={() => frameCountry()}
           >Zoom to country</button
         >
       {/if}
@@ -525,6 +553,11 @@
     font-size: var(--dl-text-sm);
     color: var(--dl-color-error);
   }
+  .dl-picker-notice {
+    margin: 0;
+    font-size: var(--dl-text-sm);
+    color: var(--dl-color-warm);
+  }
   .dl-picker-actions {
     display: flex;
     flex-wrap: wrap;
@@ -532,13 +565,21 @@
     padding-top: 22px;
   }
   .dl-picker-map :global(.picker-pin) {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    touch-action: none;
+    cursor: grab;
+  }
+  .dl-picker-map :global(.picker-pin::after) {
+    content: '';
     width: 22px;
     height: 22px;
     border-radius: 50%;
     background: var(--dl-color-warm);
     border: 3px solid var(--dl-color-bg);
     box-shadow: 0 0 0 6px var(--dl-color-warm-soft);
-    cursor: grab;
   }
   .dl-picker-map :global(.picker-other) {
     display: flex;
@@ -564,6 +605,11 @@
   .dl-picker-map :global(canvas:focus-visible) {
     outline: var(--dl-focus-ring);
     outline-offset: -3px;
+  }
+  @media (pointer: coarse) {
+    .dl-picker-controls .dl-btn {
+      min-height: 44px;
+    }
   }
   @media (max-width: 700px) {
     .dl-picker-map {

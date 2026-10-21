@@ -17,7 +17,7 @@ the reference app image from this repository or your own SvelteKit site that mou
 | `/data/repo` | git checkout of the personal log (`DATA_ROOT`) | the git remote |
 | `/data/commons` | read-only git checkout of `divelog-sites` (`COMMONS_ROOT`), optional | upstream |
 | `/data/media` | media store when `STORAGE_BACKEND=local` (`MEDIA_ROOT`): uploads, scans, WebP variants, `tiles/` | your file backup, or use S3 |
-| `/data/state` | sessions, magic-link tokens, lazily rendered variants (`STATE_DIR`) | nothing; losing it signs you out |
+| `/data/state` | sessions, magic-link tokens, invites to sign a dive, lazily rendered variants (`STATE_DIR`) | nothing; losing it signs you out and ends open sign links |
 
 The container runs as uid 1001 and treats `/data/repo` and `/data/commons` as git safe
 directories, so a checkout owned by another user on the host still works.
@@ -27,7 +27,7 @@ directories, so a checkout owned by another user on the host still works.
 ```yaml
 services:
   divelog-server:
-    image: ghcr.io/<owner>/divelog-server:0.4.2
+    image: ghcr.io/<owner>/divelog-server:0.5.0
     restart: unless-stopped
     environment:
       SITE_NAME: Jane's dive log
@@ -57,7 +57,7 @@ services:
       - deploy_key
 
   web:
-    image: ghcr.io/<owner>/divelog-reference:0.4.2
+    image: ghcr.io/<owner>/divelog-reference:0.5.0
     restart: unless-stopped
     depends_on: [divelog-server]
     environment:
@@ -168,3 +168,24 @@ export|openapi`, `sites split|status|access`, `import shearwater-pnf`, `sitemap-
 The server publishes `format` (data) and `api` (HTTP interface) majors at `/api/v1/version`;
 the kit refuses a server with a different `api` major. Upgrade the server and the front end
 together when either major changes, and run `divelog validate` against the log first.
+
+### Trust stores
+
+The images pin their base by digest, so a CA distrust (such as the eMudhra intermediate
+compromise of 17 October 2026) reaches them only through a new digest and a rebuild. The
+server's outbound TLS uses three stores: Debian's `ca-certificates` (`ssl`'s default context:
+aiosmtplib, git over https), boto3 (pointed at the same file by `AWS_CA_BUNDLE`, because
+botocore's own `cacert.pem` lags), and certifi (dev image only, through httpx). After a rebuild,
+check that a forged chain is refused:
+
+```sh
+docker run --rm divelog-server:<tag> sh -c 'dpkg -s ca-certificates | grep Version; python -c "
+import socket, ssl
+h = \"dv-g3b-aaa-emudhra.we-have-a-problem.com\"
+ssl.create_default_context().wrap_socket(socket.create_connection((h, 443), timeout=60), server_hostname=h)"'
+```
+
+It must end in `SSLCertVerificationError … unable to get local issuer certificate`; repeat
+with `dv-g3b-emudhra.we-have-a-problem.com`. For the reference app:
+`docker run --rm divelog-reference node -e "fetch('https://dv-g3b-emudhra.we-have-a-problem.com').then(()=>process.exit(2),e=>console.log(e.cause?.code))"`
+prints a certificate error code. The probe hosts can be slow; a timeout proves nothing, so retry.

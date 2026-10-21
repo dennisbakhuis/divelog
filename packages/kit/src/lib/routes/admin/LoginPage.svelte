@@ -9,13 +9,27 @@
   let sent = $state(false);
   let error = $state('');
   let busy = $state(false);
+  let validMinutes = $state<number | null>(null);
+  const validity = $derived(
+    validMinutes === null
+      ? 'a few minutes'
+      : `${validMinutes} ${validMinutes === 1 ? 'minute' : 'minutes'}`,
+  );
+
+  /** The link's lifetime from the 202 body; an older server sends none, an odd one counts as none. */
+  function minutesFrom(body: unknown): number | null {
+    const value = (body as { valid_minutes?: unknown } | null | undefined)?.valid_minutes;
+    return typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= 1440
+      ? value
+      : null;
+  }
 
   async function submit(e: SubmitEvent) {
     e.preventDefault();
     busy = true;
     error = '';
     try {
-      await adminJson('/auth/magic-link', 'POST', { email });
+      validMinutes = minutesFrom(await adminJson<unknown>('/auth/magic-link', 'POST', { email }));
       sent = true;
     } catch (err) {
       error = err instanceof AdminApiError ? err.message : 'Could not send the link';
@@ -34,7 +48,7 @@
     {/if}
     {#if sent}
       <p>
-        If that address is the owner's, a sign-in link is on its way. It is valid for 15 minutes.
+        If that address is the owner's, a sign-in link is on its way. It is valid for {validity}.
       </p>
       {#if config.devHints === true}
         <p class="hint">

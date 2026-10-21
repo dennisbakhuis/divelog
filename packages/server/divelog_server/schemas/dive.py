@@ -14,6 +14,7 @@ from divelog_server.store.models import (
     Display,
     PinState,
     Price,
+    Stroke,
     Visibility,
 )
 
@@ -447,7 +448,9 @@ class TripTogether(ApiModel):
 
 
 class TripIn(ApiModel):
-    slug: str = Field(min_length=1, max_length=120)
+    """A trip override as the editor sends it; ``slug`` names its file, so it is a plain slug."""
+
+    slug: str = Field(min_length=1, max_length=120, pattern=r"^[a-z0-9-]+$")
     name: str = Field(min_length=1, max_length=200)
     start_date: date | None = None
     end_date: date | None = None
@@ -521,6 +524,40 @@ class SameDayDive(ApiModel):
     number: int
     site_name: str | None
     time_in: str | None
+
+
+class BuddyNoteOut(ApiModel):
+    """A buddy's note on a dive; ``person`` is the buddy's slug."""
+
+    person: str
+    comment: str | None
+    strokes: list[Stroke] | None
+    signed_at: datetime
+    public: bool
+
+
+SignRequestState = Literal["none", "open", "expired", "signed", "no_email"]
+
+
+class SignRequestOut(ApiModel):
+    """Where asking one buddy to sign the dive stands; ``person`` is the buddy's slug.
+
+    ``signed`` wins once the buddy's note exists. ``sent_at`` and ``expires_at`` describe the
+    last invite mailed, ``signed_at`` the note.
+    """
+
+    person: str
+    state: SignRequestState
+    sent_at: datetime | None
+    expires_at: datetime | None
+    signed_at: datetime | None
+
+
+class BuddyNoteIn(ApiModel):
+    """The owner's say over an existing note: keep it (public or not); leaving it out deletes it."""
+
+    person: str = Field(min_length=1, max_length=120)
+    public: bool
 
 
 class DivePrivate(ApiModel):
@@ -597,6 +634,8 @@ class DiveOut(ApiModel):
     day_index: int | None = None
     same_day: list[SameDayDive] = Field(default_factory=list)
     context_facts: list[str] = Field(default_factory=list)
+    buddy_notes: list[BuddyNoteOut] = Field(default_factory=list)
+    """The notes buddies chose to show, of buddies shown on the dive."""
     private: DivePrivate | None = None
 
     @computed_field
@@ -615,6 +654,8 @@ class DiveAdminOut(DiveOut):
     trip_id: str | None
     gear_setup_id: str | None
     country: str | None
+    sign_requests: list[SignRequestOut] = Field(default_factory=list)
+    """One entry per entry of ``people_ids``, in that order; ``buddy_notes`` holds every note."""
 
 
 class AdminDiveListItem(ApiModel):
@@ -685,6 +726,16 @@ class DiveIn(ApiModel):
     sketch: str | None = None
     profile: list[ProfileSample] | None = None
     map_annotation: DiveMapAnnotation | None = None
+    buddy_notes: list[BuddyNoteIn] | None = Field(default=None, max_length=50)
+    """None leaves the notes as stored; a list sets ``public`` on the notes it names and
+    leaves the rest, so an editor opened before a buddy signed cannot drop that note."""
+
+    @field_validator("buddy_notes")
+    @classmethod
+    def _one_entry_per_person(cls, value: list[BuddyNoteIn] | None) -> list[BuddyNoteIn] | None:
+        if value is not None and len({n.person for n in value}) != len(value):
+            raise ValueError("buddy_notes names a person twice")
+        return value
 
 
 class DivePatch(ApiModel):

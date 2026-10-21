@@ -36,6 +36,7 @@ export function fakeEvent(
     url,
     fetch: vi.fn(),
     request: new Request(url, { headers }),
+    setHeaders: vi.fn(),
     locals: { owner },
   } as unknown as RequestEvent;
 }

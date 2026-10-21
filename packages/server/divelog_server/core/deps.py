@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, Response, status
 
 from divelog_server.core.config import get_settings
 from divelog_server.services import auth as auth_service
@@ -88,10 +88,21 @@ StoreDep = Annotated[Store, Depends(get_store)]
 StateDep = Annotated[AuthState, Depends(get_state)]
 
 
-async def optional_owner(request: Request, state: StateDep) -> AdminSession | None:
-    """The owner's session when the request carries a live cookie, otherwise None."""
+async def optional_owner(
+    request: Request, response: Response, state: StateDep
+) -> AdminSession | None:
+    """The owner's session when the request carries a live cookie, otherwise None.
+
+    When the session's expiry slides, the cookie is issued again with a fresh ``max_age``, so a
+    session in use never outlives the cookie that carries it.
+    """
     raw = request.cookies.get(get_settings().SESSION_COOKIE_NAME)
-    return await auth_service.resolve_session(state, raw) if raw else None
+    if not raw:
+        return None
+    session, renewed = await auth_service.resolve_and_renew(state, raw)
+    if renewed:
+        auth_service.set_session_cookie(response, raw)
+    return session
 
 
 OptionalOwnerDep = Annotated[AdminSession | None, Depends(optional_owner)]

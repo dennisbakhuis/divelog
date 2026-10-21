@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { OWNER_COOKIE, SITE_SLUG } from './fixtures.mjs';
 import { ADMIN_PAGES, PUBLIC_PAGES } from './pages.mjs';
+import { openSignLink } from './sign-link';
 
 /*
  * The phone smoke: every page at 390 × 844 renders its heading and nothing scrolls sideways;
@@ -33,6 +34,44 @@ for (const path of PUBLIC_PAGES) {
     expect(await overflow(page)).toBeLessThanOrEqual(0);
   });
 }
+
+test('the dive page from a sign link fits 390 px and its pad draws by touch', async ({
+  page,
+  request,
+}) => {
+  await page.goto(await openSignLink(request));
+  await page.waitForLoadState('networkidle');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  const box = page.locator('.dl-sign-box');
+  await expect(box).toContainText('Hi Alex, Sam logged this dive with you. Sign it:');
+  expect(await overflow(page)).toBeLessThanOrEqual(0);
+  const card = (await box.boundingBox())!;
+  expect(card.x).toBeGreaterThanOrEqual(0);
+  expect(card.x + card.width).toBeLessThanOrEqual(390);
+  expect(card.width).toBeGreaterThan(330);
+  const sign = page.getByRole('button', { name: 'Sign the dive' });
+  expect((await sign.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+
+  const pad = page.getByRole('img', { name: 'Your signature or a doodle' });
+  await pad.scrollIntoViewIfNeeded();
+  const area = (await pad.boundingBox())!;
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (type: string, x: number, y: number) =>
+    cdp.send('Input.dispatchTouchEvent', {
+      type,
+      touchPoints: type === 'touchEnd' ? [] : [{ x: area.x + x, y: area.y + y }],
+    });
+  await touch('touchStart', 30, 30);
+  for (let i = 1; i <= 6; i++) await touch('touchMove', 30 + i * 30, 30 + i * 8);
+  await touch('touchEnd', 210, 78);
+  await expect(page.locator('.dl-signature-hint')).toContainText('1 stroke drawn.');
+  await expect(pad.locator('path')).toHaveAttribute('d', /^M\d+ \d+( L\d+ \d+)+$/);
+  for (const name of ['Undo', 'Clear']) {
+    const tool = page.getByRole('button', { name, exact: true });
+    expect((await tool.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
+  expect(await overflow(page)).toBeLessThanOrEqual(0);
+});
 
 test('the login page fits a 390 px screen', async ({ page }) => {
   await page.goto('/admin/login');

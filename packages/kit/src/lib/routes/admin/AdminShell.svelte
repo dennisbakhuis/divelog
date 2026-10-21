@@ -33,6 +33,21 @@
   let narrow = $state(false);
   let menuOpen = $state(false);
   let repoOpen = $state(false);
+  let bar = $state<HTMLElement>();
+
+  $effect(() => {
+    const el = bar;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() =>
+      root.style.setProperty('--dl-admin-bar-h', `${el.offsetHeight}px`),
+    );
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty('--dl-admin-bar-h');
+    };
+  });
 
   async function refreshRepo() {
     try {
@@ -118,9 +133,13 @@
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 
-{#snippet repoDetails(status: RepoStatus)}
-  <span class="anchor">
-    <Popover bind:open={repoOpen} label="Repository status" class="repo-panel">
+{#snippet repoDetails(status: RepoStatus, inMenu: boolean)}
+  <span class="anchor" class:inline={inMenu}>
+    <Popover
+      bind:open={repoOpen}
+      label="Repository status"
+      class="repo-panel{inMenu ? ' repo-panel--inline' : ''}"
+    >
       {#snippet trigger(props)}
         <button {...props} class="repo repo-{status.state}"
           ><span class="dl-visually-hidden">Repository:</span> {repoText}</button
@@ -173,12 +192,13 @@
   </span>
 {/snippet}
 
-{#snippet cluster()}
+{#snippet cluster(inMenu: boolean)}
   {#if repo}
-    {@render repoDetails(repo)}
+    {@render repoDetails(repo, inMenu)}
     <CommonsStatus
       {repo}
       showHeads={false}
+      inline={inMenu}
       onPulled={async () => {
         await refreshRepo();
         await invalidateAll();
@@ -207,7 +227,7 @@
 
 <div class="admin">
   {#if owner}
-    <header class="bar">
+    <header class="bar" bind:this={bar}>
       <a class="brand" href={urls.admin.root()}>dive log admin</a>
       <nav class="sections" aria-label="Admin sections">
         {#each nav as item (item.href)}
@@ -217,7 +237,7 @@
       <div class="right">
         <a href={urls.admin.newDive()} class="dl-btn dl-btn-sm new-dive">+ New dive</a>
         {#if !narrow}
-          <div class="cluster">{@render cluster()}</div>
+          <div class="cluster">{@render cluster(false)}</div>
         {/if}
         <span class="anchor menu-anchor">
           <Popover bind:open={menuOpen} label="Admin menu" focus="first" class="menu-panel">
@@ -229,7 +249,7 @@
                   ></span><span class="dl-visually-hidden">, repository {repo.state}</span>{/if}
               </button>
             {/snippet}
-            <div class="menu-body">{@render cluster()}</div>
+            <div class="menu-body">{@render cluster(true)}</div>
           </Popover>
         </span>
       </div>
@@ -345,6 +365,8 @@
     white-space: normal;
   }
   .muted {
+    display: inline-flex;
+    align-items: center;
     color: var(--dl-color-text-muted);
     font-size: 13px;
     text-decoration: none;
@@ -379,9 +401,18 @@
   .anchor :global(.repo-panel) {
     width: min(380px, calc(100vw - 32px));
   }
-  .menu-body .anchor :global(.repo-panel) {
-    left: 0;
-    right: auto;
+  .anchor.inline {
+    flex-wrap: wrap;
+    align-self: stretch;
+  }
+  .anchor :global(.repo-panel--inline) {
+    position: static;
+    flex-basis: 100%;
+    width: auto;
+    max-width: none;
+    max-height: none;
+    margin-top: 8px;
+    box-shadow: none;
   }
   .repo-line,
   .repo-sub,
@@ -431,6 +462,24 @@
     .sections {
       order: 3;
       flex: 1 1 100%;
+      flex-wrap: wrap;
+      overflow-x: visible;
+    }
+  }
+  @media (max-width: 479.98px) {
+    .sections {
+      gap: 2px;
+      padding: 0;
+    }
+    .sections a {
+      padding: 6px 8px;
+    }
+  }
+  @media (pointer: coarse) {
+    .sections a,
+    .muted,
+    .repo {
+      min-height: var(--dl-tap-min, 44px);
     }
   }
 </style>

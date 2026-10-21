@@ -46,6 +46,11 @@ export {
 export { publicPageImports, withPublicPage, type PublicPageProps } from './public-pages.js';
 export { adminPageImports, withAdminPage, type AdminPageProps } from './admin-pages.js';
 export { pageSnapshot, type PageSnapshot } from './snapshot.js';
-export type { PublicPage as PublicPageKey, PublicPageData, PublicDataFor } from './public.js';
+export type {
+  DiveSigning,
+  PublicPage as PublicPageKey,
+  PublicPageData,
+  PublicDataFor,
+} from './public.js';
 export type { AdminPage as AdminPageKey, AdminPageData, AdminDataFor } from './admin.js';
 export type { PageOwner } from './table.js';

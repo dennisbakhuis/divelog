@@ -5,6 +5,7 @@ import {
   countryAt,
   countryBounds,
   countryByIso3,
+  countrySpanKm,
   countryIn,
   indexCountries,
   regionNearest,
@@ -106,6 +107,27 @@ describe('countryAt on the world atlas', () => {
     expect(n).toBeGreaterThan(53);
     expect(await countryBounds('ZZZ')).toBeNull();
   });
+
+  it('frames the mainland, not the overseas islands', async () => {
+    const [w, s, e, n] = (await countryBounds('NLD'))!;
+    expect(w).toBeGreaterThan(3);
+    expect(e).toBeGreaterThan(7);
+    expect(s).toBeLessThan(51);
+    expect(n).toBeLessThan(54);
+    const [fw, fs, fe] = (await countryBounds('FRA'))!;
+    expect(fw).toBeGreaterThan(-6);
+    expect(fe).toBeLessThan(10);
+    expect(fs).toBeGreaterThan(41);
+    const [uw, , ue] = (await countryBounds('USA'))!;
+    expect(uw).toBeGreaterThan(-130);
+    expect(ue).toBeLessThan(-60);
+  });
+
+  it('measures a country across', async () => {
+    expect(await countrySpanKm('MLT')).toBeLessThan(60);
+    expect(await countrySpanKm('USA')).toBeGreaterThan(3000);
+    expect(await countrySpanKm('ZZZ')).toBeNull();
+  });
 });
 
 describe('regionNearest', () => {
@@ -133,5 +155,12 @@ describe('regionNearest', () => {
   it('takes the only region of a country without placed sites', () => {
     expect(regionNearest(regions, 'BES', 12.15, -68.28)?.id).toBe('bonaire');
     expect(regionNearest(regions, 'MLT', 36.05, 14.19)).toBeNull();
+  });
+
+  it('does not guess the only region of a large country', () => {
+    const florida = [{ id: 'florida', country: 'USA', map_sites: [] }];
+    expect(regionNearest(florida, 'USA', 34.0, -120.0, { spanKm: 4500 })).toBeNull();
+    expect(regionNearest(regions, 'BES', 12.15, -68.28, { spanKm: 40 })?.id).toBe('bonaire');
+    expect(regionNearest(regions, 'BES', 12.15, -68.28, { spanKm: null })?.id).toBe('bonaire');
   });
 });

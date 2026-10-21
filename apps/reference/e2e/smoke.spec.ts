@@ -40,6 +40,20 @@ for (const { path, heading } of PAGES) {
   });
 }
 
+test('an unknown sign token on a public dive is still the dive page', async ({ page }) => {
+  const errors = watchConsole(page);
+  const response = await page.goto('/dive/1?sign=e2e-unknown-token');
+  expect(response?.status()).toBe(200);
+  expect(response?.headers()['cache-control']).toBe('private, no-store');
+  expect(response?.headers()['x-robots-tag']).toBe('noindex, nofollow');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(SITE_NAME);
+  await expect(page.getByText('This sign link has expired; ask Sam for a new one.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign the dive' })).toHaveCount(0);
+  await expect(page).toHaveURL(/\/dive\/1\?sign=e2e-unknown-token$/);
+  await page.waitForLoadState('networkidle');
+  expect(errors).toEqual([]);
+});
+
 test('the home page shows the dive tile', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('Open the log →')).toBeVisible();

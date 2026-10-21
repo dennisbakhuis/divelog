@@ -5,6 +5,8 @@ import secrets
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
+from fastapi import Response
+
 from divelog_server.core.config import get_settings
 from divelog_server.services.email import send_mail
 from divelog_server.store.state import AdminSession, AuthState, MagicToken
@@ -14,9 +16,11 @@ logger = logging.getLogger(__name__)
 _MAGIC_LINK_LIMIT = 5
 _MAGIC_LINK_WINDOW = timedelta(minutes=10)
 _recent_requests: dict[str, list[datetime]] = defaultdict(list)
+_recent_signs: dict[str, list[datetime]] = defaultdict(list)
 
 
-def _hash(token: str) -> str:
+def hash_token(token: str) -> str:
+    """The keyed hash a mailed or session token is stored under; the token itself never is."""
     settings = get_settings()
     return hmac.new(settings.SESSION_SECRET.encode(), token.encode(), hashlib.sha256).hexdigest()
 
@@ -25,12 +29,17 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def is_rate_limited(ip: str, now: datetime | None = None) -> bool:
-    """Five magic-link requests per IP per ten minutes; anything more is dropped."""
+def is_rate_limited(ip: str, now: datetime | None = None, *, signing: bool = False) -> bool:
+    """Five requests per IP per ten minutes; anything more is dropped.
+
+    Magic-link requests and dive signatures (``signing``) are counted apart, so buddies
+    signing from one network never lock the owner out of signing in.
+    """
     moment = now or _now()
     window_start = moment - _MAGIC_LINK_WINDOW
-    recent = [t for t in _recent_requests[ip] if t > window_start]
-    _recent_requests[ip] = recent
+    requests = _recent_signs if signing else _recent_requests
+    recent = [t for t in requests[ip] if t > window_start]
+    requests[ip] = recent
     if len(recent) >= _MAGIC_LINK_LIMIT:
         return True
     recent.append(moment)
@@ -48,8 +57,8 @@ async def create_magic_link(state: AuthState, email: str) -> str:
     settings = get_settings()
     token = secrets.token_urlsafe(32)
     async with state.lock:
-        state.tokens[_hash(token)] = MagicToken(
-            token_hash=_hash(token),
+        state.tokens[hash_token(token)] = MagicToken(
+            token_hash=hash_token(token),
             email=email.lower(),
             created_at=_now(),
             expires_at=_now() + timedelta(minutes=settings.MAGIC_LINK_MINUTES),
@@ -79,7 +88,7 @@ async def request_magic_link(state: AuthState, email: str) -> None:
 async def redeem_magic_link(state: AuthState, token: str, user_agent: str) -> str | None:
     """Exchange a valid, unused token for a session; return the raw session token."""
     async with state.lock:
-        row = state.tokens.get(_hash(token))
+        row = state.tokens.get(hash_token(token))
         if row is None or row.used_at is not None or row.expires_at < _now():
             return None
         row.used_at = _now()
@@ -91,8 +100,8 @@ async def create_session(state: AuthState, email: str, user_agent: str) -> str:
     settings = get_settings()
     token = secrets.token_urlsafe(32)
     async with state.lock:
-        state.sessions[_hash(token)] = AdminSession(
-            token_hash=_hash(token),
+        state.sessions[hash_token(token)] = AdminSession(
+            token_hash=hash_token(token),
             email=email,
             created_at=_now(),
             expires_at=_now() + timedelta(days=settings.SESSION_DAYS),
@@ -105,25 +114,49 @@ async def create_session(state: AuthState, email: str, user_agent: str) -> str:
 
 async def resolve_session(state: AuthState, token: str) -> AdminSession | None:
     """Look up a live session and slide its expiry when it is past halfway."""
+    session, _ = await resolve_and_renew(state, token)
+    return session
+
+
+async def resolve_and_renew(state: AuthState, token: str) -> tuple[AdminSession | None, bool]:
+    """A live session, sliding its expiry when it is past halfway, and whether it slid.
+
+    When it slid the browser's cookie has to be issued again: its ``max_age`` was set when the
+    cookie was, and it would otherwise end before the session does.
+    """
     settings = get_settings()
-    session = state.sessions.get(_hash(token))
+    session = state.sessions.get(hash_token(token))
     now = _now()
     if session is None or session.revoked_at is not None or session.expires_at < now:
-        return None
+        return None, False
     lifetime = timedelta(days=settings.SESSION_DAYS)
     if session.expires_at - now < lifetime / 2:
         async with state.lock:
             session.expires_at = now + lifetime
             session.last_seen_at = now
             state.save()
-    else:
-        session.last_seen_at = now
-    return session
+        return session, True
+    session.last_seen_at = now
+    return session, False
+
+
+def set_session_cookie(response: Response, token: str) -> None:
+    """Give the browser the session cookie for the whole session lifetime."""
+    settings = get_settings()
+    response.set_cookie(
+        settings.SESSION_COOKIE_NAME,
+        token,
+        max_age=settings.SESSION_DAYS * 86400,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite="lax",
+        path="/",
+    )
 
 
 async def revoke_session(state: AuthState, token: str) -> None:
     async with state.lock:
-        session = state.sessions.get(_hash(token))
+        session = state.sessions.get(hash_token(token))
         if session is not None:
             session.revoked_at = _now()
             state.save()

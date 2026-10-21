@@ -189,6 +189,10 @@
     width: min(var(--dl-dialog-w, 560px), calc(100vw - 2 * var(--dl-space-4)));
     max-height: calc(100dvh - 2 * var(--dl-space-4));
     overflow: auto;
+    overscroll-behavior: contain;
+  }
+  :global(:root:has(dialog.dl-dialog:modal)) {
+    overflow: hidden;
   }
   .dl-dialog--sm {
     --dl-dialog-w: 420px;
@@ -266,6 +270,12 @@
     font-size: 2.25rem;
     min-width: 44px;
     min-height: 44px;
+  }
+  @media (pointer: coarse) {
+    .dl-dialog-close {
+      min-width: var(--dl-tap-min, 44px);
+      min-height: var(--dl-tap-min, 44px);
+    }
   }
   .dl-dialog-close:hover {
     color: var(--dl-color-text);

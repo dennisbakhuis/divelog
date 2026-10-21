@@ -11,7 +11,9 @@
     ordinal,
     pluralize,
   } from '$lib/core/dive/format';
-  import type { Attachment, Dive } from '$lib/core/dive/types';
+  import type { Attachment, BuddyNote, Dive } from '$lib/core/dive/types';
+  import SignBox from '$lib/components/dive/SignBox.svelte';
+  import BuddyNotes from '$lib/components/dive/BuddyNotes.svelte';
   import DiveFacts from '$lib/components/dive/DiveFacts.svelte';
   import DiveProfile from '$lib/components/dive/DiveProfile.svelte';
   import Gallery from '$lib/components/dive/Gallery.svelte';
@@ -38,12 +40,34 @@
   import { getDivelog } from '$lib/core/dive/context';
   import { followWithState, gotoWithState } from '$lib/components/dive/follow';
 
-  const { urls } = getDivelog();
+  const { config, urls } = getDivelog();
 
   const MAX_FACT_PILLS = 3;
 
   let { data }: { data: PublicDataFor<'dive'> } = $props();
   const dive = $derived(data.dive);
+
+  /** The mailed sign link this page was opened from, when it belongs to this dive. */
+  const signing = $derived(data.signing?.number === data.dive.number ? data.signing : null);
+  /** The note signed on this page, by the token it was signed with. */
+  let signedHere = $state<{ token: string; note: BuddyNote } | null>(null);
+  const ownNote = $derived(
+    signing && signing.state !== 'expired'
+      ? signedHere?.token === signing.token
+        ? signedHere.note
+        : signing.note
+      : null,
+  );
+
+  /** The public notes, with the signing buddy's own in place of theirs (shown even if private). */
+  const notes = $derived.by(() => {
+    const published = dive.buddy_notes ?? [];
+    if (!ownNote) return published;
+    return published.some((n) => n.person === ownNote.person)
+      ? published.map((n) => (n.person === ownNote.person ? ownNote : n))
+      : [...published, ownNote];
+  });
+
   const photos = $derived(dive.attachments.filter((a) => a.kind === 'photo'));
   const scans = $derived(dive.attachments.filter((a) => a.kind === 'scan'));
   const maps = $derived(dive.attachments.filter((a) => a.kind === 'map'));
@@ -195,6 +219,10 @@
 
 <svelte:window onkeydown={onPagerKey} />
 
+<svelte:head>
+  {#if signing}<meta name="robots" content="noindex, nofollow" />{/if}
+</svelte:head>
+
 <article class="dive dl-container dl-detail">
   <DetailTop
     back={{ href: urls.log(), label: 'Dive log' }}
@@ -268,6 +296,18 @@
       </p>
     {/if}
   </header>
+
+  {#if signing?.state === 'expired'}
+    <p class="sign-expired">This sign link has expired; ask {config.ownerName} for a new one.</p>
+  {:else if signing}
+    <SignBox
+      token={signing.token}
+      signer={signing.signer}
+      state={ownNote ? 'used' : signing.state}
+      note={ownNote}
+      onsigned={(note) => (signedHere = { token: signing.token, note })}
+    />
+  {/if}
 
   {#if hasPills}
     <ul class="pills">
@@ -385,6 +425,8 @@
       {/if}
     </div>
   {/if}
+
+  <BuddyNotes {notes} buddies={dive.buddies} />
 
   {#if provenance && !hasProfile}
     <p class="provenance">{provenance}</p>
@@ -1006,6 +1048,11 @@
   }
   .buddy-meta.faint {
     color: var(--dl-color-text-faint);
+  }
+  .sign-expired {
+    margin: 14px 0 0;
+    font-size: 14px;
+    color: var(--dl-color-text-muted);
   }
   .provenance {
     margin: 10px 0 0;

@@ -70,6 +70,7 @@
     legs = [],
     path = [],
     pathTurn = null,
+    tracks = [],
     turn = null,
     pins = [],
     onCanvasClick,
@@ -89,6 +90,8 @@
     onUnderlayMove,
     onUnderlayRotate,
     onLongPress,
+    fill = false,
+    zoomControls = true,
   }: {
     map: SiteMap;
     title?: string;
@@ -105,6 +108,8 @@
     /** A free-drawn track (site maps), and the index of the point where the dive turned. */
     path?: MapPoint[];
     pathTurn?: number | null;
+    /** More free-drawn tracks drawn under `path`, e.g. every dive logged on the map. */
+    tracks?: { path: MapPoint[]; turn: number | null }[];
     turn?: string | null;
     pins?: DiveMapPin[];
     onCanvasClick?: (x: number, y: number) => void;
@@ -128,7 +133,24 @@
     onUnderlayRotate?: (rotation: number, done: boolean) => void;
     /** A touch or pen held still for half a second, on a thing or the bare canvas. */
     onLongPress?: (target: PressTarget, at: Point, client: { x: number; y: number }) => void;
+    /** Fill the parent's height instead of keeping the drawing's aspect ratio. */
+    fill?: boolean;
+    /** Show the zoom buttons; off when the page offers its own. */
+    zoomControls?: boolean;
   } = $props();
+
+  // An empty set (a free-drawn track, or a dive without legs) dims nothing.
+  const routed = $derived(!!route && route.size > 0);
+  // Fingers get larger hit areas than a mouse.
+  let coarse = $state(false);
+  $effect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const query = window.matchMedia('(pointer: coarse)');
+    coarse = query.matches;
+    const sync = (e: MediaQueryListEvent) => (coarse = e.matches);
+    query.addEventListener?.('change', sync);
+    return () => query.removeEventListener?.('change', sync);
+  });
 
   let clientWidth = $state(0);
   let clientHeight = $state(0);
@@ -151,7 +173,10 @@
   // Full screen letterboxes the drawing, so the tighter of the two axes sets the scale.
   const k = $derived(
     (clientWidth > 0
-      ? Math.max(width / clientWidth, fullscreen && clientHeight > 0 ? height / clientHeight : 0)
+      ? Math.max(
+          width / clientWidth,
+          (fullscreen || fill) && clientHeight > 0 ? height / clientHeight : 0,
+        )
       : width / 800) / zoom,
   );
   const aspect = $derived(Math.min(2.2, Math.max(1.1, width / height)));
@@ -259,16 +284,27 @@
     view = zoomAt(view, toView(e.clientX, e.clientY), factor);
   }
 
+  /** Screen pixels a press may wander and still be a tap; a finger needs more than a mouse. */
+  function slopOf(e: PointerEvent): number {
+    return e.pointerType === 'touch' ? 10 : 4;
+  }
+
   const pointers: Record<number, Point> = {};
-  let panning: { moved: boolean } | null = null;
+  let panning: { moved: boolean; from: Point; client: Point; slop: number } | null = null;
   let panned = false;
+  // A press on a station that only clicks (no `onNodeMove`): it pans like the canvas and
+  // counts as a click on the station when it ends without moving.
+  let nodeTap: (Drag & { id: string }) | null = null;
 
   function viewDown(e: PointerEvent) {
     // Stop the browser starting a text selection or moving focus on a drag;
     // keyboard users still reach the map with Tab.
     if (e.button === 0) e.preventDefault();
-    active = true;
     pointers[e.pointerId] = toView(e.clientX, e.clientY);
+    if (Object.keys(pointers).length > 1) {
+      nodeTap = null;
+      if (panning) panning.moved = true;
+    }
     if (
       alignUnderlay &&
       editable &&
@@ -282,11 +318,17 @@
         pointerId: e.pointerId,
         start: { x: e.clientX, y: e.clientY },
         from: at,
+        slop: slopOf(e),
       };
       return;
     }
     if (Object.keys(pointers).length === 1 && (e.button === 0 || e.button === 1)) {
-      panning = { moved: false };
+      panning = {
+        moved: false,
+        from: pointers[e.pointerId],
+        client: { x: e.clientX, y: e.clientY },
+        slop: slopOf(e),
+      };
       panned = false;
     }
   }
@@ -326,13 +368,19 @@
     }
     pointers[e.pointerId] = next;
     if (!panning) return;
-    const dx = next.x - previous.x;
-    const dy = next.y - previous.y;
-    if (!panning.moved && Math.hypot(dx, dy) * (clientWidth / width) < 4) return;
-    if (!panning.moved) capture(e);
-    panning.moved = true;
+    if (!panning.moved) {
+      // Measured from the press, so a slow drag of many tiny steps still pans.
+      const far = Math.hypot(e.clientX - panning.client.x, e.clientY - panning.client.y);
+      if (far < panning.slop) return;
+      capture(e);
+      panning.moved = true;
+      nodeTap = null;
+      panned = true;
+      view = pan(view, next.x - panning.from.x, next.y - panning.from.y);
+      return;
+    }
     panned = true;
-    view = pan(view, dx, dy);
+    view = pan(view, next.x - previous.x, next.y - previous.y);
   }
 
   function viewUp(e: PointerEvent) {
@@ -341,6 +389,24 @@
     if (underlayDrag) underlayUp(e);
     if (drag) nodeUp(e);
     if (pointDrag) pointUp(e);
+    const tapped =
+      e.type === 'pointerup' &&
+      !!panning &&
+      !panning.moved &&
+      Object.keys(pointers).length === 1 &&
+      e.pointerId in pointers;
+    if (nodeTap && e.pointerId === nodeTap.pointerId) {
+      const current = nodeTap;
+      nodeTap = null;
+      if (tapped) {
+        // The click that follows is the station's, not the canvas's.
+        panned = true;
+        onNodeClick?.(current.id, e.shiftKey);
+      }
+    }
+    // Only a deliberate tap hands wheel and touch gestures to the map; a press that
+    // scrolled the page or panned the map leaves the page scrolling.
+    if (tapped) active = true;
     delete pointers[e.pointerId];
     if (Object.keys(pointers).length === 0) panning = null;
   }
@@ -397,8 +463,11 @@
     const change = (e: Event) => {
       e.preventDefault();
       const g = e as GestureLike;
-      const at = toView(g.clientX, g.clientY);
-      view = rotateAt(zoomAt(view, at, g.scale / last.scale), at, g.rotation - last.rotation);
+      // A touch pinch in Safari also arrives as two pointers, which already zoom.
+      if (Object.keys(pointers).length < 2) {
+        const at = toView(g.clientX, g.clientY);
+        view = rotateAt(zoomAt(view, at, g.scale / last.scale), at, g.rotation - last.rotation);
+      }
       last = { scale: g.scale, rotation: g.rotation };
     };
     el.addEventListener('gesturestart', start);
@@ -408,15 +477,15 @@
       el.removeEventListener('gesturechange', change);
     };
   });
-  type Drag = { moved: boolean; pointerId: number; start: Point };
+  type Drag = { moved: boolean; pointerId: number; start: Point; slop: number };
   let drag: (Drag & { id: string }) | null = null;
   let pointDrag: (Drag & { id: string; index: number; shape: 'line' | 'area' }) | null = null;
   let underlayDrag: (Drag & { from: Point }) | null = null;
   let rotating: { pointerId: number; centre: Point } | null = null;
 
-  /** A press only becomes a drag after a few screen pixels; a click may jitter by one. */
+  /** A press only becomes a drag after a few screen pixels; a click may jitter, a tap more. */
   function stillAClick(d: Drag, e: PointerEvent): boolean {
-    return !d.moved && Math.hypot(e.clientX - d.start.x, e.clientY - d.start.y) < 3;
+    return !d.moved && Math.hypot(e.clientX - d.start.x, e.clientY - d.start.y) < d.slop;
   }
 
   function toMap(e: PointerEvent | MouseEvent): { x: number; y: number } {
@@ -441,15 +510,21 @@
   }
 
   function nodeDown(e: PointerEvent, node: MapNode) {
-    if (!editable || alignUnderlay) return;
-    e.stopPropagation();
-    if (e.button === 0) e.preventDefault();
-    drag = {
+    if (!editable || alignUnderlay || !(onNodeMove || onNodeClick)) return;
+    const press = {
       id: node.id,
       moved: false,
       pointerId: e.pointerId,
       start: { x: e.clientX, y: e.clientY },
+      slop: slopOf(e),
     };
+    if (!onNodeMove) {
+      nodeTap = press;
+      return;
+    }
+    e.stopPropagation();
+    if (e.button === 0) e.preventDefault();
+    drag = press;
   }
 
   function nodeMove(e: PointerEvent) {
@@ -490,6 +565,7 @@
       moved: false,
       pointerId: e.pointerId,
       start: { x: e.clientX, y: e.clientY },
+      slop: slopOf(e),
     };
   }
 
@@ -591,6 +667,7 @@
       timer: setTimeout(() => {
         press = null;
         drag = null;
+        nodeTap = null;
         pointDrag = null;
         underlayDrag = null;
         panning = null;
@@ -685,7 +762,7 @@
    * survey with hundreds of short shots reads as a line, not as numbers.
    */
   // A dive's route reads best with only its own lengths; the toggle adds the rest.
-  const focused = $derived(route !== null && !editable);
+  const focused = $derived(routed && !editable);
   let distanceChoice = $state<boolean | null>(null);
   const showDistances = $derived(distanceChoice ?? !focused);
 
@@ -727,13 +804,18 @@
   }
 
   function nodeOnRoute(id: string): boolean {
-    if (!route) return true;
+    if (!route || !routed) return true;
     for (const key of route) if (key.split('|').includes(id)) return true;
     return false;
   }
 </script>
 
-<div class="frame" bind:this={frame} style:aspect-ratio={fullscreen ? undefined : aspect}>
+<div
+  class="frame"
+  class:fill
+  bind:this={frame}
+  style:aspect-ratio={fullscreen || fill ? undefined : aspect}
+>
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <svg
     bind:this={svg}
@@ -743,7 +825,7 @@
     class:editable
     class:aligning={editable && alignUnderlay}
     class:active
-    class:routed={route !== null}
+    class:routed
     viewBox="{box.minX} {box.minY} {width} {height}"
     role={editable ? 'application' : 'img'}
     aria-label={title}
@@ -1024,7 +1106,9 @@
             tabindex={editable ? 0 : undefined}
             aria-label={node.label || node.type}
             onpointerdown={(e) => nodeDown(e, node)}
-            onclick={(e) => e.stopPropagation()}
+            onclick={(e) => {
+              if (editable && (onNodeClick || onNodeMove)) e.stopPropagation();
+            }}
             onkeydown={(e) => {
               if (editable && (e.key === 'Enter' || e.key === ' ')) {
                 e.preventDefault();
@@ -1032,7 +1116,7 @@
               }
             }}
           >
-            <circle class="hit" r={14 * k} />
+            <circle class="hit" r={(coarse ? 18 : 14) * k} />
             {#if turn === node.id}
               <circle class="turn-ring" r={13 * k} />
             {/if}
@@ -1063,8 +1147,25 @@
         {/each}
       </g>
 
-      {#if path.length > 1}
+      {#if tracks.length}
+        <g class="track tracks" aria-label="Tracks of the dives">
+          {#each tracks as t, n (n)}
+            {#each t.path.slice(1) as p, i (i)}
+              {@const a = t.path[i]}
+              <line class="track-leg all" x1={a.x} y1={a.y} x2={p.x} y2={p.y} />
+            {/each}
+          {/each}
+        </g>
+      {/if}
+
+      {#if path.length > 1 || (editable && path.length)}
         <g class="track" aria-label="Track of the dive">
+          {#if editable}
+            <circle class="track-start" cx={path[0].x} cy={path[0].y} r={5 * k} />
+            {#each path.slice(1) as p, i (i)}
+              <circle class="track-point" cx={p.x} cy={p.y} r={3 * k} />
+            {/each}
+          {/if}
           {#each path.slice(1) as p, i (i)}
             {@const a = path[i]}
             {@const phase = pathTurn !== null && i >= pathTurn ? 'out' : 'in'}
@@ -1175,12 +1276,14 @@
     {/if}
   </svg>
   <div class="view-controls" role="group" aria-label="Map view">
-    <button type="button" onclick={() => zoomIn()} title="Zoom in (+)" aria-label="Zoom in"
-      >+</button
-    >
-    <button type="button" onclick={() => zoomOut()} title="Zoom out (−)" aria-label="Zoom out"
-      >−</button
-    >
+    {#if zoomControls}
+      <button type="button" onclick={() => zoomIn()} title="Zoom in (+)" aria-label="Zoom in"
+        >+</button
+      >
+      <button type="button" onclick={() => zoomOut()} title="Zoom out (−)" aria-label="Zoom out"
+        >−</button
+      >
+    {/if}
     <button
       type="button"
       onclick={() => rotate(-15)}
@@ -1238,6 +1341,9 @@
     -webkit-user-select: none;
     -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
+  }
+  .frame.fill {
+    height: 100%;
   }
   .frame:fullscreen {
     width: 100vw;
@@ -1587,6 +1693,23 @@
   .track-leg.out {
     stroke: var(--way-out);
   }
+  .track-leg.all {
+    stroke: var(--dl-color-warm);
+    stroke-width: 3px;
+    opacity: 0.75;
+  }
+  .track-start {
+    fill: var(--way-in);
+    stroke: var(--map-bg);
+    stroke-width: 2px;
+    vector-effect: non-scaling-stroke;
+  }
+  .track-point {
+    fill: var(--map-bg);
+    stroke: currentColor;
+    stroke-width: 1.5px;
+    vector-effect: non-scaling-stroke;
+  }
   .routed .node.off-route > :not(.upright),
   .routed .node.off-route .upright > :global(g) {
     opacity: 0.2;
@@ -1696,5 +1819,21 @@
   }
   .scale text {
     fill: var(--dl-color-text-muted);
+  }
+  @media (pointer: coarse) {
+    .view-controls {
+      bottom: 10px;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      pointer-events: none;
+    }
+    .view-controls button {
+      width: 44px;
+      height: 44px;
+      pointer-events: auto;
+    }
+    .edge .hit {
+      stroke-width: 20px;
+    }
   }
 </style>

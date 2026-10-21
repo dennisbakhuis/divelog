@@ -15,6 +15,7 @@
     nearbyPath,
     nearbyReason,
     siteCreateBody,
+    SITE_ID_MAX,
     siteIdStatus,
     validateDraft,
     type PickedPoint,
@@ -22,7 +23,7 @@
   } from '$lib/core/admin/site-create';
   import { countryOptions, fetchCountries } from '$lib/core/admin/lookups';
   import { siteTypeOptions, waterDefault } from '$lib/core/dive/site-types';
-  import { countryAt, countryByIso3, regionNearest } from '$lib/core/map/countries';
+  import { countryAt, countryByIso3, countrySpanKm, regionNearest } from '$lib/core/map/countries';
   import type { LatLon } from '$lib/core/map/coords';
   import type { CountryOut, NearbySitesOut, Region, Site } from '$lib/core/dive/types';
   import type { ComboOption } from '$lib/core/ui/combobox';
@@ -51,7 +52,10 @@
     onCancel,
   }: {
     regions: Region[];
-    /** Values to start from: a name typed in a search, the country of the last site. */
+    /**
+     * Values to start from: a name typed in a search, the country of the last site. A
+     * country or region given here is a suggestion: the pin replaces it.
+     */
     initial?: Partial<SiteDraft>;
     /** Where the map looks first while nothing is placed. */
     near?: LatLon | null;
@@ -74,8 +78,8 @@
 
   // svelte-ignore state_referenced_locally
   let draft = $state<SiteDraft>(emptySiteDraft(initial));
-  // svelte-ignore state_referenced_locally
-  let touched = $state({ country: !!initial.country, region: !!initial.region, water: false });
+  let touched = $state({ country: false, region: false, water: false });
+  let countryFromPin = $state(false);
   let errors = $state<Record<string, string>>({});
   let formError = $state('');
   let busy = $state<SiteCreateAction | null>(null);
@@ -96,6 +100,8 @@
   let nearby = $state<NearbySitesOut>({ log: [], commons: [] });
   const nearbyCount = $derived(nearby.log.length + nearby.commons.length);
   let usingId = $state('');
+  let created: Site | null = null;
+  let pending: Promise<unknown> = Promise.resolve();
 
   const typeOptions = $derived(siteTypeOptions(draft.type));
   const countryChoices = $derived(
@@ -144,8 +150,9 @@
 
   $effect(() => {
     const id = newId;
+    const hasCountry = /^[A-Za-z]{3}$/.test(draft.country.trim());
     availability = null;
-    if (!SITE_ID.test(id)) return;
+    if (!hasCountry || !SITE_ID.test(id) || id.length > SITE_ID_MAX) return;
     let stale = false;
     const timer = setTimeout(async () => {
       availability = 'checking';
@@ -179,26 +186,55 @@
   });
 
   let pickSeq = 0;
+  let regionSeq = 0;
 
-  async function onPick(picked: PickedPoint) {
+  /** Keep a lookup the form depends on, so a create pressed meanwhile waits for it. */
+  function track(job: Promise<void>) {
+    pending = Promise.all([pending, job.catch(() => {})]);
+  }
+
+  /** Whether a region may stay with a country: it belongs there, or to no country. */
+  function regionFits(id: string, iso3: string): boolean {
+    const region = localRegions.find((r) => r.id === id);
+    return !region?.country || !iso3 || region.country.toUpperCase() === iso3.toUpperCase();
+  }
+
+  /** The region nearest to the pin within the draft's country, unless one was chosen by hand. */
+  async function fillRegion(lat: number, lon: number) {
+    if (touched.region && regionFits(draft.region, draft.country)) return;
+    const mine = ++regionSeq;
+    const country = draft.country;
+    const spanKm = country ? await countrySpanKm(country).catch(() => null) : null;
+    if (mine !== regionSeq) return;
+    const region = regionNearest(localRegions, country, lat, lon, { spanKm });
+    draft.region = region?.id ?? '';
+    regionFromPin = !!region;
+    touched.region = false;
+  }
+
+  async function placeFromPin(picked: PickedPoint) {
+    const mine = ++pickSeq;
+    const hit = await countryAt(picked.lat, picked.lon).catch(() => null);
+    if (mine !== pickSeq) return;
+    pinCountry = hit ? { iso3: hit.iso3, name: hit.name, inside: hit.inside } : null;
+    if (!touched.country && hit) {
+      draft.country = hit.iso3;
+      countryFromPin = true;
+      delete errors.country;
+    } else if (!touched.country && countryFromPin) {
+      draft.country = '';
+      countryFromPin = false;
+    }
+    await fillRegion(picked.lat, picked.lon);
+  }
+
+  function onPick(picked: PickedPoint) {
     draft.lat = picked.lat;
     draft.lon = picked.lon;
     draft.geo_source = geoSourceText(picked.source);
     delete errors.lat;
     delete errors.lon;
-    const mine = ++pickSeq;
-    const hit = await countryAt(picked.lat, picked.lon);
-    if (mine !== pickSeq) return;
-    pinCountry = hit ? { iso3: hit.iso3, name: hit.name, inside: hit.inside } : null;
-    if (hit && !touched.country) {
-      draft.country = hit.iso3;
-      delete errors.country;
-    }
-    if (!touched.region) {
-      const region = regionNearest(localRegions, draft.country, picked.lat, picked.lon);
-      draft.region = region?.id ?? '';
-      regionFromPin = !!region;
-    }
+    track(placeFromPin(picked));
   }
 
   function onType(type: string) {
@@ -209,17 +245,21 @@
 
   function onCountry(iso3: string) {
     draft.country = iso3;
-    touched.country = true;
+    touched.country = !!iso3;
+    countryFromPin = false;
     delete errors.country;
-    if (!touched.region) {
-      const region = point ? regionNearest(localRegions, iso3, point.lat, point.lon) : null;
-      draft.region = region?.id ?? '';
-      regionFromPin = !!region;
+    if (point) track(fillRegion(point.lat, point.lon));
+    else if (!regionFits(draft.region, iso3)) {
+      ++regionSeq;
+      draft.region = '';
+      regionFromPin = false;
+      touched.region = false;
     }
   }
 
   async function regionCreated(region: Region) {
     localRegions = [...localRegions.filter((r) => r.id !== region.id), region];
+    ++regionSeq;
     draft.region = region.id;
     touched.region = true;
     regionFromPin = false;
@@ -253,29 +293,43 @@
   }
 
   async function submit(action: SiteCreateAction) {
+    if (busy) return;
     formError = '';
-    errors = validateDraft(draft);
-    if (availability === 'taken')
-      errors.name = `The id ${newId} is already in use; change the name.`;
-    if (Object.keys(errors).length) {
-      announce('The site was not created: check the marked fields', { assertive: true });
-      focusFirstError();
-      return;
-    }
     busy = action;
     try {
-      const site = await adminJson<Site>(adminApi('sites'), 'POST', siteCreateBody(draft));
-      toast.show({ kind: 'success', message: `${site.name} created` });
-      await onCreated(site, action);
-    } catch (err) {
-      if (err instanceof AdminApiError) {
-        const fields = { ...err.fieldErrors };
-        if (fields.site_id) fields.name = `Id ${newId}: ${fields.site_id}`;
-        if (err.status === 409) fields.name = `The id ${newId} is already in use; change the name.`;
-        errors = fields;
-        formError = Object.keys(fields).length ? '' : err.message;
+      await pending;
+      errors = validateDraft(draft);
+      if (availability === 'taken')
+        errors.name = `The id ${newId} is already in use; change the name.`;
+      if (Object.keys(errors).length) {
+        announce('The site was not created: check the marked fields', { assertive: true });
         focusFirstError();
-      } else formError = 'Could not create the site';
+        return;
+      }
+      if (!created) {
+        try {
+          created = await adminJson<Site>(adminApi('sites'), 'POST', siteCreateBody(draft));
+        } catch (err) {
+          if (err instanceof AdminApiError) {
+            const fields = { ...err.fieldErrors };
+            if (fields.site_id) fields.name = `Id ${newId}: ${fields.site_id}`;
+            if (err.status === 409) {
+              availability = 'taken';
+              fields.name = `The id ${newId} is already in use; change the name.`;
+            }
+            errors = fields;
+            formError = Object.keys(fields).length ? '' : err.message;
+            focusFirstError();
+          } else formError = 'Could not create the site';
+          return;
+        }
+        toast.show({ kind: 'success', message: `${created.name} created` });
+      }
+      try {
+        await onCreated(created, action);
+      } catch {
+        formError = `${created.name} was created, but what comes next failed; press the button again to retry.`;
+      }
     } finally {
       busy = null;
     }
@@ -320,7 +374,8 @@
   <p class="id-line" aria-live="polite">
     {#if newId}
       Id <code>{newId}</code>
-      {#if availability === 'checking'}· checking…
+      {#if newId.length > SITE_ID_MAX}· <span class="taken">too long</span>
+      {:else if availability === 'checking'}· checking…
       {:else if availability === 'free'}· <span class="free">available</span>
       {:else if availability === 'taken'}· <span class="taken">already in use</span>
       {/if}
@@ -469,8 +524,9 @@
           bind:value={
             () => draft.region || null,
             (v) => {
+              ++regionSeq;
               draft.region = v ?? '';
-              touched.region = true;
+              touched.region = !!v;
               regionFromPin = false;
             }
           }

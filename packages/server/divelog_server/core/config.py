@@ -42,7 +42,9 @@ class Settings(BaseSettings):
     SESSION_SECRET: str = DEFAULT_SESSION_SECRET
     SESSION_COOKIE_NAME: str = "divelog_session"
     SESSION_DAYS: int = 30
-    MAGIC_LINK_MINUTES: int = 15
+    MAGIC_LINK_MINUTES: int = 2
+    SIGN_INVITE_DAYS: int = 7
+    SIGN_MAIL_SUBJECT: str = "{owner_name} logged a dive with you"
     COOKIE_SECURE: bool = False
 
     STORAGE_BACKEND: str = "local"

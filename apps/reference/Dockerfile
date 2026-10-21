@@ -1,9 +1,19 @@
 # The reference app as a standalone image (SvelteKit, adapter-node).
 # Build from the monorepo root: docker build -f apps/reference/Dockerfile -t divelog-reference .
+#
+# Both stages pin node:22.23.4-slim (bookworm) by index digest, the first Node 22 release that
+# distrusts the compromised eMudhra intermediates (17 October 2026), and install Debian's
+# ca-certificates at the suite's current version. Bump the digest with
+#   docker buildx imagetools inspect node:<version>-slim
+# (it must list manifests) and check the trust probe in docs/DEPLOY.md.
 
-FROM node:22-slim AS builder
+FROM node:22.23.4-slim@sha256:5991875dfb80938dd8a6ba3fe3e96fd04929e70792762b3319d8caadbbe229bc AS builder
 
 WORKDIR /repo
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable
 
@@ -18,9 +28,13 @@ COPY apps/reference apps/reference
 RUN pnpm --filter @divelog/kit build && pnpm --filter reference build
 RUN pnpm --filter reference deploy --prod --legacy /out && cp -r apps/reference/build /out/build
 
-FROM node:22-slim AS runtime
+FROM node:22.23.4-slim@sha256:5991875dfb80938dd8a6ba3fe3e96fd04929e70792762b3319d8caadbbe229bc AS runtime
 
 WORKDIR /app
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 --ingroup nodejs sveltekit

@@ -21,6 +21,9 @@ export interface ToastOptions {
 
 export const TOAST_DURATION_MS = 5000;
 
+/** Most toasts on screen at once; a newer one pushes out the oldest, non-sticky first. */
+export const TOAST_LIMIT = 3;
+
 interface Timer {
   handle: ReturnType<typeof setTimeout> | null;
   remaining: number;
@@ -30,6 +33,7 @@ interface Timer {
 function createToastStore() {
   const items = $state<ToastItem[]>([]);
   const timers: Record<string, Timer> = {};
+  let seq = 0;
 
   function start(id: string) {
     const timer = timers[id];
@@ -40,9 +44,13 @@ function createToastStore() {
 
   /** Show a toast and announce it: politely for success and info, assertively for errors. */
   function show({ kind, message, sticky, duration = TOAST_DURATION_MS }: ToastOptions): string {
-    const id = crypto.randomUUID();
+    const id = `dl-toast-${++seq}`;
     const keep = sticky ?? kind === 'error';
     items.push({ id, kind, message, sticky: keep });
+    while (items.length > TOAST_LIMIT) {
+      const oldest = items.slice(0, -1).find((t) => !t.sticky) ?? items[0];
+      dismiss(oldest.id);
+    }
     announce(message, { assertive: kind === 'error' });
     if (!keep) {
       timers[id] = { handle: null, remaining: duration, started: 0 };

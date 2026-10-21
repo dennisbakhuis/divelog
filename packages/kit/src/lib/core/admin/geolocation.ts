@@ -29,12 +29,20 @@ export function canLocate(): boolean {
   return typeof navigator !== 'undefined' && !!navigator.geolocation;
 }
 
-/** What the picker asks for: a precise fix, at most a minute old. */
+/** What the picker asks for: a fresh, precise fix (a cached one is wrong on a moving boat). */
 export const PRECISE_FIX: PositionOptions = {
   enableHighAccuracy: true,
   timeout: 15_000,
-  maximumAge: 60_000,
+  maximumAge: 0,
 };
+
+/** Beyond this many metres a fix is too rough to place a site by; the picker says so. */
+export const ROUGH_FIX_M = 100;
+
+/** A device position; `accuracy` is the radius in metres the device vouches for, when it says. */
+export interface DeviceFix extends LatLon {
+  accuracy?: number;
+}
 
 /** Enough for a 25 km search: a quick, coarse fix up to five minutes old. */
 export const COARSE_FIX: PositionOptions = {
@@ -46,16 +54,20 @@ export const COARSE_FIX: PositionOptions = {
 const round = (n: number) => Math.round(n * 1e6) / 1e6;
 
 /**
- * The device position, rounded to six decimals (about 10 cm). Rejects with a
+ * The device position, rounded to six decimals (about 10 cm), with its accuracy. Rejects with a
  * {@link LocateError}: `unsupported` without geolocation, `denied` when the
  * person or the browser refused, `unavailable` on a timeout or no fix.
  */
-export function locateDevice(options: PositionOptions = PRECISE_FIX): Promise<LatLon> {
+export function locateDevice(options: PositionOptions = PRECISE_FIX): Promise<DeviceFix> {
   if (!canLocate()) return Promise.reject(new LocateError('unsupported'));
   return new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(
-      (position) =>
-        resolve({ lat: round(position.coords.latitude), lon: round(position.coords.longitude) }),
+      ({ coords }) =>
+        resolve({
+          lat: round(coords.latitude),
+          lon: round(coords.longitude),
+          ...(Number.isFinite(coords.accuracy) ? { accuracy: Math.round(coords.accuracy) } : {}),
+        }),
       (err) =>
         reject(new LocateError(err.code === err.PERMISSION_DENIED ? 'denied' : 'unavailable')),
       options,

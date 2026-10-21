@@ -3,6 +3,79 @@
 `@divelog/kit` and `divelog-server` share version numbers. API major and data format stay at 1
 unless a section says otherwise.
 
+## 0.5.0 — logging from a phone, buddies sign by e-mail, patched trust stores (21 October 2026)
+
+Every admin function has to work on a phone; this release makes logging a dive at a new or
+known site, with photos and the route swum, hold up on one, lets buddies sign a dive through a
+mailed link, and rebuilds the images on trust stores that refuse the compromised eMudhra
+intermediates. Data shapes stay compatible and the API changes are additive; the server adds
+`POST /auth/verify`, the sign endpoints, `pillow-heif`, and stricter validation.
+
+- The combobox footers ("+ New site", "From the commons", "Add person", "+ New trip") and the
+  ▾ toggle respond to a tap on iOS Safari, which blurred the input before the click landed. The
+  list fits above the on-screen keyboard with its footer always visible, inputs are 16 px on
+  touch screens so iOS no longer zooms, Enter closes the keyboard instead of saving, and every
+  button, option, chip and nav link is 44 px on a coarse pointer.
+- The new-site and new-trip dialogs are kit dialogs: the page behind them no longer scrolls,
+  and a dialog starts with the type and water of the site in the form. A country or region
+  suggested from the previous site is only a suggestion: the pin replaces it, with the "from
+  the pin" and "nearest" chips, and a region of another country is dropped when the country
+  changes. A pin at sea clears a country the pin had set.
+- Pasted positions keep each coordinate's own hemisphere ("N20°30.000' W087°18.000'" is now
+  west), read unmarked degrees-minutes-seconds, refuse leftovers instead of guessing, and take
+  a Google Maps link's dropped pin. "Use my location" asks for a fresh fix and says when it is
+  rough. The pin drags without scrolling the page, a paste keeps its zoom, the map stays near
+  the previous site instead of framing the whole country (and a country frames its largest
+  polygon only), and create waits for the pin's country lookup.
+- The route editor opens full screen on a phone ("Draw on the map"), with the tools in a bottom
+  strip. Taps on stations survive a finger wobble, slow drags pan, iOS pinch no longer zooms
+  twice, a public map takes over gestures only after a tap, the first track point is drawn,
+  pins and turns can land on stations and lines, notes are kept as typed, every step including
+  Clear is undoable, hints say "Tap" on a touch screen, and a free-drawn track no longer dims
+  the whole map. The site page's "All dived lines" draws free tracks too. An empty annotation
+  is saved as none.
+- The dive form: Save & new starts a blank form every time (the second one used to keep the
+  dive just saved and fail with "already exists"); a published dive opens unchanged instead of
+  being auto-filled; a derived water temperature, interval or trip clears when its source goes
+  away and a restored backup keeps what was typed; picking another site drops the old site's
+  route and section; the surface interval takes a full keyboard and reads 1.15 as 1:15; a time
+  out before the time in is an error instead of a 24-hour dive; filled tank rows need a
+  cylinder; field errors without a control show in the save bar; edits typed while photos
+  upload survive; the backup is written when the page is hidden; photos offer the camera.
+- Toasts sit under the admin bar on a phone instead of over the save bar, at most three at a
+  time; the Menu's repository and commons panels open inside the Menu.
+- Buddies sign a dive by e-mail. Tick "E-mail buddies to sign" next to Save and every buddy
+  with an e-mail address in their person record gets a mail with a link to the dive page
+  (`/dive/{n}?sign=…`), valid for 7 days. The page shows the dive, also a private one, with a
+  sign box: a short comment, a finger-drawn signature or doodle, and a choice whether the note
+  is shown on the dive page. Submitting stores the note on the dive and spends the link; the
+  page then says "You signed this dive on …". A buddy is mailed once per dive, saving again
+  mails only buddies never asked, there are no reminders, and only the editor's Resend sends a
+  new link. The editor shows per buddy whether a request is open, expired or signed, sets a
+  note public or private, deletes it or withdraws a request. The public dive page lists the
+  notes under the buddies. Format: `buddy_notes` on a dive (person, comment, strokes in a
+  1000 × 400 box, signed_at, public); server: `POST /admin/dives/{n}/sign-requests`,
+  `DELETE …/sign-requests/{person}`, `DELETE …/buddy-notes/{person}`, public
+  `GET|POST /dive/sign/{token}`, settings `SIGN_INVITE_DAYS` and `SIGN_MAIL_SUBJECT`, invites
+  in the auth state file. A form save sets `public` on the notes it names and never deletes.
+- A magic link works for two minutes (`MAGIC_LINK_MINUTES`, still an env setting) and the
+  login page says so from the request's `valid_minutes`.
+- Server: a save during a photo upload no longer undoes the other (uploads change the stored
+  dive under the lock); a commit made during a running push is pushed; writes, commits and
+  rebases share one repository lock and a failed `add` is an error; the mailed link signs in
+  only when a browser opens it as a page, so link scanners cannot spend it; a sliding session
+  issues its cookie again; HEIC photos decode; photos are recognised by their bytes, keep their
+  colour profile, are processed off the event loop and are dated by DateTimeOriginal; files
+  that are not processed default to private. A dive's annotation follows renamed map nodes,
+  moves to the map's revision only when nothing was dropped, and must be on a map of the
+  dive's site. Site create checks the country, region and id prefix, claims the id under the
+  lock, and a 409 says whether the log or the commons has it. Trip saves keep the override's
+  merge list and cover, and a trip slug is validated.
+- Images: the server and reference images pin their base by digest with the October 2026
+  trust stores (Debian `ca-certificates` 20250419+deb13u1, Node 22.23.4, certifi 2026.10.19),
+  and boto3 verifies against the OS store, refusing chains forged from the compromised eMudhra
+  intermediates.
+
 ## 0.4.2 — the CLI finds the commons inside the container (18 October 2026)
 
 - `divelog validate`, `sites status|adopt`, `commons pull`, `tiles` and `sitemap-osm fetch` find

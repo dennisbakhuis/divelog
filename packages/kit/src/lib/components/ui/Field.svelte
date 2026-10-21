@@ -50,6 +50,7 @@
   const controlId = $derived(id || uid);
   const hintId = $derived(`${controlId}-hint`);
   const errorId = $derived(`${controlId}-error`);
+  const labelId = $derived(`${controlId}-label`);
 
   const control = $derived<FieldControlProps>({
     id: controlId,
@@ -67,7 +68,7 @@
   data-field={controlId}
 >
   <div class="dl-field-label-row">
-    <label for={controlId} class="dl-field-label" class:dl-visually-hidden={hideLabel}
+    <label for={controlId} id={labelId} class="dl-field-label" class:dl-visually-hidden={hideLabel}
       >{label}{#if required}<span class="dl-field-req" aria-hidden="true">*</span>{/if}</label
     >
     {#if extra}{@render extra()}{/if}

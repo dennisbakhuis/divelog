@@ -5,6 +5,7 @@ builds on this class and adds the site view merged from the log and the commons.
 """
 
 import asyncio
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -32,13 +33,13 @@ class LogRepo:
     """Personal records of the log repository at ``root``, with their writers.
 
     Every writer takes the lock, rewrites one file, refreshes the indexes through
-    :meth:`_index` and commits.
+    :meth:`_index` and commits. The lock is the git repository's, so a background rebase waits
+    for a write and its commit, and a write waits for the rebase.
     """
 
     def __init__(self, root: Path, git: GitRepo | None = None) -> None:
         self.root = root
         self.git = git or GitRepo(root, author_name="", author_email="", enabled=False)
-        self.lock = asyncio.Lock()
         self.errors: list[str] = []
         self.dives: dict[int, DiveRecord] = {}
         self.people: dict[str, PersonRecord] = {}
@@ -49,6 +50,11 @@ class LogRepo:
         self.imports: dict[str, ImportRecord] = {}
         self.manifest: Manifest | None = None
         self._sparks: dict[tuple[str, int], list[int] | None] = {}
+
+    @property
+    def lock(self) -> asyncio.Lock:
+        """The write lock: the git repository's lock around file writes and commits."""
+        return self.git.lock
 
     # ── paths ──────────────────────────────────────────────────────────────
 
@@ -201,13 +207,40 @@ class LogRepo:
     ) -> None:
         """Write a dive, removing the old file when its number changed."""
         async with self.lock:
-            if previous_number is not None and previous_number != record.number:
-                remove(self.dive_path(previous_number))
-                self.dives.pop(previous_number, None)
-            write_markdown(self.dive_path(record.number), frontmatter(record), record.body_md)
-            self.dives[record.number] = record
-            self._index()
-            await self.git.commit(message)
+            await self._write_dive(record, message, previous_number)
+
+    async def update_dive(
+        self, number: int, change: Callable[[DiveRecord], DiveRecord], message: str
+    ) -> DiveRecord:
+        """Apply ``change`` to the dive as stored now and write the result, all under the lock.
+
+        ``change`` gets a deep copy of the current record and returns the record to write (a
+        new number moves the file); whatever it raises leaves the dive as it was. Use this for
+        every read-modify-write of a dive, so concurrent requests never write over each other.
+
+        Raises
+        ------
+        KeyError
+            There is no dive ``number`` (any more).
+        """
+        async with self.lock:
+            current = self.dives.get(number)
+            if current is None:
+                raise KeyError(number)
+            record = change(current.model_copy(deep=True))
+            await self._write_dive(record, message, number)
+            return record
+
+    async def _write_dive(
+        self, record: DiveRecord, message: str, previous_number: int | None
+    ) -> None:
+        if previous_number is not None and previous_number != record.number:
+            remove(self.dive_path(previous_number))
+            self.dives.pop(previous_number, None)
+        write_markdown(self.dive_path(record.number), frontmatter(record), record.body_md)
+        self.dives[record.number] = record
+        self._index()
+        await self.git.commit(message)
 
     async def save_dives(self, records: list[DiveRecord], message: str) -> None:
         """Write several dives in one commit; their numbers stay as they are."""

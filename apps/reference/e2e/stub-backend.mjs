@@ -8,6 +8,11 @@
  * editor's (form data, template, list pages, create and update, kept in memory) and the site
  * map editor's (site, OpenStreetMap seed, map create and update, also kept in memory) and the
  * site workspace's (countries, licences, field classes, nearby sites, created sites).
+ * Buddies signing a dive work in memory too: the owner's sign requests, withdrawals and note
+ * deletions, the public sign page and its post; every mail "sent" is listed at
+ * `GET /_e2e/mails` (`?to=` filters by address) as `[{to, subject, text}]`, and the mailed
+ * links point at E2E_SITE_URL (default http://localhost:E2E_APP_PORT, port 4399).
+ * `POST /api/v1/auth/magic-link` answers 202 with `{status, valid_minutes: 2}`.
  * Usage: node e2e/stub-backend.mjs [port]   (default 8399, or STUB_PORT)
  */
 import { createServer } from 'node:http';
@@ -20,6 +25,7 @@ import {
   OWNER_COOKIE,
   ownerEditor,
   ownerFixtures,
+  signBook,
 } from './fixtures.mjs';
 import { COUNTRIES, createdSite, LICENCES, nearbySites, SITE_FIELDS } from './site-fixtures.mjs';
 
@@ -65,6 +71,26 @@ function seedFor(id) {
 }
 
 const editor = ownerEditor();
+
+/** The editor's record of dive `n`: saved during the run, else the fixture's; or null. */
+function adminDive(n) {
+  const path = `/admin/dives/${n}`;
+  return editor.handle('GET', path, new URLSearchParams(), undefined)?.body ?? owned[path] ?? null;
+}
+
+const siteUrl = process.env.E2E_SITE_URL ?? `http://localhost:${process.env.E2E_APP_PORT ?? 4399}`;
+const book = signBook({ adminDive, publicDive: (n) => data[`/dive/dives/${n}`] ?? null, siteUrl });
+const DIVE_PATH = /^\/admin\/dives\/(\d+)$/;
+
+/** An editor answer with the dive's notes and sign requests, after a save applied the form's. */
+function withSigning(method, path, body, answer) {
+  const match = DIVE_PATH.exec(path);
+  const created = method === 'POST' && path === '/admin/dives' && answer.status < 300;
+  if (!match && !created) return answer;
+  const n = match ? Number(match[1]) : body.number;
+  if (method !== 'GET' && answer.status < 300) book.applyForm(n, body);
+  return answer.status < 300 ? { ...answer, body: book.adminView(n, answer.body) } : answer;
+}
 
 /** The request's JSON body, or undefined for none or anything else. */
 async function readJson(req) {
@@ -172,9 +198,17 @@ function siteMaps(method, path, body) {
   return undefined;
 }
 
-function send(res, status, body, type = 'application/json') {
+function send(res, status, body, type = 'application/json', headers = {}) {
+  if (status === 204) {
+    res.writeHead(204, headers);
+    return res.end();
+  }
   const payload = typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body);
-  res.writeHead(status, { 'content-type': type, 'content-length': Buffer.byteLength(payload) });
+  res.writeHead(status, {
+    'content-type': type,
+    'content-length': Buffer.byteLength(payload),
+    ...headers,
+  });
   res.end(payload);
 }
 
@@ -194,16 +228,37 @@ const server = createServer(async (req, res) => {
     if (site) return send(res, site[0], site[1]);
     const maps = siteMaps(req.method ?? 'GET', path, json);
     if (maps) return send(res, maps[0], maps[1]);
+    const signing = book.admin(req.method ?? 'GET', path, json);
+    if (signing) return send(res, signing[0], signing[1]);
     const answer = editor.handle(req.method ?? 'GET', path, searchParams, json);
-    if (answer) return send(res, answer.status, answer.body);
+    if (answer) {
+      const signed = withSigning(req.method ?? 'GET', path, json, answer);
+      return send(res, signed.status, signed.body);
+    }
     const body = owned[req.method === 'GET' ? path : `${req.method} ${path}`];
-    return body === undefined ? send(res, 404, { detail: 'Not found' }) : send(res, 200, body);
+    if (body === undefined) return send(res, 404, { detail: 'Not found' });
+    const one = req.method === 'GET' && DIVE_PATH.exec(path);
+    return send(res, 200, one ? book.adminView(Number(one[1]), body) : body);
+  }
+  if (pathname === `${API}/auth/magic-link` && req.method === 'POST')
+    return send(res, 202, { status: 'sent', valid_minutes: 2 });
+  if (pathname.startsWith(`${API}/dive/sign/`)) {
+    const answer = book.sign(req.method ?? 'GET', pathname.slice(API.length), await readJson(req));
+    if (answer)
+      return send(res, answer[0], answer[1], 'application/json', { 'cache-control': 'no-store' });
+  }
+  if (pathname === '/_e2e/mails') {
+    const to = searchParams.get('to');
+    return send(res, 200, to ? book.mails.filter((m) => m.to === to) : book.mails);
   }
   if (pathname === `${API}/meta/countries`) return send(res, 200, COUNTRIES);
   if (pathname === `${API}/meta/licences`) return send(res, 200, LICENCES);
   if (pathname.startsWith(`${API}/`)) {
-    const body = data[pathname.slice(API.length)];
-    return body === undefined ? send(res, 404, { detail: 'Not found' }) : send(res, 200, body);
+    const path = pathname.slice(API.length);
+    const body = data[path];
+    if (body === undefined) return send(res, 404, { detail: 'Not found' });
+    const dive = /^\/dive\/dives\/(\d+)$/.exec(path);
+    return send(res, 200, dive ? book.publicView(Number(dive[1]), body) : body);
   }
   if (pathname === '/media/tiles/index.json')
     return send(res, 200, { attribution: '', archives: [] });

@@ -68,6 +68,9 @@ const PEOPLE = [
   { slug: 'robin', name: 'Robin', avatar_url: null },
 ];
 
+/** The buddies' private e-mail addresses, where a request to sign a dive goes; robin has none. */
+const EMAILS = { alex: 'alex@example.com' };
+
 const TRIP = {
   id: 'red-sea-2025-03',
   slug: 'red-sea-2025-03',
@@ -332,6 +335,7 @@ function diveDetail(dive) {
       .filter((d) => d !== dive)
       .map((d) => ({ number: d.number, site_name: siteOf(d.site).name, time_in: d.time_in })),
     context_facts: index === 0 ? ['first dive in the log'] : [],
+    buddy_notes: [],
     private: null,
     body_html: '<p>A calm dive along the wall.</p>',
   };
@@ -703,6 +707,7 @@ function diveAdmin(dive) {
     trip_id: dive.trip,
     gear_setup_id: null,
     country: site.country,
+    sign_requests: [],
   };
 }
 
@@ -715,7 +720,7 @@ function personPrivate(person) {
     last_name: null,
     alias: null,
     aliases: [],
-    email: null,
+    email: EMAILS[person.slug] ?? null,
     display: 'first',
     notes: null,
     dives: DIVES.filter((d) => d.buddies.includes(person.slug)).length,
@@ -955,6 +960,7 @@ function diveIn(dive) {
     sketch: null,
     profile: null,
     map_annotation: null,
+    buddy_notes: null,
   };
 }
 
@@ -984,6 +990,8 @@ function savedDiveAdmin(input) {
     day_index: null,
     same_day: [],
     context_facts: [],
+    buddy_notes: [],
+    sign_requests: [],
     country: site?.country_code ?? null,
     private: {
       people: [],
@@ -1044,7 +1052,7 @@ export function ownerEditor() {
     return {
       date: day,
       next_number: Math.max(...all().map((d) => d.number)) + 1,
-      previous: before.at(-1) ?? null,
+      previous: before.length ? { ...before.at(-1), buddy_notes: null } : null,
       at_site: atSite
         ? {
             number: atSite.number,
@@ -1140,6 +1148,262 @@ export function ownerEditor() {
         if (method === 'GET' && saved.has(n)) return ok(savedDiveAdmin(saved.get(n)));
       }
       return undefined;
+    },
+  };
+}
+
+const SIGN_DAYS = 7;
+const DAY_MS = 86_400_000;
+const NOTE_LIMITS = { strokes: 60, points: 4000, comment: 200, width: 1000, height: 400 };
+const ADMIN_ONLY = ['id', 'people_ids', 'site_id', 'trip_id', 'gear_setup_id', 'country'];
+const iso = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z');
+const longDate = (day) =>
+  new Date(`${day}T12:00:00Z`).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+
+/** A sign page's comment and strokes, cleaned like the server does, or the 422 detail. */
+function cleanNote(body) {
+  const wellFormed =
+    (body?.comment === undefined || body.comment === null || typeof body.comment === 'string') &&
+    (body?.strokes === undefined ||
+      body.strokes === null ||
+      (Array.isArray(body.strokes) &&
+        body.strokes.every(
+          (stroke) =>
+            Array.isArray(stroke) &&
+            stroke.every((point) => Array.isArray(point) && point.every((c) => Number.isFinite(c))),
+        )));
+  if (!wellFormed) return { error: 'comment must be text and strokes lists of numeric points' };
+  const comment = typeof body?.comment === 'string' ? body.comment.trim() || null : null;
+  const strokes = Array.isArray(body?.strokes)
+    ? body.strokes.map((stroke) => stroke.map((point) => point.map((c) => Math.round(c))))
+    : null;
+  const drawn = strokes?.length ? strokes : null;
+  if (comment === null && drawn === null) return { error: 'write a comment or draw a signature' };
+  if (comment && comment.length > NOTE_LIMITS.comment) return { error: 'comment too long' };
+  const points = (drawn ?? []).flat();
+  const outside = points.some(
+    ([x, y, ...rest]) =>
+      rest.length > 0 || !(x >= 0 && x <= NOTE_LIMITS.width && y >= 0 && y <= NOTE_LIMITS.height),
+  );
+  if ((drawn ?? []).length > NOTE_LIMITS.strokes || points.length > NOTE_LIMITS.points || outside)
+    return { error: 'signature outside the limits' };
+  if ((drawn ?? []).some((stroke) => stroke.length === 0))
+    return { error: 'a stroke has at least one point' };
+  return { comment, strokes: drawn, public: body?.public !== false };
+}
+
+/**
+ * The buddy signing endpoints in memory, like the server: invites by token, notes by dive,
+ * and every mail "sent". `adminDive(n)` answers the editor's record of dive `n` (or null),
+ * `publicDive(n)` the public page's (or null, then the editor's record stands in).
+ */
+export function signBook({ adminDive, publicDive, siteUrl, ownerName = 'Sam' }) {
+  const invites = new Map();
+  const notes = new Map();
+  const mails = [];
+  let issued = 0;
+  const notesOf = (n) => notes.get(n) ?? [];
+  const inviteOf = (n, person) =>
+    [...invites.entries()].find(([, invite]) => invite.dive === n && invite.person === person);
+  const nameOf = (slug) => personOf(slug)?.name ?? slug;
+
+  function stateOf(n, person) {
+    if (notesOf(n).some((note) => note.person === person)) return 'signed';
+    const found = inviteOf(n, person);
+    if (found) {
+      const [, invite] = found;
+      return invite.used_at === null && new Date(invite.expires_at) > new Date()
+        ? 'open'
+        : 'expired';
+    }
+    return EMAILS[person] ? 'none' : 'no_email';
+  }
+
+  function requests(n) {
+    const dive = adminDive(n);
+    return (dive?.people_ids ?? []).map((person) => {
+      const invite = inviteOf(n, person)?.[1];
+      const note = notesOf(n).find((x) => x.person === person);
+      return {
+        person,
+        state: stateOf(n, person),
+        sent_at: invite?.created_at ?? null,
+        expires_at: invite?.expires_at ?? null,
+        signed_at: note?.signed_at ?? null,
+      };
+    });
+  }
+
+  function mail(dive, person) {
+    for (const [token, invite] of invites)
+      if (invite.dive === dive.number && invite.person === person) invites.delete(token);
+    issued += 1;
+    const token = `e2e-${dive.number}-${person}-${issued}`;
+    const created = new Date();
+    invites.set(token, {
+      dive: dive.number,
+      person,
+      email: EMAILS[person],
+      created_at: iso(created),
+      expires_at: iso(new Date(created.getTime() + SIGN_DAYS * DAY_MS)),
+      used_at: null,
+    });
+    const where = dive.site?.name ? ` at ${dive.site.name}` : '';
+    mails.push({
+      to: EMAILS[person],
+      subject: `${ownerName} logged a dive with you`,
+      text:
+        `Hi ${nameOf(person)},\n\n${ownerName} logged a dive with you${where} on ` +
+        `${longDate(dive.date)}. Have a look and sign it:\n\n` +
+        `${siteUrl}/dive/${dive.number}?sign=${token}\n\n` +
+        `The link works for ${SIGN_DAYS} days and signs once.\n`,
+    });
+  }
+
+  function requestSignatures(n, body) {
+    const dive = adminDive(n);
+    if (!dive) return [404, { detail: 'Dive not found' }];
+    if (dive.visibility === 'draft')
+      return [422, { detail: `Dive #${n} is a draft; publish it before asking buddies` }];
+    const resend = body?.resend === true;
+    if (resend && !body?.people?.length)
+      return [422, { detail: [{ loc: ['body'], msg: 'resend needs the people to mail again' }] }];
+    const sent = [];
+    const skipped = [];
+    for (const person of [...new Set(body?.people ?? dive.people_ids)]) {
+      if (!dive.people_ids.includes(person)) {
+        skipped.push({ person, reason: 'not_a_buddy' });
+        continue;
+      }
+      const state = stateOf(n, person);
+      if (state === 'none' || (resend && (state === 'open' || state === 'expired'))) {
+        mail(dive, person);
+        sent.push(person);
+      } else skipped.push({ person, reason: state });
+    }
+    return [200, { sent, skipped, sign_requests: requests(n) }];
+  }
+
+  function live(token) {
+    const invite = invites.get(token);
+    if (!invite || new Date(invite.expires_at) <= new Date()) return null;
+    const dive = adminDive(invite.dive);
+    if (!dive || dive.visibility === 'draft' || !dive.people_ids.includes(invite.person))
+      return null;
+    return { invite, dive };
+  }
+
+  function pageDive(n) {
+    const base = publicDive(n) ?? adminDive(n);
+    const dive = Object.fromEntries(
+      Object.entries(base).filter(([key]) => !ADMIN_ONLY.includes(key) && key !== 'sign_requests'),
+    );
+    return {
+      ...dive,
+      private: null,
+      prev_number: null,
+      next_number: null,
+      prev_site_name: null,
+      next_site_name: null,
+      same_day: [],
+      day_index: null,
+      buddy_notes: publicNotes(n),
+    };
+  }
+
+  function publicNotes(n) {
+    const people = adminDive(n)?.people_ids ?? [];
+    return notesOf(n).filter((note) => note.public && people.includes(note.person));
+  }
+
+  const gone = [410, { detail: 'This sign link has expired' }];
+
+  return {
+    mails,
+    publicNotes,
+
+    /** The editor's record with every note and each buddy's request. */
+    adminView(n, body) {
+      return { ...body, buddy_notes: notesOf(n), sign_requests: requests(n) };
+    },
+
+    /** The public page's record with the public notes. */
+    publicView(n, body) {
+      return { ...body, buddy_notes: publicNotes(n) };
+    },
+
+    /** A form save: `buddy_notes` sets `public` on the named notes, the rest stay; people taken off go. */
+    applyForm(n, input) {
+      const people = input?.people_ids ?? adminDive(n)?.people_ids ?? [];
+      let kept = notesOf(n).filter((note) => people.includes(note.person));
+      if (Array.isArray(input?.buddy_notes)) {
+        const wanted = new Map(input.buddy_notes.map((edit) => [edit.person, edit.public]));
+        kept = kept.map((note) =>
+          wanted.has(note.person) ? { ...note, public: wanted.get(note.person) === true } : note,
+        );
+      }
+      notes.set(n, kept);
+      for (const [token, invite] of invites)
+        if (invite.dive === n && !people.includes(invite.person)) invites.delete(token);
+    },
+
+    /** `[status, body]` for the owner's sign endpoints, undefined for any other request. */
+    admin(method, path, body) {
+      let match = /^\/admin\/dives\/(\d+)\/sign-requests$/.exec(path);
+      if (match && method === 'POST') return requestSignatures(Number(match[1]), body);
+      match = /^\/admin\/dives\/(\d+)\/sign-requests\/([^/]+)$/.exec(path);
+      if (match && method === 'DELETE') {
+        const found = inviteOf(Number(match[1]), decodeURIComponent(match[2]));
+        if (!found) return [404, { detail: 'Not asked' }];
+        invites.delete(found[0]);
+        return [204, null];
+      }
+      match = /^\/admin\/dives\/(\d+)\/buddy-notes\/([^/]+)$/.exec(path);
+      if (match && method === 'DELETE') {
+        const n = Number(match[1]);
+        const person = decodeURIComponent(match[2]);
+        if (!notesOf(n).some((note) => note.person === person)) return [404, { detail: 'No note' }];
+        notes.set(
+          n,
+          notesOf(n).filter((note) => note.person !== person),
+        );
+        return [204, null];
+      }
+      return undefined;
+    },
+
+    /** `[status, body]` for `GET`/`POST /dive/sign/{token}`, undefined for any other path. */
+    sign(method, path, body) {
+      const match = /^\/dive\/sign\/([^/]+)$/.exec(path);
+      if (!match) return undefined;
+      const link = live(decodeURIComponent(match[1]));
+      if (!link) return gone;
+      const { invite, dive } = link;
+      const own = notesOf(dive.number).find((note) => note.person === invite.person) ?? null;
+      if (method === 'GET')
+        return [
+          200,
+          {
+            state: invite.used_at || own ? 'used' : 'open',
+            signer: { slug: invite.person, first_name: nameOf(invite.person) },
+            expires_at: invite.expires_at,
+            note: own,
+            dive: pageDive(dive.number),
+          },
+        ];
+      if (method !== 'POST') return [405, { detail: 'Method not allowed' }];
+      if (invite.used_at || own) return [409, { detail: 'This dive is signed already' }];
+      const clean = cleanNote(body);
+      if (clean.error) return [422, { detail: [{ loc: ['body'], msg: clean.error }] }];
+      const note = { person: invite.person, ...clean, signed_at: iso(new Date()) };
+      notes.set(dive.number, [...notesOf(dive.number), note]);
+      invite.used_at = iso(new Date());
+      return [200, { note }];
     },
   };
 }

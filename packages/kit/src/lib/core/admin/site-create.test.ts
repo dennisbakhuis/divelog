@@ -7,6 +7,7 @@ import {
   nearbyPath,
   nearbyReason,
   siteCreateBody,
+  SITE_ID_MAX,
   siteIdStatus,
   validateDraft,
 } from './site-create.js';
@@ -80,6 +81,13 @@ describe('the new-site draft', () => {
     expect(validateDraft({ ...ok, halocline: true, halocline_m: -2 }).halocline_m).toBeDefined();
   });
 
+  it('refuses a name whose id the server would reject as too long', () => {
+    const ok = emptySiteDraft({ country: 'NLD', name: 'a'.repeat(SITE_ID_MAX - 4) });
+    expect(draftSiteId(ok)).toHaveLength(SITE_ID_MAX);
+    expect(validateDraft(ok)).toEqual({});
+    expect(validateDraft({ ...ok, name: `${ok.name}b` }).name).toContain('longer than 120');
+  });
+
   it('records where the position came from', () => {
     expect(geoSourceText('pick', '2026-10-10')).toBe('map pick, 2026-10-10');
     expect(geoSourceText('paste', '2026-10-10')).toBe('pasted coordinates, 2026-10-10');
@@ -97,6 +105,8 @@ describe('the server checks', () => {
     respond(500);
     expect(await siteIdStatus('nld-new')).toBeNull();
     expect(await siteIdStatus('bad id')).toBeNull();
+    respond(404, { detail: 'Site not found' });
+    expect(await siteIdStatus(`nld-${'a'.repeat(SITE_ID_MAX)}`)).toBeNull();
   });
 
   it('asks for nearby sites by point and/or name', () => {

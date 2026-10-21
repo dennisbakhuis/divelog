@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { canLocate, COARSE_FIX, LocateError, locateDevice, PRECISE_FIX } from './geolocation.js';
+import {
+  canLocate,
+  COARSE_FIX,
+  LocateError,
+  locateDevice,
+  PRECISE_FIX,
+  ROUGH_FIX_M,
+} from './geolocation.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -29,10 +36,21 @@ describe('the device location', () => {
     expect(canLocate()).toBe(true);
     await expect(locateDevice()).resolves.toEqual({ lat: 20.212346, lon: -87.465432 });
     expect(getCurrentPosition.mock.calls[0][2]).toBe(PRECISE_FIX);
+    expect(PRECISE_FIX).toMatchObject({ enableHighAccuracy: true, maximumAge: 0 });
     await locateDevice(COARSE_FIX);
     expect(getCurrentPosition.mock.calls[1][2]).toEqual(
       expect.objectContaining({ enableHighAccuracy: false }),
     );
+  });
+
+  it('passes on how accurate the fix is', async () => {
+    stubGeolocation((ok) =>
+      ok({
+        coords: { latitude: 53.69, longitude: 9.15, accuracy: 342.7 },
+      } as GeolocationPosition),
+    );
+    await expect(locateDevice()).resolves.toEqual({ lat: 53.69, lon: 9.15, accuracy: 343 });
+    expect(ROUGH_FIX_M).toBe(100);
   });
 
   it('rejects with the reason and a sentence to show', async () => {

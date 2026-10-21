@@ -15,7 +15,7 @@ has moved on, and only :meth:`Store.pin_site` moves the pin.
 import asyncio
 import logging
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -58,6 +58,7 @@ __all__ = [
     "SPARK_POINTS",
     "CommonsEditError",
     "NothingToPinError",
+    "SiteIdTakenError",
     "Store",
     "downsample",
     "frontmatter",
@@ -81,6 +82,15 @@ class CommonsEditError(ValueError):
 
 class NothingToPinError(LookupError):
     """A pin on a site that has no commons record, or no overlay or fork of one; 404."""
+
+
+class SiteIdTakenError(ValueError):
+    """A new site whose id an existing site has; ``origin`` says where that one lives; 409."""
+
+    def __init__(self, site_id: str, origin: SiteOrigin) -> None:
+        super().__init__(site_id)
+        self.site_id = site_id
+        self.origin = origin
 
 
 class Store(LogRepo):
@@ -394,24 +404,64 @@ class Store(LogRepo):
         CommonsEditError
             Objective fields of a commons site changed without ``fork``.
         """
-        site_id = record.site_id
         async with self.lock:
-            base = self.commons.sites.get(site_id) if self.commons else None
-            if base is not None and self.site_origin.get(site_id) != "fork":
-                if fork:
-                    self._write_fork(record, base)
-                else:
-                    changed = objective_changes(record, base)
-                    if changed:
-                        self._refresh()
-                        raise CommonsEditError(COMMONS_SITE)
-                    self._write_overlay(record, base)
+            return await self._write_site(record, message, fork=fork, note=note)
+
+    async def create_site(self, record: SiteRecord, message: str) -> SiteRecord:
+        """Save a new personal site; the id is checked under the lock, so two creates never race.
+
+        Raises
+        ------
+        SiteIdTakenError
+            A site of the log or the commons has the id already.
+        """
+        async with self.lock:
+            if record.site_id in self.sites:
+                origin = self.site_origin.get(record.site_id, "log")
+                raise SiteIdTakenError(record.site_id, origin)
+            return await self._write_site(record, message)
+
+    async def update_site(
+        self, site_id: str, change: Callable[[SiteRecord], SiteRecord], message: str
+    ) -> SiteRecord:
+        """Apply ``change`` to the merged site as it is now and save it, all under the lock.
+
+        ``change`` gets a deep copy and returns the record to save as :meth:`save_site` would;
+        whatever it raises leaves the site as it was.
+
+        Raises
+        ------
+        KeyError
+            There is no site ``site_id`` (any more).
+        CommonsEditError
+            As :meth:`save_site`.
+        """
+        async with self.lock:
+            current = self.sites.get(site_id)
+            if current is None:
+                raise KeyError(site_id)
+            return await self._write_site(change(current.model_copy(deep=True)), message)
+
+    async def _write_site(
+        self, record: SiteRecord, message: str, *, fork: bool = False, note: str | None = None
+    ) -> SiteRecord:
+        site_id = record.site_id
+        base = self.commons.sites.get(site_id) if self.commons else None
+        if base is not None and self.site_origin.get(site_id) != "fork":
+            if fork:
+                self._write_fork(record, base)
             else:
-                self._version(record, self.log_sites.sites.get(site_id), note or message)
-                self._write_full(record)
-            self._refresh()
-            await self.git.commit(message)
-            return self.sites[site_id]
+                changed = objective_changes(record, base)
+                if changed:
+                    self._refresh()
+                    raise CommonsEditError(COMMONS_SITE)
+                self._write_overlay(record, base)
+        else:
+            self._version(record, self.log_sites.sites.get(site_id), note or message)
+            self._write_full(record)
+        self._refresh()
+        await self.git.commit(message)
+        return self.sites[site_id]
 
     def _version(self, record: SiteRecord, stored: SiteRecord | None, message: str) -> None:
         """Give ``record`` the revision and changelog it has after a save over ``stored``."""

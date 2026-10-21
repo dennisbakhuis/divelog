@@ -11,11 +11,14 @@
   let {
     repo,
     showHeads = true,
+    inline = false,
     onPulled,
   }: {
     repo: RepoStatus;
     /** Show the checked-out commits inline; off when the host shows them elsewhere. */
     showHeads?: boolean;
+    /** Open the panels in the flow under their buttons (inside a menu) instead of floating. */
+    inline?: boolean;
     /** After a commons pull: refresh the repo status and the page data. */
     onPulled?: () => void | Promise<void>;
   } = $props();
@@ -59,13 +62,13 @@
 {/if}
 
 {#if repo.notices.length || hasCommons}
-  <span class="anchor">
+  <span class="anchor" class:inline>
     {#if repo.notices.length}
       <Popover
         bind:open={() => open === 'notices', (v) => (open = v ? 'notices' : null)}
         id="dl-repo-notices"
         label="Repo notices"
-        class="popover"
+        class="popover{inline ? ' popover--inline' : ''}"
       >
         {#snippet trigger(props)}
           <button {...props} class="badge" title="Notices from the last load"
@@ -102,7 +105,7 @@
       <Popover
         bind:open={() => open === 'pull', (v) => (open = v ? 'pull' : null)}
         label="Commons pull"
-        class="popover"
+        class="popover{inline ? ' popover--inline' : ''}"
       >
         {#snippet children({ close })}
           {#if pulling}
@@ -196,6 +199,17 @@
     border: 1px solid var(--dl-color-border);
     border-radius: var(--dl-radius);
     font-size: var(--dl-text-md);
+  }
+  .anchor.inline {
+    flex-wrap: wrap;
+    align-self: stretch;
+  }
+  .anchor :global(.popover--inline) {
+    position: static;
+    flex-basis: 100%;
+    width: auto;
+    max-height: none;
+    box-shadow: none;
   }
   .anchor p {
     margin: 0;

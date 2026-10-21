@@ -2,7 +2,7 @@
 
 import bisect
 import math
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
@@ -35,6 +35,7 @@ from divelog_server.schemas.dive import (
     TripRef,
 )
 from divelog_server.schemas.sitemap import DiveMapAnnotation
+from divelog_server.services import buddy_notes as notes_service
 from divelog_server.services import stats as stats_service
 from divelog_server.services.cylinders import sac_from_tanks, sac_rate, tank_volume_l
 from divelog_server.services.profile import profile_stats
@@ -48,6 +49,7 @@ from divelog_server.store.models import (
     SiteRecord,
     TankRecord,
 )
+from divelog_server.store.state import SignInvite
 from divelog_server.store.store import Store
 from divelog_server.store.trips import Trip
 
@@ -82,8 +84,10 @@ def attachment_out(media: MediaRef) -> AttachmentOut:
 
 
 def visible_media(items: list[MediaRef], owner: bool) -> list[MediaRef]:
+    """The attachments a viewer sees, by their order and then by the camera's wall clock."""
     return sorted(
-        (m for m in items if owner or m.public), key=lambda m: (m.sort, m.taken_at or datetime.min)
+        (m for m in items if owner or m.public),
+        key=lambda m: (m.sort, (m.taken_at or datetime.min).replace(tzinfo=None)),
     )
 
 
@@ -726,12 +730,20 @@ def dive_out(
         day_index=day_index,
         same_day=day_others,
         context_facts=stats_service.context_facts(dive, list(store.dives.values()), store.sites),
+        buddy_notes=notes_service.public_notes(store, dive),
         private=private,
     )
 
 
-def dive_admin_out(store: Store, dive: DiveRecord) -> DiveAdminOut:
+def dive_admin_out(
+    store: Store, dive: DiveRecord, invites: Mapping[str, SignInvite] | None = None
+) -> DiveAdminOut:
+    """The editor's view of ``dive``: every buddy note and where each sign request stands.
+
+    ``invites`` holds the dive's sign invites by person id.
+    """
     base = dive_out(store, dive, owner=True).model_dump(by_alias=True)
+    base["buddy_notes"] = notes_service.all_notes(store, dive)
     return DiveAdminOut(
         **base,
         id=dive.number,
@@ -740,6 +752,7 @@ def dive_admin_out(store: Store, dive: DiveRecord) -> DiveAdminOut:
         trip_id=dive.trip,
         gear_setup_id=dive.gear_setup,
         country=dive.country,
+        sign_requests=notes_service.sign_requests(store, dive, invites),
     )
 
 
@@ -777,15 +790,7 @@ def annotation_health(store: Store, annotation: DiveMapAnnotation | None) -> tup
     if record is None:
         return True, len(annotation.route)
     node_ids = {n.id for n in record.nodes}
-    renamed = record.renamed_nodes
-
-    def current(node_id: str) -> str:
-        seen: set[str] = set()
-        while node_id in renamed and node_id not in seen:
-            seen.add(node_id)
-            node_id = renamed[node_id]
-        return node_id
-
+    current = renamed(record)
     dropped = sum(
         1
         for leg in annotation.route
@@ -794,28 +799,61 @@ def annotation_health(store: Store, annotation: DiveMapAnnotation | None) -> tup
     return annotation.revision < record.revision, dropped
 
 
+def renamed(record: SiteMapRecord) -> Callable[[str], str]:
+    """The node id a map's ``renamed_nodes`` lead to from an old id; unknown ids stay as given."""
+    renames = record.renamed_nodes
+
+    def current(node_id: str) -> str:
+        seen: set[str] = set()
+        while node_id in renames and node_id not in seen:
+            seen.add(node_id)
+            node_id = renames[node_id]
+        return node_id
+
+    return current
+
+
 class AnnotationError(ValueError):
-    """The annotation points at a map that does not exist."""
+    """The annotation points at a map that does not exist or belongs to another site."""
 
 
-def clean_annotation(store: Store, annotation: DiveMapAnnotation | None) -> dict[str, Any] | None:
-    """Drop route legs, turn and pins that do not exist on the referenced map.
+def clean_annotation(
+    store: Store, annotation: DiveMapAnnotation | None, site_id: str | None
+) -> dict[str, Any] | None:
+    """Follow renamed nodes, then drop route legs, turn and turn point the map does not have.
 
-    Legs stay in swim order and may repeat: an out-and-back swims a leg twice.
+    Legs stay in swim order and may repeat: an out-and-back swims a leg twice. The annotation
+    moves to the map's revision only when every leg and the turn survived; otherwise it keeps
+    the revision it was drawn against, so the dive still shows as needing a look.
+
+    Raises
+    ------
+    AnnotationError
+        The map does not exist, or it is not a map of ``site_id``.
     """
     if annotation is None:
         return None
     record = store.maps.get(annotation.map_id)
     if record is None:
         raise AnnotationError("Map not found")
+    if record.site_id != site_id:
+        raise AnnotationError(f"Map {record.id} is not a map of the dive's site")
+    current = renamed(record)
     node_ids = {n.id for n in record.nodes}
     edge_keys = {frozenset((e.from_, e.to)) for e in record.edges}
-    route = [leg for leg in annotation.route if frozenset((leg.from_, leg.to)) in edge_keys]
+    legs = [
+        leg.model_copy(update={"from_": current(leg.from_), "to": current(leg.to)})
+        for leg in annotation.route
+    ]
+    route = [leg for leg in legs if frozenset((leg.from_, leg.to)) in edge_keys]
+    turn = current(annotation.turn) if annotation.turn is not None else None
+    kept_turn = turn if turn in node_ids else None
+    intact = len(route) == len(legs) and kept_turn == turn
     cleaned = annotation.model_copy(
         update={
-            "revision": record.revision,
+            "revision": record.revision if intact else min(annotation.revision, record.revision),
             "route": route,
-            "turn": annotation.turn if annotation.turn in node_ids else None,
+            "turn": kept_turn,
             "turn_at": (
                 annotation.turn_at
                 if annotation.turn_at is not None and annotation.turn_at < len(annotation.path)
@@ -898,6 +936,7 @@ def apply_dive_in(store: Store, dive: DiveRecord | None, data: DiveIn) -> DiveRe
             "trip_id",
             "gear_setup_id",
             "cover_attachment_id",
+            "buddy_notes",
             *unsent,
         }
     )
@@ -913,11 +952,14 @@ def apply_dive_in(store: Store, dive: DiveRecord | None, data: DiveIn) -> DiveRe
     payload["gear_setup"] = data.gear_setup_id
     payload["cover"] = data.cover_attachment_id
     payload["people"] = [pid for pid in data.people_ids if pid in store.people]
+    payload["buddy_notes"] = notes_service.apply_note_edits(
+        store, dive.buddy_notes if dive else [], data.buddy_notes, payload["people"]
+    )
     if data.site_id and data.site_id not in store.sites:
         raise ValueError(f"Unknown site {data.site_id!r}")
     site = store.sites.get(data.site_id) if data.site_id else None
     payload["country"] = site.country if site else payload.get("country")
-    payload["map_annotation"] = clean_annotation(store, data.map_annotation)
+    payload["map_annotation"] = clean_annotation(store, data.map_annotation, data.site_id)
     payload["media"] = dive.media if dive else []
     payload["profiles"] = list(dive.profiles) if dive else []
     if data.profile is not None:

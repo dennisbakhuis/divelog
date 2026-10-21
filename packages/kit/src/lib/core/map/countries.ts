@@ -5,7 +5,7 @@
  * The atlas keys its features by ISO 3166 numeric code; the table below turns
  * that into the alpha-3 code sites carry.
  */
-import { geoBounds, geoContains, geoDistance, type ExtendedFeature } from 'd3-geo';
+import { geoArea, geoBounds, geoContains, geoDistance, type ExtendedFeature } from 'd3-geo';
 import { feature } from 'topojson-client';
 import type { GeometryCollection, Topology } from 'topojson-specification';
 
@@ -256,15 +256,60 @@ export async function countryAt(
   return countryIn(await loadCountries(), lat, lon, options);
 }
 
-/** The bounds of a country for "zoom to country": [west, south, east, north], or null. */
+function polygons(geometry: Geometry | null): Position[][][] {
+  if (!geometry) return [];
+  switch (geometry.type) {
+    case 'Polygon':
+      return [geometry.coordinates as Position[][]];
+    case 'MultiPolygon':
+      return geometry.coordinates as Position[][][];
+    case 'GeometryCollection':
+      return (geometry.geometries ?? []).flatMap(polygons);
+    default:
+      return [];
+  }
+}
+
+/** The largest polygon of a country's outlines: the mainland, not the overseas islands. */
+async function mainland(iso3: string): Promise<ExtendedFeature | null> {
+  const key = iso3.toUpperCase();
+  let best: { feature: ExtendedFeature; area: number } | null = null;
+  for (const c of await loadCountries()) {
+    if (c.code.iso3 !== key) continue;
+    for (const coordinates of polygons(c.feature.geometry as Geometry | null)) {
+      const feature: ExtendedFeature = {
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Polygon', coordinates },
+      };
+      const raw = geoArea(feature);
+      const area = Math.min(raw, 4 * Math.PI - raw);
+      if (!best || area > best.area) best = { feature, area };
+    }
+  }
+  return best?.feature ?? null;
+}
+
+/**
+ * The bounds of a country for "zoom to country": [west, south, east, north] of its
+ * largest polygon (mainland France, not French Guiana and Réunion with it), or null.
+ * West is greater than east when the polygon crosses the antimeridian.
+ */
 export async function countryBounds(
   iso3: string,
 ): Promise<[number, number, number, number] | null> {
-  const key = iso3.toUpperCase();
-  const hits = (await loadCountries()).filter((c) => c.code.iso3 === key);
-  if (!hits.length) return null;
-  const [[w, s], [e, n]] = hits[0].bounds;
+  const land = await mainland(iso3);
+  if (!land) return null;
+  const [[w, s], [e, n]] = geoBounds(land);
   return [w, s, e, n];
+}
+
+/** Kilometres across the largest polygon of a country (corner to corner), or null. */
+export async function countrySpanKm(iso3: string): Promise<number | null> {
+  const bounds = await countryBounds(iso3);
+  if (!bounds) return null;
+  const [w, s, e, n] = bounds;
+  return geoDistance([w, s], [e, n]) * EARTH_KM;
 }
 
 /** A region as the picker needs it: its country and the positions of its sites. */
@@ -278,14 +323,16 @@ export interface RegionLike {
 /**
  * The region of `country` nearest to a point, measured to the closest of its
  * sites and no further than `maxKm`. A country with a single region that has
- * no placed sites yet gets that region; otherwise null.
+ * no placed sites yet gets that region, unless `spanKm` (the country's size, from
+ * {@link countrySpanKm}) says the country is too large for "it is the only one"
+ * to put the pin within `maxKm` of it; otherwise null.
  */
 export function regionNearest<R extends RegionLike>(
   regions: readonly R[],
   country: string | null | undefined,
   lat: number,
   lon: number,
-  { maxKm = 300 }: { maxKm?: number } = {},
+  { maxKm = 300, spanKm = null }: { maxKm?: number; spanKm?: number | null } = {},
 ): R | null {
   const key = (country ?? '').toUpperCase();
   if (!key) return null;
@@ -302,5 +349,6 @@ export function regionNearest<R extends RegionLike>(
   if (best) return best.region;
   const placed = (r: R) =>
     [...(r.map_sites ?? []), ...(r.sites ?? [])].some((p) => p.lat !== null && p.lon !== null);
-  return own.length === 1 && !placed(own[0]) ? own[0] : null;
+  const small = spanKm === null || spanKm <= maxKm;
+  return small && own.length === 1 && !placed(own[0]) ? own[0] : null;
 }
