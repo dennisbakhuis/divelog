@@ -70,6 +70,7 @@ from divelog_server.services.storage import (
     media_url,
     variant_key,
 )
+from divelog_server.store.countries import COUNTRIES
 from divelog_server.store.models import (
     DiveRecord,
     GearItemRecord,
@@ -90,9 +91,9 @@ from divelog_server.store.overlay import (
     PERSONAL_FIELDS,
     PREFERENCE_FIELDS,
 )
-from divelog_server.store.slug import SITE_ID, site_id_for
+from divelog_server.store.slug import SITE_ID, UNKNOWN_COUNTRY, site_id_for
 from divelog_server.store.sources import PERSONAL_MAP_ID
-from divelog_server.store.store import NothingToPinError, Store
+from divelog_server.store.store import NothingToPinError, SiteIdTakenError, Store
 from divelog_server.store.trips import Trip
 from divelog_server.tools.sitemap_osm import RADIUS, starter_map
 
@@ -650,18 +651,44 @@ async def admin_get_site(site_id: str, store: StoreDep) -> SiteOut:
 async def admin_create_site(body: SiteIn, store: StoreDep) -> SiteOut:
     """Create a personal site.
 
-    The id must match ``{iso3}-{slug}`` (422 naming the pattern otherwise) and be free (409).
-    Existing sites keep whatever id they have, so the check is on create only.
+    The id must match ``{iso3}-{slug}`` (422 naming the pattern otherwise) and be free (409,
+    saying whether the log or the commons has it). The country must be a known ISO 3166
+    alpha-3 code (stored in capitals) and the id starts with it in lower case, or with
+    ``xxx-`` when there is no country; the region must exist. Those 422s list the fields like
+    a validation error. Existing sites keep whatever id they have, so the checks are on create
+    only.
     """
     if not SITE_ID.match(body.site_id):
         raise HTTPException(
             status_code=422, detail=f"Site id {body.site_id!r} does not match {SITE_ID.pattern}"
         )
-    if body.site_id in store.sites:
-        raise HTTPException(status_code=409, detail="Site id already in use")
+    country = body.country.upper() if body.country else None
+    errors: dict[str, str] = {}
+    if country is not None and country not in COUNTRIES:
+        errors["country"] = f"Unknown country code {country!r}"
+    prefix = country.lower() if country else UNKNOWN_COUNTRY
+    if not errors and body.site_id.split("-", 1)[0] != prefix:
+        errors["site_id"] = f"A site id here starts with {prefix}-"
+    if body.region and body.region not in store.regions:
+        errors["region"] = f"Unknown region {body.region!r}"
+    if errors:
+        raise HTTPException(
+            status_code=422,
+            detail=[
+                {"loc": ["body", field], "msg": msg, "type": "value_error"}
+                for field, msg in errors.items()
+            ],
+        )
     record = _site_from(body, None)
-    await store.save_site(record, f"Add site {record.site_id}")
-    return dive_service.site_out(store, record, True)
+    record.country = country
+    try:
+        saved = await store.create_site(record, f"Add site {record.site_id}")
+    except SiteIdTakenError as exc:
+        where = "the commons" if exc.origin == "commons" else "your log"
+        raise HTTPException(
+            status_code=409, detail=f"Site id {exc.site_id} is already in use in {where}"
+        ) from None
+    return dive_service.site_out(store, saved, True)
 
 
 @router.put("/sites/{site_id}", response_model=SiteOut)

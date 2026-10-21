@@ -58,6 +58,7 @@ __all__ = [
     "SPARK_POINTS",
     "CommonsEditError",
     "NothingToPinError",
+    "SiteIdTakenError",
     "Store",
     "downsample",
     "frontmatter",
@@ -81,6 +82,15 @@ class CommonsEditError(ValueError):
 
 class NothingToPinError(LookupError):
     """A pin on a site that has no commons record, or no overlay or fork of one; 404."""
+
+
+class SiteIdTakenError(ValueError):
+    """A new site whose id an existing site has; ``origin`` says where that one lives; 409."""
+
+    def __init__(self, site_id: str, origin: SiteOrigin) -> None:
+        super().__init__(site_id)
+        self.site_id = site_id
+        self.origin = origin
 
 
 class Store(LogRepo):
@@ -396,6 +406,20 @@ class Store(LogRepo):
         """
         async with self.lock:
             return await self._write_site(record, message, fork=fork, note=note)
+
+    async def create_site(self, record: SiteRecord, message: str) -> SiteRecord:
+        """Save a new personal site; the id is checked under the lock, so two creates never race.
+
+        Raises
+        ------
+        SiteIdTakenError
+            A site of the log or the commons has the id already.
+        """
+        async with self.lock:
+            if record.site_id in self.sites:
+                origin = self.site_origin.get(record.site_id, "log")
+                raise SiteIdTakenError(record.site_id, origin)
+            return await self._write_site(record, message)
 
     async def update_site(
         self, site_id: str, change: Callable[[SiteRecord], SiteRecord], message: str
