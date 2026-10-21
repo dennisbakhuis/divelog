@@ -159,6 +159,12 @@ function draw(target: HTMLElement) {
 }
 
 describe('the dive page opened from a mailed sign link', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-28T12:00:00Z'));
+  });
+  afterEach(() => vi.useRealTimers());
+
   it('shows the sign box under the title while the link is open', () => {
     const target = mountPage(open);
     const section = box(target)!;

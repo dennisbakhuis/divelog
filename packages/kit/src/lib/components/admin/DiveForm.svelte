@@ -43,6 +43,7 @@
   import { DEFAULT_SITE_TYPE, waterDefault } from '$lib/core/dive/site-types';
   import type {
     Attachment,
+    BuddyNoteInput,
     CommonsSiteHit,
     DiveAdmin,
     DiveTemplateOut,
@@ -50,9 +51,12 @@
     MarkdownPreviewOut,
     PersonPrivate,
     Region,
+    SignRequestsIn,
+    SignRequestsOut,
     Site,
     Trip,
   } from '$lib/core/dive/types';
+  import { buddyRows, signRequestsMessage } from '$lib/core/dive/buddy-notes';
   import type { NewDiveParams } from '$lib/core/dive/config';
   import { formatDate } from '$lib/core/dive/format';
   import { toast } from '$lib/components/stores/toast.svelte';
@@ -67,6 +71,7 @@
   import AnnotationStale from './AnnotationStale.svelte';
   import CommonsSearch from './CommonsSearch.svelte';
   import SiteCreate from './SiteCreate.svelte';
+  import BuddyNotesPanel from './BuddyNotesPanel.svelte';
   import { legLabel } from '$lib/core/dive/sharing';
   import type { DiveMapAnnotation, MapEdgeRef } from '$lib/core/dive/sitemap';
   import { getDivelog } from '$lib/core/dive/context';
@@ -143,6 +148,75 @@
   let queuePublic = $state(true);
 
   const dirty = $derived(formSnapshot(form, computerText) !== saved || queue.length > 0);
+
+  // ── Buddies signing: the checkbox by Save, the notes and requests of a saved dive ──
+
+  const ASK_KEY = 'dl-dive-ask-buddies';
+  let askBuddies = $state(false);
+  let notesOpen = $state(false);
+  /** The notes the form opened with, refreshed after each save; a save deletes none of them. */
+  let openedNotes = $state<BuddyNoteInput[]>(structuredClone(untrack(() => initial.buddy_notes)));
+  let storedNotes = $derived(dive?.buddy_notes ?? []);
+  let signRequests = $derived(dive?.sign_requests ?? []);
+  const buddyList = $derived(buddyRows(form.people_ids, people, storedNotes, signRequests));
+  const canAsk = $derived(form.people_ids.length > 0 && form.visibility !== 'draft');
+  const noEmail = $derived(buddyList.filter((row) => !row.email));
+
+  onMount(() => {
+    try {
+      askBuddies = globalThis.localStorage?.getItem(ASK_KEY) === '1';
+    } catch {
+      askBuddies = false;
+    }
+  });
+
+  function rememberAsk(value: boolean) {
+    askBuddies = value;
+    try {
+      globalThis.localStorage?.setItem(ASK_KEY, value ? '1' : '0');
+    } catch {
+      // storage blocked: the choice just isn't remembered
+    }
+  }
+
+  function firstNameOf(slug: string): string {
+    return people.find((p) => p.slug === slug)?.first_name ?? slug;
+  }
+
+  /** Mail the buddies never asked to sign the dive, and say who got a mail. */
+  async function askToSign(number: number) {
+    try {
+      const body: SignRequestsIn = { people: null, resend: false };
+      const result = await adminJson<SignRequestsOut>(
+        adminApi('dives', number, 'sign-requests'),
+        'POST',
+        body,
+      );
+      signRequests = result.sign_requests;
+      toast.show(signRequestsMessage(result, firstNameOf));
+    } catch (err) {
+      toast.show({
+        kind: 'error',
+        message: `Asking buddies to sign failed: ${err instanceof AdminApiError ? err.message : 'no answer'}`,
+      });
+    }
+  }
+
+  function setNotePublic(person: string, value: boolean) {
+    const choice = form.buddy_notes.find((n) => n.person === person);
+    if (choice) choice.public = value;
+    else form.buddy_notes = [...form.buddy_notes, { person, public: value }];
+  }
+
+  /** A note deleted on the server leaves the form without counting as an unsaved change. */
+  function forgetNote(person: string) {
+    const clean = formSnapshot(form, computerText) === saved;
+    form.buddy_notes = form.buddy_notes.filter((n) => n.person !== person);
+    openedNotes = openedNotes.filter((n) => n.person !== person);
+    storedNotes = storedNotes.filter((n) => n.person !== person);
+    if (clean) saved = formSnapshot(form, computerText);
+    void invalidateAll();
+  }
 
   function queueFiles(e: Event & { currentTarget: HTMLInputElement }) {
     const files = Array.from(e.currentTarget.files ?? []);
@@ -578,7 +652,7 @@
         await adminJson(
           adminApi('dives', dive.number),
           'PUT',
-          savePayload(form, computerText, dive),
+          savePayload(form, computerText, dive, openedNotes),
         );
         number = Number(form.number);
       } else {
@@ -590,12 +664,15 @@
         number = created.number;
       }
       const uploads = queue;
+      const asking = askBuddies && canAsk;
       queue = [];
+      openedNotes = $state.snapshot(form.buddy_notes);
       markSaved(sent);
       if (!dive) storageKey = backupKey(number);
       savedAt = new Date();
       announce(`Dive #${number} ${dive ? 'saved' : 'created'}`);
       if (uploads.length) await uploadQueued(number, uploads);
+      if (asking) await askToSign(number);
       const date = form.date;
       if (after === 'new') {
         if (flushBackup())
@@ -1763,6 +1840,19 @@
     </div>
   </Disclosure>
 
+  {#if dive && buddyList.length}
+    <BuddyNotesPanel
+      number={dive.number}
+      rows={buddyList}
+      choices={form.buddy_notes}
+      draft={isDraft}
+      bind:open={notesOpen}
+      onpublic={setNotePublic}
+      onrequests={(next) => (signRequests = next)}
+      ondeleted={forgetNote}
+    />
+  {/if}
+
   {#if attachments}
     <div class="photos">{@render attachments()}</div>
   {:else if isNew}
@@ -1847,6 +1937,27 @@
         disabled={busy}
         onclick={() => persist('next')}>Save & next draft</button
       >
+    {/if}
+    {#if canAsk}
+      <label class="check ask">
+        <input
+          type="checkbox"
+          bind:checked={askBuddies}
+          onchange={(e) => rememberAsk(e.currentTarget.checked)}
+          aria-describedby={askBuddies && noEmail.length ? 'dl-dive-ask-hint' : undefined}
+        />
+        E-mail buddies to sign
+      </label>
+      {#if askBuddies && noEmail.length}
+        <span class="ask-hint" id="dl-dive-ask-hint"
+          >No e-mail address for {#each noEmail as row, i (row.id)}{i
+              ? i === noEmail.length - 1
+                ? ' and '
+                : ', '
+              : ''}<a href={urls.admin.person(encodeURIComponent(row.id))}>{row.name}</a>{/each}, so
+          not asked.</span
+        >
+      {/if}
     {/if}
     <span class="status" role="status">
       {#if dirty}<span class="unsaved">● Unsaved changes</span>{:else if savedLabel}<span
@@ -2139,6 +2250,17 @@
   }
   .save-bar .error {
     margin: 0;
+  }
+  .save-bar .ask {
+    display: inline-flex;
+    gap: 6px;
+    min-height: 32px;
+    font-size: var(--dl-text-sm);
+  }
+  .ask-hint {
+    flex-basis: 100%;
+    font-size: var(--dl-text-sm);
+    color: var(--dl-color-text-muted);
   }
   .unsaved,
   .saved {

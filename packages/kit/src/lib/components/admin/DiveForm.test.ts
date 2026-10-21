@@ -8,7 +8,8 @@ vi.mock('$app/navigation', () => ({
 }));
 vi.mock('$app/state', () => ({ page: { url: new URL('http://localhost/admin/dives/7') } }));
 
-import { beforeNavigate, goto } from '$app/navigation';
+import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
+import { toast } from '$lib/components/stores/toast.svelte';
 import DiveForm from './DiveForm.svelte';
 import type {
   DiveAdmin,
@@ -70,6 +71,7 @@ type Props = {
   setups?: GearSetup[];
   drafts?: number[];
   prefill?: { site?: string; date?: string; person?: string; trip?: string } | null;
+  people?: PersonPrivate[];
 };
 
 /** Mount the editor on a dive the test can swap, the way a reload hands the page a new one. */
@@ -81,6 +83,7 @@ function render({
   setups = [],
   drafts = [],
   prefill = null,
+  people = [anna],
   onSavedNew,
 }: Props & { onSavedNew?: () => void }) {
   let current = dive;
@@ -93,7 +96,7 @@ function render({
     nextNumber: 8,
     sites: sites ?? [fakeSite()],
     trips,
-    people: [anna],
+    people,
     setups,
     regions: [],
     template,
@@ -1149,5 +1152,361 @@ describe('DiveForm errors and site changes', () => {
     await settle();
     expect(calls.filter((c) => c.startsWith('POST'))).toHaveLength(1);
     unmount(app);
+  });
+});
+
+describe('DiveForm asks buddies to sign', () => {
+  const kim = {
+    ...anna,
+    id: 'kim_de_boer',
+    slug: 'kim',
+    name: 'Kim',
+    first_name: 'Kim',
+    email: 'kim@example.com',
+  } as PersonPrivate;
+  const robin = {
+    ...anna,
+    id: 'robin',
+    slug: 'robin',
+    name: 'Robin',
+    first_name: 'Robin',
+    email: null,
+  } as PersonPrivate;
+  const people = [kim, robin];
+  const SIGN = 'POST /api/v1/admin/dives/7/sign-requests';
+  const signRequest = (person: string, state: string, sent_at: string | null = null) => ({
+    person,
+    state,
+    sent_at,
+    expires_at: sent_at ? '2026-11-01T10:00:00Z' : null,
+    signed_at: null,
+  });
+  const askBox = (target: HTMLElement) =>
+    [...target.querySelectorAll<HTMLLabelElement>('.save-bar label')]
+      .find((l) => l.textContent?.trim() === 'E-mail buddies to sign')
+      ?.querySelector('input') ?? null;
+  const tick = (input: HTMLInputElement) => {
+    input.click();
+    flushSync();
+  };
+
+  it('offers the box only with buddies and not on a draft', () => {
+    const none = render({ dive: fakeDiveAdmin(), people });
+    expect(askBox(none.target)).toBeNull();
+    unmount(none.app);
+    const draft = render({
+      dive: fakeDiveAdmin({ people_ids: ['kim_de_boer'], visibility: 'draft' }),
+      people,
+    });
+    expect(askBox(draft.target)).toBeNull();
+    unmount(draft.app);
+    const { target, app } = render({
+      dive: fakeDiveAdmin({ people_ids: ['kim_de_boer'] }),
+      people,
+    });
+    expect(askBox(target)).not.toBeNull();
+    expect(askBox(target)!.checked).toBe(false);
+    unmount(app);
+  });
+
+  it('remembers the box in localStorage', async () => {
+    const first = render({ dive: fakeDiveAdmin({ people_ids: ['kim_de_boer'] }), people });
+    tick(askBox(first.target)!);
+    expect(localStorage.getItem('dl-dive-ask-buddies')).toBe('1');
+    unmount(first.app);
+    const again = render({ dive: fakeDiveAdmin({ people_ids: ['kim_de_boer'] }), people });
+    await settle();
+    expect(askBox(again.target)!.checked).toBe(true);
+    tick(askBox(again.target)!);
+    expect(localStorage.getItem('dl-dive-ask-buddies')).toBe('0');
+    unmount(again.app);
+  });
+
+  it('names the buddies without an e-mail address, linking their person page', () => {
+    localStorage.setItem('dl-dive-ask-buddies', '1');
+    const { target, app } = render({
+      dive: fakeDiveAdmin({ people_ids: ['kim_de_boer', 'robin'] }),
+      people,
+    });
+    flushSync();
+    const hint = target.querySelector('#dl-dive-ask-hint')!;
+    expect(hint.textContent?.replace(/\s+/g, ' ')).toBe(
+      'No e-mail address for Robin, so not asked.',
+    );
+    expect(hint.querySelector('a')!.getAttribute('href')).toBe('/admin/people/robin');
+    expect(askBox(target)!.getAttribute('aria-describedby')).toBe('dl-dive-ask-hint');
+    unmount(app);
+  });
+
+  it('asks after creating a dive with the box ticked, and says whom it mailed', async () => {
+    localStorage.setItem('dl-dive-ask-buddies', '1');
+    const show = vi.spyOn(toast, 'show');
+    const calls = fakeFetch({
+      [SIGN]: json({
+        sent: ['kim'],
+        skipped: [],
+        sign_requests: [signRequest('kim', 'open', '2026-10-25T10:00:00Z')],
+      }),
+    });
+    const { target, app } = render({ dive: null, prefill: { person: 'kim' }, people });
+    await settle();
+    type(control(target, 'Duration (min)')!, '45');
+    type(control(target, 'Max depth (m)')!, '18');
+    saveButton(target).click();
+    await settle();
+    await settle();
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual(['POST /api/v1/admin/dives', SIGN]);
+    expect(calls[0].body).toMatchObject({ people_ids: ['kim_de_boer'], buddy_notes: [] });
+    expect(calls[1].body).toEqual({ people: null, resend: false });
+    expect(show).toHaveBeenCalledWith({ kind: 'success', message: 'Sent to Kim' });
+    expect(goto).toHaveBeenCalledWith('/admin/dives/7', { invalidateAll: true });
+    show.mockRestore();
+    unmount(app);
+  });
+
+  it('mails nobody already asked on a later save', async () => {
+    localStorage.setItem('dl-dive-ask-buddies', '1');
+    const show = vi.spyOn(toast, 'show');
+    const calls = fakeFetch({
+      [SIGN]: json({
+        sent: [],
+        skipped: [{ person: 'kim', reason: 'open' }],
+        sign_requests: [signRequest('kim', 'open', '2026-10-25T10:00:00Z')],
+      }),
+    });
+    const { target, app } = render({
+      dive: fakeDiveAdmin({ people_ids: ['kim_de_boer'] }),
+      people,
+    });
+    await settle();
+    saveButton(target).click();
+    await settle();
+    expect(calls.filter((c) => `${c.method} ${c.url}` === SIGN)).toHaveLength(1);
+    expect(show).toHaveBeenCalledWith({
+      kind: 'info',
+      message: 'Nobody new to ask; Kim was already asked',
+    });
+    show.mockRestore();
+    unmount(app);
+  });
+
+  it('asks nobody without the box', async () => {
+    const calls = fakeFetch();
+    const { target, app } = render({
+      dive: fakeDiveAdmin({ people_ids: ['kim_de_boer'] }),
+      people,
+    });
+    await settle();
+    saveButton(target).click();
+    await settle();
+    expect(calls.map((c) => c.method)).toEqual(['PUT']);
+    unmount(app);
+  });
+
+  it('asks before Save & new leaves for the next dive', async () => {
+    localStorage.setItem('dl-dive-ask-buddies', '1');
+    const calls = fakeFetch({
+      [SIGN]: json({ sent: ['kim'], skipped: [], sign_requests: [] }),
+    });
+    const { target, app } = render({
+      dive: fakeDiveAdmin({ people_ids: ['kim_de_boer'] }),
+      people,
+    });
+    await settle();
+    button(target, 'Save & new').click();
+    await settle();
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual(['PUT /api/v1/admin/dives/7', SIGN]);
+    expect(goto).toHaveBeenCalledWith('/admin/dives/new?date=2026-02-08', { invalidateAll: true });
+    unmount(app);
+  });
+
+  it('does not ask when the dive is saved as a draft', async () => {
+    localStorage.setItem('dl-dive-ask-buddies', '1');
+    const calls = fakeFetch();
+    const { target, app } = render({
+      dive: fakeDiveAdmin({ people_ids: ['kim_de_boer'] }),
+      people,
+    });
+    await settle();
+    button(target, 'Save as draft').click();
+    await settle();
+    expect(calls.map((c) => c.method)).toEqual(['PUT']);
+    unmount(app);
+  });
+});
+
+describe('DiveForm buddy notes section', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-28T12:00:00Z'));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const kim = {
+    ...anna,
+    id: 'kim_de_boer',
+    slug: 'kim',
+    name: 'Kim',
+    first_name: 'Kim',
+    email: 'kim@example.com',
+  } as PersonPrivate;
+  const alex = {
+    ...anna,
+    id: 'alex',
+    slug: 'alex',
+    name: 'Alex',
+    first_name: 'Alex',
+    email: 'alex@example.com',
+  } as PersonPrivate;
+  const note = {
+    person: 'kim',
+    comment: 'Cold feet',
+    strokes: [
+      [
+        [10, 10],
+        [40, 30],
+      ],
+    ],
+    signed_at: '2026-10-27T19:40:00+02:00',
+    public: true,
+  };
+  const signed = () =>
+    fakeDiveAdmin({
+      people_ids: ['kim_de_boer', 'alex'],
+      buddy_notes: [note],
+      sign_requests: [
+        {
+          person: 'kim',
+          state: 'signed',
+          sent_at: '2026-10-25T10:00:00Z',
+          expires_at: '2026-11-01T10:00:00Z',
+          signed_at: note.signed_at,
+        },
+        {
+          person: 'alex',
+          state: 'open',
+          sent_at: '2026-10-25T10:00:00Z',
+          expires_at: '2099-11-01T10:00:00Z',
+          signed_at: null,
+        },
+      ],
+    } as never);
+  const rows = (target: HTMLElement) => [
+    ...target.querySelectorAll<HTMLLIElement>('.dl-buddy-notes-panel li'),
+  ];
+
+  it('lists each buddy with the request state, the signature and the comment', () => {
+    const { target, app } = render({ dive: signed(), people: [kim, alex] });
+    const [first, second] = rows(target);
+    expect(first.textContent).toContain('signed on 27 October');
+    expect(first.querySelector('svg[aria-label="Signature of Kim"] path')!.getAttribute('d')).toBe(
+      'M10 10 L40 30',
+    );
+    expect(first.textContent).toContain('“Cold feet”');
+    expect(second.textContent).toContain('asked on 25 October, expires on 1 November 2099');
+    const summary = [...target.querySelectorAll('summary')].find((s) =>
+      s.textContent?.includes('Buddy notes'),
+    )!;
+    expect(summary.textContent).toContain('1');
+    unmount(app);
+  });
+
+  it('saves the public switch with the form, by slug', async () => {
+    const calls = fakeFetch();
+    const { target, app } = render({ dive: signed(), people: [kim, alex] });
+    const toggle = rows(target)[0].querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    expect(toggle.checked).toBe(true);
+    toggle.click();
+    flushSync();
+    expect(target.querySelector('.save-bar .unsaved')).not.toBeNull();
+    saveButton(target).click();
+    await settle();
+    expect(calls.find((c) => c.method === 'PUT')!.body!.buddy_notes).toEqual([
+      { person: 'kim', public: false },
+    ]);
+    unmount(app);
+  });
+
+  it('sends no notes on a save that leaves them alone', async () => {
+    const calls = fakeFetch();
+    const { target, app } = render({ dive: signed(), people: [kim, alex] });
+    saveButton(target).click();
+    await settle();
+    expect(calls.find((c) => c.method === 'PUT')!.body!.buddy_notes).toBeNull();
+    unmount(app);
+  });
+
+  it('deletes a note through its endpoint without leaving unsaved changes', async () => {
+    vi.stubGlobal('confirm', () => true);
+    vi.mocked(invalidateAll).mockClear();
+    const calls = fakeFetch({
+      'DELETE /api/v1/admin/dives/7/buddy-notes/kim': () => new Response(null, { status: 204 }),
+    });
+    const { target, app } = render({ dive: signed(), people: [kim, alex] });
+    button(rows(target)[0], "Delete Kim's note").click();
+    await settle();
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      'DELETE /api/v1/admin/dives/7/buddy-notes/kim',
+    ]);
+    expect(rows(target)[0].querySelector('svg')).toBeNull();
+    expect(rows(target)[0].textContent).toContain('asked on 25 October');
+    expect(target.querySelector('.save-bar .unsaved')).toBeNull();
+    expect(invalidateAll).toHaveBeenCalled();
+    saveButton(target).click();
+    await settle();
+    expect(calls.find((c) => c.method === 'PUT')!.body!.buddy_notes).toBeNull();
+    unmount(app);
+  });
+
+  it('resends a new link to one buddy', async () => {
+    const show = vi.spyOn(toast, 'show');
+    const calls = fakeFetch({
+      'POST /api/v1/admin/dives/7/sign-requests': json({
+        sent: ['alex'],
+        skipped: [],
+        sign_requests: [
+          {
+            person: 'alex',
+            state: 'open',
+            sent_at: '2026-10-28T10:00:00Z',
+            expires_at: '2099-11-04T10:00:00Z',
+            signed_at: null,
+          },
+        ],
+      }),
+    });
+    const { target, app } = render({ dive: signed(), people: [kim, alex] });
+    button(rows(target)[1], 'Resend to Alex').click();
+    await settle();
+    expect(calls[0].body).toEqual({ people: ['alex'], resend: true });
+    expect(rows(target)[1].textContent).toContain('asked on 28 October');
+    expect(show).toHaveBeenCalledWith({ kind: 'success', message: 'Sent to Alex again' });
+    show.mockRestore();
+    unmount(app);
+  });
+
+  it('withdraws an open request', async () => {
+    vi.stubGlobal('confirm', () => true);
+    const calls = fakeFetch({
+      'DELETE /api/v1/admin/dives/7/sign-requests/alex': () => new Response(null, { status: 204 }),
+    });
+    const { target, app } = render({ dive: signed(), people: [kim, alex] });
+    button(rows(target)[1], 'Withdraw the request to Alex').click();
+    await settle();
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      'DELETE /api/v1/admin/dives/7/sign-requests/alex',
+    ]);
+    expect(rows(target)[1].textContent).toContain('not asked');
+    expect(button(rows(target)[1], 'Resend to Alex')).toBeUndefined();
+    unmount(app);
+  });
+
+  it('is not there on a new dive or a dive without buddies', () => {
+    const fresh = render({ dive: null, prefill: { person: 'kim' }, people: [kim] });
+    expect(fresh.target.querySelector('.dl-buddy-notes-panel')).toBeNull();
+    unmount(fresh.app);
+    const alone = render({ dive: fakeDiveAdmin(), people: [kim] });
+    expect(alone.target.querySelector('.dl-buddy-notes-panel')).toBeNull();
+    unmount(alone.app);
   });
 });

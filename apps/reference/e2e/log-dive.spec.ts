@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Request } from '@playwright/test';
 import { OWNER_COOKIE } from './fixtures.mjs';
+import { BUDDY_MAIL, linkFor, mailsTo } from './sign-link';
 
 const isCreate = (r: Request) => r.method() === 'POST' && r.url().endsWith('/api/v1/admin/dives');
 
@@ -111,6 +112,80 @@ test.describe('logging a dive', () => {
     await expect(duration).toBeFocused();
     await expect(page.getByLabel('Max depth (m)')).toHaveAttribute('aria-invalid', 'true');
     expect(posted).toBe(false);
+  });
+
+  test('a buddy signs a dive through the mailed link, mailed once however often it is saved', async ({
+    page,
+    browser,
+    baseURL,
+    request,
+  }) => {
+    await page.goto('/admin/dives/new');
+    await page.waitForLoadState('networkidle');
+    await page.getByLabel('Date').fill('2023-06-10');
+    await page.getByLabel('Duration (min)').fill('41');
+    await page.getByLabel('Max depth (m)').fill('16');
+    await page.locator('#dl-dive-people_ids').fill('ale');
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('button', { name: 'Remove Alex' })).toBeVisible();
+    const ask = page.getByRole('checkbox', { name: 'E-mail buddies to sign' });
+    await ask.check();
+
+    const created = page.waitForResponse(
+      (r) => r.request().method() === 'POST' && r.url().endsWith('/api/v1/admin/dives'),
+    );
+    const asked = page.waitForResponse((r) => /\/admin\/dives\/\d+\/sign-requests$/.test(r.url()));
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    const { number } = (await (await created).json()) as { number: number };
+    expect((await asked).request().postDataJSON()).toEqual({ people: null, resend: false });
+    await expect(page.locator('.toast-message', { hasText: 'Sent to Alex' })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/admin/dives/${number}$`));
+
+    const link = await linkFor(request, number);
+    expect(link).toMatch(new RegExp(`^/dive/${number}\\?sign=`));
+    const mailed = (await mailsTo(request)).filter((m) => m.text.includes(`/dive/${number}?`));
+    expect(mailed).toHaveLength(1);
+    expect(mailed[0]).toMatchObject({ to: BUDDY_MAIL, subject: 'Sam logged a dive with you' });
+
+    const buddy = await browser.newContext({ baseURL });
+    expect(await buddy.cookies()).toEqual([]);
+    const signing = await buddy.newPage();
+    await signing.goto(link!);
+    await expect(
+      signing.getByText('Hi Alex, Sam logged this dive with you. Sign it:'),
+    ).toBeVisible();
+    await expect(signing).toHaveURL(new RegExp(`/dive/${number}$`));
+    await signing.getByLabel('Comment').fill('Cold feet, great vis.');
+    const signed = signing.waitForResponse(
+      (r) => r.request().method() === 'POST' && r.url().includes('/api/v1/dive/sign/'),
+    );
+    await signing.getByRole('button', { name: 'Sign the dive' }).click();
+    expect((await signed).status()).toBe(200);
+    await expect(signing.getByText('Thank you, Alex')).toBeVisible();
+    await signing.goto(link!);
+    await expect(signing.getByText(/You signed this dive on \d+ \w+/)).toBeVisible();
+    await expect(signing.getByRole('button', { name: 'Sign the dive' })).toHaveCount(0);
+    await buddy.close();
+
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    const notes = page.locator('details', {
+      has: page.locator('summary', { hasText: 'Buddy notes' }),
+    });
+    if (!(await notes.evaluate((d) => (d as HTMLDetailsElement).open)))
+      await notes.locator('summary').click();
+    await expect(notes.locator('li').first()).toContainText('signed on');
+    await expect(notes.locator('li').first()).toContainText('“Cold feet, great vis.”');
+
+    await page.getByLabel('Max depth (m)').fill('16.5');
+    await expect(ask).toBeChecked();
+    const again = page.waitForResponse((r) => /\/admin\/dives\/\d+\/sign-requests$/.test(r.url()));
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    expect(((await (await again).json()) as { sent: string[] }).sent).toEqual([]);
+    await expect(page.locator('.toast-message', { hasText: 'Nobody new to ask' })).toBeVisible();
+    expect(
+      (await mailsTo(request)).filter((m) => m.text.includes(`/dive/${number}?`)),
+    ).toHaveLength(1);
   });
 
   test('the dive list filters by status through the URL', async ({ page }) => {
