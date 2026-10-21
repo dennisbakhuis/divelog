@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 
 from divelog_server.api.v1.public import region_out
 from divelog_server.core.config import get_settings
-from divelog_server.core.deps import StoreDep, require_owner
+from divelog_server.core.deps import StateDep, StoreDep, require_owner
 from divelog_server.importers.shearwater import gas_of, parse_shearwater
 from divelog_server.importers.site_match import MATCH_RADIUS_M, match_site
 from divelog_server.importers.subsurface import gas_for, parse_subsurface
@@ -57,7 +57,9 @@ from divelog_server.schemas.dive import (
     TripOut,
 )
 from divelog_server.schemas.gear import GearItemIn, GearItemOut, GearSetupIn, GearSetupOut
-from divelog_server.services import admin_views
+from divelog_server.schemas.signing import SignRequestsIn, SignRequestsOut
+from divelog_server.services import admin_views, signing
+from divelog_server.services import buddy_notes as notes_service
 from divelog_server.services import dives as dive_service
 from divelog_server.services.images import IMAGE_MIMES, image_format, process_image
 from divelog_server.services.markdown import render
@@ -93,6 +95,7 @@ from divelog_server.store.overlay import (
 )
 from divelog_server.store.slug import SITE_ID, UNKNOWN_COUNTRY, site_id_for
 from divelog_server.store.sources import PERSONAL_MAP_ID
+from divelog_server.store.state import AuthState
 from divelog_server.store.store import NothingToPinError, SiteIdTakenError, Store
 from divelog_server.store.trips import Trip
 from divelog_server.tools.sitemap_osm import RADIUS, starter_map
@@ -124,12 +127,12 @@ async def admin_next_number(store: StoreDep) -> NextDiveNumber:
 
 
 @router.post("/dives", response_model=DiveAdminOut, status_code=status.HTTP_201_CREATED)
-async def admin_create_dive(body: DiveIn, store: StoreDep) -> DiveAdminOut:
+async def admin_create_dive(body: DiveIn, store: StoreDep, state: StateDep) -> DiveAdminOut:
     if body.number in store.dives:
         raise HTTPException(status_code=409, detail=f"Dive #{body.number} already exists")
     record = _apply_dive(store, None, body)
     await store.save_dive(record, f"Add dive #{record.number}")
-    return dive_service.dive_admin_out(store, record)
+    return _admin_out(store, state, record)
 
 
 @router.get("/dives/template", response_model=DiveTemplateOut)
@@ -189,16 +192,21 @@ async def admin_publish_dives(body: DivesPublishIn, store: StoreDep) -> DivesPub
 
 
 @router.get("/dives/{number}", response_model=DiveAdminOut)
-async def admin_get_dive(number: int, store: StoreDep) -> DiveAdminOut:
-    return dive_service.dive_admin_out(store, _dive_or_404(store, number))
+async def admin_get_dive(number: int, store: StoreDep, state: StateDep) -> DiveAdminOut:
+    return _admin_out(store, state, _dive_or_404(store, number))
 
 
 @router.put("/dives/{number}", response_model=DiveAdminOut)
-async def admin_update_dive(number: int, body: DiveIn, store: StoreDep) -> DiveAdminOut:
+async def admin_update_dive(
+    number: int, body: DiveIn, store: StoreDep, state: StateDep
+) -> DiveAdminOut:
     """Replace a dive with the form's fields, over the dive as stored at the moment of writing.
 
     Attachments come from the stored dive, so a photo uploaded while the form was open stays.
     A ``cover_attachment_id`` that names none of the dive's attachments keeps the stored cover.
+    ``buddy_notes`` None keeps the notes; a list keeps the notes it names, with their
+    ``public``, and deletes the rest. Sign invites follow a new number; a buddy taken off the
+    dive loses theirs.
     """
 
     def change(dive: DiveRecord) -> DiveRecord:
@@ -211,21 +219,26 @@ async def admin_update_dive(number: int, body: DiveIn, store: StoreDep) -> DiveA
         return record
 
     record = await _update_dive(store, number, change, f"Update dive #{body.number}")
-    return dive_service.dive_admin_out(store, record)
+    await signing.follow_dive(state, number, record)
+    return _admin_out(store, state, record)
 
 
 @router.delete("/dives/{number}", status_code=status.HTTP_204_NO_CONTENT)
-async def admin_delete_dive(number: int, store: StoreDep) -> None:
+async def admin_delete_dive(number: int, store: StoreDep, state: StateDep) -> None:
+    """Delete a dive, its files no other record uses, and the invites to sign it."""
     dive = _dive_or_404(store, number)
     storage = get_storage()
     for media in dive.media:
         if len(store.media_referrers(media.key)) == 1:
             await _delete_files(storage, media)
     await store.delete_dive(number, f"Delete dive #{number}")
+    await signing.follow_dive(state, number, None)
 
 
 @router.patch("/dives/{number}", response_model=DiveAdminOut)
-async def admin_patch_dive(number: int, body: DivePatch, store: StoreDep) -> DiveAdminOut:
+async def admin_patch_dive(
+    number: int, body: DivePatch, store: StoreDep, state: StateDep
+) -> DiveAdminOut:
     """Change the fields that live outside the dive form, leaving everything else as stored.
 
     Only the fields present in the body are written; ``cover_attachment_id`` must name one of
@@ -233,7 +246,7 @@ async def admin_patch_dive(number: int, body: DivePatch, store: StoreDep) -> Div
     """
     dive = _dive_or_404(store, number)
     if "cover_attachment_id" not in body.model_fields_set:
-        return dive_service.dive_admin_out(store, dive)
+        return _admin_out(store, state, dive)
     cover = body.cover_attachment_id
 
     def change(dive: DiveRecord) -> DiveRecord:
@@ -243,7 +256,63 @@ async def admin_patch_dive(number: int, body: DivePatch, store: StoreDep) -> Div
         return dive
 
     saved = await _update_dive(store, number, change, f"Set cover of dive #{number}")
-    return dive_service.dive_admin_out(store, saved)
+    return _admin_out(store, state, saved)
+
+
+@router.post("/dives/{number}/sign-requests", response_model=SignRequestsOut)
+async def admin_request_signatures(
+    number: int, body: SignRequestsIn, store: StoreDep, state: StateDep
+) -> SignRequestsOut:
+    """Mail the dive's buddies a one-time link to sign it.
+
+    Without ``resend`` only buddies with an e-mail who were never asked for this dive and
+    left no note are mailed (every buddy when ``people`` is null), so saving again mails
+    only a newly added buddy. ``resend`` mails the named ``people`` a new link and kills the
+    old one; a buddy who signed is never mailed again. A draft is refused with 422; a mail
+    that cannot be sent gives 502 and leaves that buddy's invite as it was.
+    """
+    dive = _dive_or_404(store, number)
+    try:
+        return await signing.request_signatures(store, state, dive, body.people, body.resend)
+    except signing.DraftDive as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except signing.MailFailed as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.delete("/dives/{number}/sign-requests/{person}", status_code=status.HTTP_204_NO_CONTENT)
+async def admin_withdraw_sign_request(
+    number: int, person: str, store: StoreDep, state: StateDep
+) -> None:
+    """Withdraw the invite of the buddy with slug ``person``; its link stops working."""
+    buddy = _buddy_or_404(store, _dive_or_404(store, number), person)
+    if not await signing.withdraw(state, number, buddy.id):
+        raise HTTPException(status_code=404, detail=f"{buddy.first_name} was not asked")
+
+
+@router.delete("/dives/{number}/buddy-notes/{person}", status_code=status.HTTP_204_NO_CONTENT)
+async def admin_delete_buddy_note(number: int, person: str, store: StoreDep) -> None:
+    """Delete the note of the buddy with slug ``person``."""
+    buddy = _buddy_or_404(store, _dive_or_404(store, number), person)
+
+    def change(dive: DiveRecord) -> DiveRecord:
+        if notes_service.note_of(dive, buddy.id) is None:
+            raise HTTPException(status_code=404, detail=f"{buddy.first_name} left no note")
+        dive.buddy_notes = [n for n in dive.buddy_notes if n.person != buddy.id]
+        return dive
+
+    await _update_dive(store, number, change, f"Delete {buddy.first_name}'s note on dive #{number}")
+
+
+def _admin_out(store: Store, state: AuthState, dive: DiveRecord) -> DiveAdminOut:
+    return dive_service.dive_admin_out(store, dive, signing.dive_invites(state, dive.number))
+
+
+def _buddy_or_404(store: Store, dive: DiveRecord, person: str) -> PersonRecord:
+    buddy = notes_service.dive_person(store, dive, person)
+    if buddy is None:
+        raise HTTPException(status_code=404, detail=f"{person} is not on dive #{dive.number}")
+    return buddy
 
 
 def _apply_dive(store: Store, dive: DiveRecord | None, body: DiveIn) -> DiveRecord:

@@ -17,7 +17,7 @@ the reference app image from this repository or your own SvelteKit site that mou
 | `/data/repo` | git checkout of the personal log (`DATA_ROOT`) | the git remote |
 | `/data/commons` | read-only git checkout of `divelog-sites` (`COMMONS_ROOT`), optional | upstream |
 | `/data/media` | media store when `STORAGE_BACKEND=local` (`MEDIA_ROOT`): uploads, scans, WebP variants, `tiles/` | your file backup, or use S3 |
-| `/data/state` | sessions, magic-link tokens, lazily rendered variants (`STATE_DIR`) | nothing; losing it signs you out |
+| `/data/state` | sessions, magic-link tokens, invites to sign a dive, lazily rendered variants (`STATE_DIR`) | nothing; losing it signs you out and ends open sign links |
 
 The container runs as uid 1001 and treats `/data/repo` and `/data/commons` as git safe
 directories, so a checkout owned by another user on the host still works.

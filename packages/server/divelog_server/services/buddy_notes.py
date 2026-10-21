@@ -3,6 +3,9 @@
 The dive file names a note's buddy by person id, like ``people``; the API speaks slugs.
 """
 
+from collections.abc import Mapping
+from datetime import UTC, datetime
+
 from divelog_server.schemas.dive import (
     BuddyNoteIn,
     BuddyNoteOut,
@@ -10,6 +13,7 @@ from divelog_server.schemas.dive import (
     SignRequestState,
 )
 from divelog_server.store.models import BuddyNoteRecord, DiveRecord, PersonRecord
+from divelog_server.store.state import SignInvite
 from divelog_server.store.store import Store
 
 
@@ -79,25 +83,44 @@ def apply_note_edits(
     return [n.model_copy(update={"public": wanted[n.person]}) for n in kept if n.person in wanted]
 
 
-def sign_requests(store: Store, dive: DiveRecord) -> list[SignRequestOut]:
-    """Where asking each of the dive's people to sign stands, in ``people`` order."""
+def request_state(
+    store: Store, dive: DiveRecord, person_id: str, invite: SignInvite | None, now: datetime
+) -> SignRequestState:
+    """Where asking person ``person_id`` to sign ``dive`` stands.
+
+    A note means ``signed`` whatever the invite says. A used invite whose note the owner
+    deleted counts as ``expired``: that link signs no more.
+    """
+    if note_of(dive, person_id) is not None:
+        return "signed"
+    if invite is not None:
+        return "open" if invite.used_at is None and invite.expires_at > now else "expired"
+    person = store.people.get(person_id)
+    return "none" if person and person.email else "no_email"
+
+
+def sign_requests(
+    store: Store,
+    dive: DiveRecord,
+    invites: Mapping[str, SignInvite] | None = None,
+    now: datetime | None = None,
+) -> list[SignRequestOut]:
+    """Where asking each of the dive's people to sign stands, in ``people`` order.
+
+    ``invites`` holds the dive's invites by person id.
+    """
+    invites = invites or {}
+    moment = now or datetime.now(UTC)
     out: list[SignRequestOut] = []
     for person_id in dive.people:
-        person = store.people.get(person_id)
         note = note_of(dive, person_id)
-        state: SignRequestState
-        if note is not None:
-            state = "signed"
-        elif person and person.email:
-            state = "none"
-        else:
-            state = "no_email"
+        invite = invites.get(person_id)
         out.append(
             SignRequestOut(
                 person=person_slug(store, person_id),
-                state=state,
-                sent_at=None,
-                expires_at=None,
+                state=request_state(store, dive, person_id, invite, moment),
+                sent_at=invite.created_at if invite else None,
+                expires_at=invite.expires_at if invite else None,
                 signed_at=note.signed_at if note else None,
             )
         )

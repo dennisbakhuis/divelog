@@ -2,7 +2,7 @@
 
 import bisect
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
@@ -49,6 +49,7 @@ from divelog_server.store.models import (
     SiteRecord,
     TankRecord,
 )
+from divelog_server.store.state import SignInvite
 from divelog_server.store.store import Store
 from divelog_server.store.trips import Trip
 
@@ -734,8 +735,13 @@ def dive_out(
     )
 
 
-def dive_admin_out(store: Store, dive: DiveRecord) -> DiveAdminOut:
-    """The editor's view of ``dive``: every buddy note and where each sign request stands."""
+def dive_admin_out(
+    store: Store, dive: DiveRecord, invites: Mapping[str, SignInvite] | None = None
+) -> DiveAdminOut:
+    """The editor's view of ``dive``: every buddy note and where each sign request stands.
+
+    ``invites`` holds the dive's sign invites by person id.
+    """
     base = dive_out(store, dive, owner=True).model_dump(by_alias=True)
     base["buddy_notes"] = notes_service.all_notes(store, dive)
     return DiveAdminOut(
@@ -746,7 +752,7 @@ def dive_admin_out(store: Store, dive: DiveRecord) -> DiveAdminOut:
         trip_id=dive.trip,
         gear_setup_id=dive.gear_setup,
         country=dive.country,
-        sign_requests=notes_service.sign_requests(store, dive),
+        sign_requests=notes_service.sign_requests(store, dive, invites),
     )
 
 

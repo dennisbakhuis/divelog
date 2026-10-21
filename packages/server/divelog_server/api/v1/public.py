@@ -1,8 +1,8 @@
 """Read-only endpoints. The owner's cookie unlocks private fields and turns caching off."""
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 
-from divelog_server.core.deps import OptionalOwnerDep, StoreDep
+from divelog_server.core.deps import OptionalOwnerDep, StateDep, StoreDep
 from divelog_server.schemas.dive import (
     DiveEnvelope,
     DiveListItem,
@@ -25,8 +25,12 @@ from divelog_server.schemas.dive import (
     TripSummary,
 )
 from divelog_server.schemas.gear import GearItemOut, GearPage, GearSetupOut
+from divelog_server.schemas.signing import SignedOut, SignIn, SignPageOut
 from divelog_server.schemas.sitemap import DiveMapAnnotation
+from divelog_server.services import auth as auth_service
+from divelog_server.services import buddy_notes as notes_service
 from divelog_server.services import dives as dive_service
+from divelog_server.services import signing
 from divelog_server.services import stats as stats_service
 from divelog_server.services import trips as trip_service
 from divelog_server.store.countries import alpha2
@@ -128,6 +132,45 @@ async def get_dive(
     return dive_service.dive_out(
         store, dive, owner=is_owner, prev_number=prev_number, next_number=next_number
     )
+
+
+@router.get("/sign/{token}", response_model=SignPageOut)
+async def sign_page(
+    token: str, store: StoreDep, state: StateDep, response: Response
+) -> SignPageOut:
+    """The dive a mailed sign link opens, for that buddy and no session, private dives too.
+
+    Looking never spends the link. 410 when it is unknown or expired, or its buddy is no
+    longer on the dive.
+    """
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Robots-Tag"] = "noindex"
+    try:
+        return signing.sign_page(store, state, token)
+    except signing.SignLinkGone as exc:
+        raise _gone(exc) from exc
+
+
+@router.post("/sign/{token}", response_model=SignedOut)
+async def sign_dive(
+    token: str, body: SignIn, request: Request, store: StoreDep, state: StateDep
+) -> SignedOut:
+    """Store the buddy's note on the dive and spend the link: 409 once it was used."""
+    ip = request.client.host if request.client else "unknown"
+    if auth_service.is_rate_limited(ip, signing=True):
+        raise HTTPException(status_code=429, detail="Too many requests, try again later")
+    try:
+        note = await signing.sign(store, state, token, body)
+    except signing.SignLinkGone as exc:
+        raise _gone(exc) from exc
+    except signing.AlreadySigned as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return SignedOut(note=notes_service.note_out(store, note))
+
+
+def _gone(exc: Exception) -> HTTPException:
+    return HTTPException(status_code=410, detail=str(exc), headers={"Cache-Control": "no-store"})
 
 
 @router.get("/sites", response_model=list[SiteOut])
