@@ -3,11 +3,13 @@
 `@divelog/kit` and `divelog-server` share version numbers. API major and data format stay at 1
 unless a section says otherwise.
 
-## Unreleased — logging from a phone
+## 0.5.0 — logging from a phone, buddies sign by e-mail, patched trust stores (21 October 2026)
 
 Every admin function has to work on a phone; this release makes logging a dive at a new or
-known site, with photos and the route swum, hold up on one. Data shapes and the public API are
-unchanged; the server adds `POST /auth/verify`, `pillow-heif`, and stricter validation.
+known site, with photos and the route swum, hold up on one, lets buddies sign a dive through a
+mailed link, and rebuilds the images on trust stores that refuse the compromised eMudhra
+intermediates. Data shapes stay compatible and the API changes are additive; the server adds
+`POST /auth/verify`, the sign endpoints, `pillow-heif`, and stricter validation.
 
 - The combobox footers ("+ New site", "From the commons", "Add person", "+ New trip") and the
   ▾ toggle respond to a tap on iOS Safari, which blurred the input before the click landed. The

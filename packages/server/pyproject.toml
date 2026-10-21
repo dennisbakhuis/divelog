@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "divelog-server"
-version = "0.4.2"
+version = "0.5.0"
 description = "Dive log server: a FastAPI API over a git repository of markdown and JSON files, with the divelog CLI"
 license = "AGPL-3.0-only"
 requires-python = ">=3.13"
