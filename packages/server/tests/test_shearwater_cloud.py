@@ -27,6 +27,7 @@ URL = "/api/v1/admin/import/shearwater-cloud"
 SERIAL = 0x344FDE85
 START = datetime(2025, 3, 1, 9, 30)
 DAY = START.date()
+PERDIX_XML = Path(__file__).parent / "fixtures" / "perdix_sample.xml"
 
 
 @dataclass
@@ -137,6 +138,7 @@ async def add_dive(
     time_in: str | None = "14:00",
     computer: Sequence[int] = (),
     profiles: dict[str, dict[str, Any]] | None = None,
+    **fields: Any,
 ) -> DiveRecord:
     """Put a dive in the log, with profile files written from ``profiles``."""
     paths = [store.save_profile(name, payload) for name, payload in (profiles or {}).items()]
@@ -144,10 +146,9 @@ async def add_dive(
         number=number,
         date=day,
         time_in=time_in,
-        duration_min=40,
-        max_depth_m=18,
         computer=list(computer),
         profiles=paths,
+        **({"duration_min": 40, "max_depth_m": 18} | fields),
     )
     await store.save_dive(dive, f"add dive {number}")
     return dive
@@ -513,6 +514,471 @@ async def test_split_dive_imports_as_one_dive(
     assert key.endswith("-344FDE85-7-1.swlog")
     assert await get_storage().get(key) == parts[1]
     assert await get_storage().get(key.replace("-1.swlog", "-2.swlog")) == parts[0]
+
+
+# ── preview: ticks, candidates and suggestion ───────────────────────────────
+
+THIS = {"source": "Perdix AI 344FDE85"}
+OTHER = {"source": "Perdix DEADBEEF"}
+
+
+def by_number(body: dict[str, Any]) -> dict[int, dict[str, Any]]:
+    """The rows of a result by computer number."""
+    return {row["computer_no"]: row for row in body["dives"]}
+
+
+def at(hours: float) -> datetime:
+    """``START`` moved by ``hours``."""
+    return START + timedelta(hours=hours)
+
+
+async def test_only_dives_newer_than_the_newest_have_are_ticked(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    await add_dive(store, 20, computer=[8], profiles={"profile_00020.json": THIS})
+    await add_dive(store, 22, time_in="07:31")
+    logs = [
+        pnf_log(number=6, start=at(-2)),
+        pnf_log(number=7),
+        pnf_log(number=8, start=at(1)),
+        pnf_log(number=9, start=at(3)),
+    ]
+    body = await preview(owner_client, cloud_db(tmp_path, logs))
+    assert statuses(body) == {6: ("attach", 22), 7: ("new", 23), 8: ("have", 20), 9: ("new", 24)}
+    assert {n: row["selected"] for n, row in by_number(body).items()} == {
+        6: True,
+        7: False,
+        8: False,
+        9: True,
+    }
+
+
+async def test_first_import_ticks_every_new_dive(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    await add_dive(store, 30, computer=[30], profiles={"profile_00030.json": OTHER})
+    bad = Log(
+        pnf.blob([b"\xff\xff" + bytes(pnf.RECORD - 2)]),
+        file_name="Perdix AI[344FDE85]#6 2025-3-1 8-0-0.swlogzp",
+        logged_at=at(-1.5),
+    )
+    logs = [
+        pnf_log(number=7),
+        pnf_log(number=8, start=at(2)),
+        bad,
+        Log(pnf_log(number=30, start=at(5), serial=0xDEADBEEF), serial="DEADBEEF"),
+    ]
+    body = await preview(owner_client, cloud_db(tmp_path, logs))
+    rows = by_number(body)
+    assert rows[30]["status"] == "have" and rows[6]["status"] == "error"
+    assert {n: row["selected"] for n, row in rows.items()} == {
+        6: False,
+        7: True,
+        8: True,
+        30: False,
+    }
+
+
+async def test_candidates_are_same_day_dives_without_a_profile_from_this_computer(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    await add_dive(store, 20, time_in="10:30", site_name_raw="Somewhere")
+    await add_dive(store, 21, time_in=None)
+    await add_dive(store, 22, time_in="09:50", computer=[99], profiles={"p22.json": THIS})
+    await add_dive(store, 23, time_in="08:50", profiles={"p23.json": OTHER}, site="zeelandbrug")
+    await add_dive(store, 24, day=date(2025, 3, 2), time_in="09:30")
+    await add_dive(store, 25, time_in="13:32")
+    await add_dive(store, 26, time_in="10:10", max_depth_m=31.5)
+    logs = [pnf_log(number=7), pnf_log(number=8, start=at(4))]
+    body = await preview(owner_client, cloud_db(tmp_path, logs))
+    rows = by_number(body)
+    assert rows[8]["status"] == "attach" and rows[8]["candidates"] == []
+    assert rows[8]["suggested"] is None
+    found = rows[7]["candidates"]
+    assert [(c["number"], c["minutes_apart"]) for c in found] == [
+        (23, 40),
+        (26, 40),
+        (20, 60),
+        (21, None),
+    ]
+    assert found[0] == {
+        "number": 23,
+        "date": "2025-03-01",
+        "time_in": "08:50",
+        "site": "Zeelandbrug",
+        "max_depth_m": 18.0,
+        "minutes_apart": 40,
+    }
+    assert found[1]["site"] is None and found[1]["max_depth_m"] == 31.5
+    assert found[2]["site"] == "Somewhere" and found[3]["time_in"] is None
+    assert rows[7]["suggested"] is None
+
+
+@pytest.mark.parametrize(
+    ("times", "suggested"),
+    [
+        (["11:00"], 20),
+        (["09:50", "11:00"], 20),
+        (["11:00", "09:50"], 21),
+        (["09:50", "10:00"], None),
+        (["09:45", None], 20),
+        (["10:35", "13:00"], None),
+        ([None, None], None),
+        ([], None),
+    ],
+)
+async def test_suggestion_is_the_only_or_the_clearly_nearest_candidate(
+    owner_client: AsyncClient,
+    store: Store,
+    tmp_path: Path,
+    times: list[str | None],
+    suggested: int | None,
+) -> None:
+    for number, time_in in enumerate(times, start=20):
+        await add_dive(store, number, time_in=time_in)
+    body = await preview(owner_client, cloud_db(tmp_path, [pnf_log()]))
+    row = body["dives"][0]
+    assert row["status"] == "new" and row["suggested"] == suggested
+    assert len(row["candidates"]) == len(times)
+
+
+async def test_time_match_picks_the_nearest_dive(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    await add_dive(store, 20, time_in="09:38")
+    await add_dive(store, 21, time_in="09:27")
+    await add_dive(store, 22, time_in="09:32")
+    body = await preview(owner_client, cloud_db(tmp_path, [pnf_log()]))
+    assert statuses(body) == {7: ("attach", 22)}
+
+
+async def test_surface_interval_is_counted_per_computer_and_day(
+    owner_client: AsyncClient, tmp_path: Path
+) -> None:
+    logs = [
+        pnf_log(number=7),
+        pnf_log(number=8, start=START + timedelta(minutes=12, seconds=20)),
+        Log(
+            pnf_log(number=30, start=START + timedelta(minutes=20), serial=0xDEADBEEF),
+            serial="DEADBEEF",
+        ),
+        pnf_log(number=9, start=at(24)),
+    ]
+    body = await preview(owner_client, cloud_db(tmp_path, logs))
+    surface = {n: row["surface_before_min"] for n, row in by_number(body).items()}
+    assert surface == {7: None, 8: 12, 30: None, 9: None}
+    assert all(row["joined_to"] is None for row in body["dives"])
+
+
+# ── link ────────────────────────────────────────────────────────────────────
+
+
+async def test_link_shows_the_chosen_dive_in_the_dry_run(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    await add_dive(store, 20, time_in="11:00")
+    body = await preview(owner_client, cloud_db(tmp_path, [pnf_log()]), link="7:20")
+    row = body["dives"][0]
+    assert statuses(body) == {7: ("attach", 20)} and body["updated"] == [20]
+    assert row["selected"] is True and row["candidates"] == [] and row["suggested"] is None
+    assert store.dives[20].computer == []
+
+
+async def test_link_attaches_the_profile_and_number(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    await add_dive(store, 20, time_in="11:00")
+    response = await upload(owner_client, cloud_db(tmp_path, [pnf_log()]), link="7:20")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["updated"] == [20] and body["created"] == []
+    assert statuses(body) == {7: ("attach", 20)}
+    dive = store.dives[20]
+    assert dive.computer == [7] and dive.profiles == ["profiles/profile_00020.json"]
+    assert dive.time_in == "11:00" and sorted(store.dives) == [1, 2, 3, 4, 20]
+
+
+async def test_two_dives_can_link_to_one_dive(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    await add_dive(store, 20, time_in="12:00")
+    logs = [pnf_log(number=7), pnf_log(number=8, start=at(0.5))]
+    body = (await upload(owner_client, cloud_db(tmp_path, logs), link="7:20,8:20")).json()
+    assert body["updated"] == [20, 20] and statuses(body) == {7: ("attach", 20), 8: ("attach", 20)}
+    dive = store.dives[20]
+    assert dive.computer == [7, 8]
+    assert dive.profiles == ["profiles/profile_00020.json", "profiles/profile_00020_8.json"]
+
+
+@pytest.mark.parametrize(
+    ("link", "reason"),
+    [
+        ("7:99", "Cannot link #7: dive #99 does not exist"),
+        ("7:21", "Cannot link #7: dive #21 already has a profile from this computer"),
+        ("9:20", "Cannot link #9: it is already dive #22"),
+        ("8:20", "Cannot link #8: it already belongs to dive #23"),
+        ("42:20", "Cannot link #42: it is not in this export"),
+        ("6:20", "Cannot link #6: its log could not be read"),
+        ("7:20,7:21", "Cannot link #7: it is linked more than once"),
+    ],
+)
+async def test_impossible_links_are_refused(
+    owner_client: AsyncClient,
+    store: Store,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    link: str,
+    reason: str,
+) -> None:
+    await add_dive(store, 20, time_in="16:00")
+    await add_dive(store, 21, time_in="17:00", computer=[50], profiles={"p21.json": THIS})
+    await add_dive(store, 22, computer=[9], profiles={"p22.json": THIS})
+    await add_dive(store, 23, time_in="11:31")
+    bad = Log(
+        pnf.blob([b"\xff\xff" + bytes(pnf.RECORD - 2)]),
+        file_name="Perdix AI[344FDE85]#6 2025-3-1 8-0-0.swlogzp",
+    )
+    logs = [pnf_log(number=7), pnf_log(number=8, start=at(2)), pnf_log(number=9, start=at(4)), bad]
+    commits = record_commits(store, monkeypatch)
+    response = await upload(owner_client, cloud_db(tmp_path, logs), link=link)
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"] == reason
+    assert commits == [] and store.imports == {}
+
+
+@pytest.mark.parametrize(
+    "link", ["7", "7:", ":20", "a:20", "7:20;8:20", "7:20,", "7:20 ", "7:-20", "7:20:1"]
+)
+async def test_malformed_links_are_refused(
+    owner_client: AsyncClient, tmp_path: Path, link: str
+) -> None:
+    response = await upload(owner_client, cloud_db(tmp_path, [pnf_log()]), link=link)
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("link", ["7:99", "7:21", "7:20", "8:21,7:20"])
+async def test_link_outside_only_is_ignored(
+    owner_client: AsyncClient, store: Store, tmp_path: Path, link: str
+) -> None:
+    await add_dive(store, 20, time_in="16:00")
+    await add_dive(store, 21, time_in="17:00", computer=[50], profiles={"p21.json": THIS})
+    logs = [pnf_log(number=7), pnf_log(number=8, start=at(2))]
+    response = await upload(owner_client, cloud_db(tmp_path, logs), only="9", link=link)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert statuses(body) == {7: ("new", None), 8: ("new", None)}
+    assert body["created"] == body["updated"] == [] and store.dives[20].computer == []
+
+
+# ── attach fills empty fields ───────────────────────────────────────────────
+
+
+async def test_attach_fills_empty_fields_and_keeps_typed_ones(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    await add_dive(store, 20, day=date(2025, 2, 1), time_in=None)
+    await add_dive(
+        store, 21, time_in="14:31", time_out="15:15", avg_depth_m=12.0, water_temp_c=17.0
+    )
+    logs = [pnf_log(number=7), pnf_log(number=8, start=at(4.5))]
+    response = await upload(
+        owner_client, cloud_db(tmp_path, logs), link="7:20", clock_offset_min=30
+    )
+    assert response.json()["updated"] == [20, 21]
+    empty, typed = store.dives[20], store.dives[21]
+    assert (empty.time_in, empty.time_out) == ("10:00", "10:00")
+    assert empty.avg_depth_m == 10.1 and empty.water_temp_c == 20.0
+    assert (typed.time_in, typed.time_out) == ("14:31", "15:15")
+    assert typed.avg_depth_m == 12.0 and typed.water_temp_c == 17.0
+    assert typed.computer == [8] and typed.profiles
+
+
+async def test_xml_attach_fills_nothing(owner_client: AsyncClient, store: Store) -> None:
+    await add_dive(store, 20, day=date(2019, 5, 14), time_in="10:05")
+    files = [("files", ("perdix_sample.xml", PERDIX_XML.read_bytes(), "application/xml"))]
+    body = (await owner_client.post("/api/v1/admin/import/shearwater", files=files)).json()
+    assert body["updated"] == [20] and body["dives"] == []
+    dive = store.dives[20]
+    assert dive.computer == [11] and dive.profiles and dive.time_in == "10:05"
+    assert dive.time_out is None and dive.avg_depth_m is None and dive.water_temp_c is None
+
+
+# ── join ────────────────────────────────────────────────────────────────────
+
+
+def joined_logs() -> list[bytes]:
+    """Dives 13 and 14 with a quarter of an hour at the surface between them."""
+    return [
+        pnf_log(number=13),
+        pnf_log(number=14, start=START + timedelta(minutes=15), depths=(0.0, 9.0, 3.0, 0.0)),
+    ]
+
+
+async def test_join_creates_one_draft_with_one_profile(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    response = await upload(owner_client, cloud_db(tmp_path, joined_logs()), join="13+14")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["created"] == [5] and body["updated"] == [] and body["dives_in_file"] == 2
+    rows = by_number(body)
+    assert statuses(body) == {13: ("new", 5), 14: ("new", 5)}
+    assert rows[13]["joined_to"] is None and rows[14]["joined_to"] == 13
+    assert rows[13]["duration_min"] == 1.1 and rows[13]["max_depth_m"] == 18.5
+    assert rows[13]["start"] == "2025-03-01T09:30:00" and rows[14]["surface_before_min"] == 14
+    assert rows[13]["selected"] is rows[14]["selected"] is True
+    dive = store.dives[5]
+    assert dive.computer == [13, 14] and dive.profiles == ["profiles/profile_00005.json"]
+    assert dive.duration_min == 1.1 and dive.time_out == "09:45"
+    assert sorted(store.dives) == [1, 2, 3, 4, 5]
+    profile = json.loads((store.root / dive.profiles[0]).read_text())
+    assert profile["computer_records"] == [13, 14] and profile["surface_breaks"] == [[50, 900]]
+    key = store.imports[body["import_id"]].storage_key
+    assert key.endswith("-344FDE85-13-1.swlog")
+    assert await get_storage().get(key.replace("-1.swlog", "-2.swlog")) == joined_logs()[1]
+
+
+async def test_join_attaches_to_the_dive_the_first_matches(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    await add_dive(store, 20, time_in="09:31")
+    response = await upload(owner_client, cloud_db(tmp_path, joined_logs()), join="13+14")
+    body = response.json()
+    assert body["updated"] == [20] and body["created"] == []
+    assert statuses(body) == {13: ("attach", 20), 14: ("attach", 20)}
+    dive = store.dives[20]
+    assert dive.computer == [13, 14] and len(dive.profiles) == 1
+    assert dive.time_in == "09:31" and dive.time_out == "09:45" and dive.avg_depth_m == 8.8
+
+
+@pytest.mark.parametrize("link", ["13:20", "14:20", "13:20,14:20"])
+async def test_join_attaches_to_a_linked_dive(
+    owner_client: AsyncClient, store: Store, tmp_path: Path, link: str
+) -> None:
+    await add_dive(store, 20, time_in="11:00")
+    db = cloud_db(tmp_path, joined_logs())
+    dry = await preview(owner_client, db, join="13+14", link=link)
+    assert statuses(dry) == {13: ("attach", 20), 14: ("attach", 20)}
+    body = (await upload(owner_client, db, join="13+14", link=link)).json()
+    assert body["updated"] == [20] and body["created"] == []
+    assert store.dives[20].computer == [13, 14] and len(store.dives[20].profiles) == 1
+
+
+async def test_join_chains_three_dives(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    logs = [
+        pnf_log(number=37),
+        pnf_log(number=38, start=START + timedelta(minutes=10)),
+        pnf_log(number=39, start=START + timedelta(minutes=20)),
+    ]
+    body = (await upload(owner_client, cloud_db(tmp_path, logs), join="38+39+37")).json()
+    assert body["created"] == [5]
+    rows = by_number(body)
+    assert [rows[n]["joined_to"] for n in (37, 38, 39)] == [None, 37, 37]
+    assert [rows[n]["surface_before_min"] for n in (37, 38, 39)] == [None, 9, 9]
+    assert rows[37]["duration_min"] == 2.4
+    profile = json.loads((store.root / store.dives[5].profiles[0]).read_text())
+    assert profile["computer_records"] == [37, 38, 39]
+    assert profile["surface_breaks"] == [[50, 600], [650, 1200]]
+    assert store.dives[5].computer == [37, 38, 39]
+
+
+@pytest.mark.parametrize(
+    ("join", "link", "reason"),
+    [
+        ("13", None, "Cannot join 13: a join needs at least two dives"),
+        ("13+13", None, "Cannot join 13+13: a dive can be in only one join"),
+        ("13+14,14+15", None, "Cannot join 14+15: a dive can be in only one join"),
+        ("13+42", None, "Cannot join 13+42: #42 is not in this export"),
+        ("13+16", None, "Cannot join 13+16: the log of #16 could not be read"),
+        ("13+17", None, "Cannot join 13+17: #17 is already dive #30"),
+        ("13+18", None, "Cannot join 13+18: the dives come from different computers"),
+        ("13+19", None, "Cannot join 13+19: the dives are on different days"),
+        ("13+14", "13:20,14:21", "Cannot join 13+14: its dives are linked to different dives"),
+    ],
+)
+async def test_impossible_joins_are_refused(
+    owner_client: AsyncClient,
+    store: Store,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    join: str,
+    link: str | None,
+    reason: str,
+) -> None:
+    await add_dive(store, 20, time_in="16:00")
+    await add_dive(store, 21, time_in="17:00")
+    await add_dive(store, 30, day=date(2025, 2, 1), computer=[17], profiles={"p30.json": THIS})
+    bad = Log(
+        pnf.blob([b"\xff\xff" + bytes(pnf.RECORD - 2)]),
+        file_name="Perdix AI[344FDE85]#16 2025-3-1 8-0-0.swlogzp",
+    )
+    logs = [
+        *joined_logs(),
+        pnf_log(number=15, start=at(1)),
+        bad,
+        pnf_log(number=17, start=at(2)),
+        Log(pnf_log(number=18, start=at(3), serial=0xDEADBEEF), serial="DEADBEEF"),
+        pnf_log(number=19, start=at(24)),
+    ]
+    params = {"join": join} | ({"link": link} if link else {})
+    commits = record_commits(store, monkeypatch)
+    response = await upload(owner_client, cloud_db(tmp_path, logs), **params)
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"] == reason
+    assert commits == [] and store.imports == {}
+
+
+@pytest.mark.parametrize("join", ["13+", "+14", "13,14+", "13-14", "13+14 ", "a+b"])
+async def test_malformed_joins_are_refused(
+    owner_client: AsyncClient, tmp_path: Path, join: str
+) -> None:
+    response = await upload(owner_client, cloud_db(tmp_path, joined_logs()), join=join)
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("join", "link"),
+    [
+        ("13+14", None),
+        ("14+13", "13:20"),
+        ("13+19", None),
+        ("13+18", None),
+        ("13+14,14+19", None),
+        ("13+14", "13:20,14:21"),
+    ],
+)
+async def test_join_outside_only_is_ignored(
+    owner_client: AsyncClient, store: Store, tmp_path: Path, join: str, link: str | None
+) -> None:
+    await add_dive(store, 20, time_in="16:00")
+    await add_dive(store, 21, time_in="17:00")
+    logs = [
+        *joined_logs(),
+        pnf_log(number=15, start=at(1)),
+        Log(pnf_log(number=18, start=at(3), serial=0xDEADBEEF), serial="DEADBEEF"),
+        pnf_log(number=19, start=at(24)),
+    ]
+    params = {"join": join, "only": "15"} | ({"link": link} if link else {})
+    response = await upload(owner_client, cloud_db(tmp_path, logs), **params)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["created"] == [22] and body["updated"] == []
+    assert all(row["joined_to"] is None for row in body["dives"])
+    assert statuses(body)[13] == statuses(body)[14] == ("new", None)
+    assert store.dives[22].computer == [15] and store.dives[20].computer == []
+
+
+@pytest.mark.parametrize(
+    ("only", "computer"), [("13,14", [13, 14]), ("13", [13, 14]), ("14", [14])]
+)
+async def test_join_follows_its_first_dive_in_only(
+    owner_client: AsyncClient, store: Store, tmp_path: Path, only: str, computer: list[int]
+) -> None:
+    db = cloud_db(tmp_path, joined_logs())
+    body = (await upload(owner_client, db, join="13+14", only=only)).json()
+    assert body["created"] == [5] and store.dives[5].computer == computer
 
 
 # ── auth and limits ─────────────────────────────────────────────────────────

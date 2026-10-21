@@ -863,6 +863,22 @@ class ImportSiteOut(ApiModel):
     origin: Literal["log", "commons", "fork"]
 
 
+class ImportCandidateOut(ApiModel):
+    """A log dive a new computer dive may belong to: same date, no profile from this computer.
+
+    ``site`` is the site's name, else the name as logged. ``minutes_apart`` is the distance
+    between the dive's ``time_in`` and the corrected computer start in whole minutes, null
+    without a ``time_in``.
+    """
+
+    number: int
+    date: date
+    time_in: str | None = None
+    site: str | None = None
+    max_depth_m: float
+    minutes_apart: int | None = None
+
+
 class ImportDiveOut(ApiModel):
     """One dive of a dive computer export and how it relates to the log.
 
@@ -871,6 +887,10 @@ class ImportDiveOut(ApiModel):
     ``attach`` (a log dive without this profile), ``have`` (already imported) or ``error``
     (the log could not be read; ``error`` says why). ``dive_number`` is the log dive it
     matches, or the number a new dive gets (on a dry run) or got.
+    ``selected`` is whether a preview ticks the row by default. A ``new`` row lists the
+    same-day log dives it may belong to in ``candidates`` and the one to pre-select in
+    ``suggested``. ``surface_before_min`` is the time since the previous dive of the same
+    computer that day ended. ``joined_to`` names the first dive of the join a row is part of.
     """
 
     computer_no: int
@@ -883,6 +903,11 @@ class ImportDiveOut(ApiModel):
     status: Literal["new", "attach", "have", "error"]
     dive_number: int | None = None
     error: str | None = None
+    selected: bool = False
+    candidates: list[ImportCandidateOut] = Field(default_factory=list)
+    suggested: int | None = None
+    surface_before_min: int | None = None
+    joined_to: int | None = None
 
 
 class ImportResult(ApiModel):

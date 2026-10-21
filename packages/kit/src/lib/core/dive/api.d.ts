@@ -1332,8 +1332,11 @@ export interface paths {
      *     Every dive in it is listed in ``dives`` with its status; by default the ``new`` and
      *     ``attach`` dives are imported, ``only`` (comma-separated computer dive numbers) limits that.
      *     ``clock_offset_min`` corrects the computer's clock before matching and writing, and the
-     *     dives written with it carry a flag naming the correction. Each imported dive's raw logs are
-     *     kept in storage. With ``dry_run=true`` nothing is stored or written.
+     *     dives written with it carry a flag naming the correction. ``link`` (``673:675,672:680``)
+     *     attaches ``new`` dives to the log dives the owner chose, and ``join`` (``13+14,37+38+39``)
+     *     imports each group of computer dives as one dive. An attached profile fills the log dive's
+     *     empty times, average depth and water temperature. Each imported dive's raw logs are kept
+     *     in storage. With ``dry_run=true`` nothing is stored or written.
      */
     post: operations['admin_import_shearwater_cloud_api_v1_admin_import_shearwater_cloud_post'];
     delete?: never;
@@ -2822,6 +2825,31 @@ export interface components {
       detail?: components['schemas']['ValidationError'][];
     };
     /**
+     * ImportCandidateOut
+     * @description A log dive a new computer dive may belong to: same date, no profile from this computer.
+     *
+     *     ``site`` is the site's name, else the name as logged. ``minutes_apart`` is the distance
+     *     between the dive's ``time_in`` and the corrected computer start in whole minutes, null
+     *     without a ``time_in``.
+     */
+    ImportCandidateOut: {
+      /** Number */
+      number: number;
+      /**
+       * Date
+       * Format: date
+       */
+      date: string;
+      /** Time In */
+      time_in: string | null;
+      /** Site */
+      site: string | null;
+      /** Max Depth M */
+      max_depth_m: number;
+      /** Minutes Apart */
+      minutes_apart: number | null;
+    };
+    /**
      * ImportDiveOut
      * @description One dive of a dive computer export and how it relates to the log.
      *
@@ -2830,6 +2858,10 @@ export interface components {
      *     ``attach`` (a log dive without this profile), ``have`` (already imported) or ``error``
      *     (the log could not be read; ``error`` says why). ``dive_number`` is the log dive it
      *     matches, or the number a new dive gets (on a dry run) or got.
+     *     ``selected`` is whether a preview ticks the row by default. A ``new`` row lists the
+     *     same-day log dives it may belong to in ``candidates`` and the one to pre-select in
+     *     ``suggested``. ``surface_before_min`` is the time since the previous dive of the same
+     *     computer that day ended. ``joined_to`` names the first dive of the join a row is part of.
      */
     ImportDiveOut: {
       /** Computer No */
@@ -2855,6 +2887,19 @@ export interface components {
       dive_number: number | null;
       /** Error */
       error: string | null;
+      /**
+       * Selected
+       * @default false
+       */
+      selected: boolean;
+      /** Candidates */
+      candidates: components['schemas']['ImportCandidateOut'][];
+      /** Suggested */
+      suggested: number | null;
+      /** Surface Before Min */
+      surface_before_min: number | null;
+      /** Joined To */
+      joined_to: number | null;
     };
     /**
      * ImportRecordOut
@@ -7458,6 +7503,8 @@ export interface operations {
         dry_run?: boolean;
         only?: string | null;
         clock_offset_min?: number;
+        link?: string | null;
+        join?: string | null;
       };
       header?: never;
       path?: never;

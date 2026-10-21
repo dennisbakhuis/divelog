@@ -6,7 +6,7 @@ the raw log and writes the draft dive or the attached profile.
 """
 
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Literal
@@ -39,8 +39,8 @@ def classify(
     A log dive whose ``computer`` list holds the dive number matches; several can, when the
     owner split one log into several dives or joined several numbers into one. If one of them
     has a profile from this computer the dive is ``have``; otherwise the first is ``attach``.
-    Without a number match, a dive on the same date starting within ``MATCH_WINDOW`` is
-    ``attach``, and anything else is ``new``.
+    Without a number match, the dive on the same date starting nearest to it, within
+    ``MATCH_WINDOW``, is ``attach``, and anything else is ``new``.
 
     Parameters
     ----------
@@ -66,16 +66,82 @@ def classify(
     for candidate in numbered:
         if not candidate.profiles:
             return Match("attach", candidate)
-    start = dive.start
-    for candidate in store.dives.values():
-        if candidate.date != start.date() or not candidate.time_in:
-            continue
-        began = datetime.combine(
-            candidate.date, datetime.strptime(candidate.time_in, "%H:%M").time()
-        )
-        if abs(began - start) <= MATCH_WINDOW:
-            return Match("attach", candidate)
+    window = [
+        (apart, candidate.number, candidate)
+        for candidate, apart in _same_day(store, dive.start)
+        if apart is not None and apart <= MATCH_WINDOW
+    ]
+    if window:
+        return Match("attach", min(window, key=lambda item: item[:2])[2])
     return Match("new")
+
+
+def candidates(
+    store: Store,
+    start: datetime,
+    *,
+    serial: str | None,
+    legacy_serial: str = "",
+    exclude: Collection[int] = (),
+) -> list[tuple[DiveRecord, int | None]]:
+    """The log dives a new computer dive may belong to, nearest first.
+
+    Parameters
+    ----------
+    store : Store
+        The log.
+    start : datetime
+        The computer dive's corrected start.
+    serial : str or None
+        The computer's serial: dives with a profile from it are left out.
+    legacy_serial : str
+        The serial assumed for profiles whose ``source`` names none.
+    exclude : collection of int
+        Log dive numbers to leave out, such as those other dives attach to.
+
+    Returns
+    -------
+    list of (DiveRecord, int or None)
+        The dives on ``start``'s date with their distance from it in whole minutes (None
+        without a ``time_in``), by distance with unknown distances last, then by number.
+    """
+    found = [
+        (candidate, None if apart is None else round(apart.total_seconds() / 60))
+        for candidate, apart in _same_day(store, start)
+        if candidate.number not in exclude
+        and not has_profile_from(store, candidate, serial, legacy_serial)
+    ]
+    return sorted(found, key=lambda item: (item[1] is None, item[1] or 0, item[0].number))
+
+
+def has_profile_from(store: Store, dive: DiveRecord, serial: str | None, legacy: str) -> bool:
+    """Whether the dive holds a profile from the computer with ``serial``, as ``have`` means."""
+    return bool(dive.profiles) and _same_computer(store, dive, serial, legacy)
+
+
+def _same_day(store: Store, start: datetime) -> list[tuple[DiveRecord, timedelta | None]]:
+    """The log dives on ``start``'s date and how far their ``time_in`` is from it."""
+    found: list[tuple[DiveRecord, timedelta | None]] = []
+    for candidate in store.dives.values():
+        if candidate.date != start.date():
+            continue
+        began = _began(candidate)
+        found.append((candidate, abs(began - start) if began else None))
+    return found
+
+
+def _began(dive: DiveRecord) -> datetime | None:
+    """The dive's start from its ``time_in``, or None without a readable one."""
+    try:
+        clock = datetime.strptime(dive.time_in or "", "%H:%M").time()
+    except ValueError:
+        return None
+    return datetime.combine(dive.date, clock)
+
+
+def computer_numbers(dive: ShearwaterDive) -> list[int]:
+    """The computer dive numbers a dive holds: one, or each joined one in order."""
+    return list(dict.fromkeys(dive.computer_records or [dive.number]))
 
 
 def _same_computer(store: Store, dive: DiveRecord, serial: str | None, legacy: str) -> bool:
@@ -142,10 +208,11 @@ async def apply(
     content_type: str = "application/xml",
     label: str = "Perdix",
     flags: Sequence[str] = (),
+    fill_empty: bool = False,
 ) -> int:
     """Store a computer dive's raw logs and write it to the log as its match says.
 
-    ``have`` only stores the raw logs. ``attach`` writes the profile, adds it, the dive number
+    ``have`` only stores the raw logs. ``attach`` writes the profile, adds it, the dive numbers
     and ``flags`` to the matched dive. ``new`` creates a draft dive with the next free number.
     A dry run writes nothing.
 
@@ -176,6 +243,9 @@ async def apply(
         The computer as commit messages name it.
     flags : sequence of str
         Review flags for a created or attached dive, such as a clock correction.
+    fill_empty : bool
+        On ``attach``, also set the dive's ``time_in``, ``time_out``, ``avg_depth_m`` and
+        ``water_temp_c`` from the computer where they are empty.
 
     Returns
     -------
@@ -192,17 +262,20 @@ async def apply(
         return match.dive.number
     name_for = profile_name if callable(profile_name) else lambda _number: str(profile_name)
     payload = dive.profile()
+    numbers = computer_numbers(dive)
+    numbered = "+".join(str(n) for n in numbers)
     if match.dive is not None:
         target = match.dive
         payload["log_dive_no"] = target.number
         relative = store.save_profile(name_for(target.number), payload)
         if relative not in target.profiles:
             target.profiles.append(relative)
-        if dive.number not in target.computer:
-            target.computer.append(dive.number)
+        target.computer.extend(n for n in numbers if n not in target.computer)
         target.flags.extend(flag for flag in flags if flag not in target.flags)
         target.import_id = import_id
-        await store.save_dive(target, f"Attach {label} #{dive.number} to dive #{target.number}")
+        if fill_empty:
+            _fill_empty(target, dive)
+        await store.save_dive(target, f"Attach {label} #{numbered} to dive #{target.number}")
         return target.number
 
     number = store.next_dive_number()
@@ -220,14 +293,24 @@ async def apply(
         gas=gas,
         o2_pct=o2,
         he_pct=he,
-        computer=[dive.number],
+        computer=numbers,
         profiles=[store.save_profile(name_for(number), payload)],
         flags=list(flags),
         visibility="draft",
         import_id=import_id,
     )
-    await store.save_dive(record, f"Import {label} #{dive.number} as draft dive #{number}")
+    await store.save_dive(record, f"Import {label} #{numbered} as draft dive #{number}")
     return number
+
+
+def _fill_empty(target: DiveRecord, dive: ShearwaterDive) -> None:
+    """Set the log dive's times, average depth and water temperature where they are empty."""
+    target.time_in = target.time_in or dive.time_in
+    target.time_out = target.time_out or dive.time_out
+    if target.avg_depth_m is None:
+        target.avg_depth_m = dive.avg_depth_m
+    if target.water_temp_c is None:
+        target.water_temp_c = min(dive.temp_c, default=None)
 
 
 def import_month() -> str:

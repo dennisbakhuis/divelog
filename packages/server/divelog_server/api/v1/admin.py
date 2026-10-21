@@ -40,7 +40,6 @@ from divelog_server.schemas.dive import (
     DiveAdminOut,
     DiveIn,
     DivePatch,
-    ImportDiveOut,
     ImportRecordOut,
     ImportResult,
     ImportSiteOut,
@@ -60,7 +59,7 @@ from divelog_server.schemas.dive import (
 )
 from divelog_server.schemas.gear import GearItemIn, GearItemOut, GearSetupIn, GearSetupOut
 from divelog_server.schemas.signing import SignRequestsIn, SignRequestsOut
-from divelog_server.services import admin_views, computer_import, signing
+from divelog_server.services import admin_views, cloud_import, computer_import, signing
 from divelog_server.services import buddy_notes as notes_service
 from divelog_server.services import dives as dive_service
 from divelog_server.services.images import IMAGE_MIMES, image_format, process_image
@@ -1655,6 +1654,8 @@ async def admin_import_shearwater_cloud(
     dry_run: bool = False,
     only: str | None = None,
     clock_offset_min: Annotated[int, Query(ge=-1440, le=1440)] = 0,
+    link: Annotated[str | None, Query(pattern=cloud_import.LINK_PATTERN)] = None,
+    join: Annotated[str | None, Query(pattern=cloud_import.JOIN_PATTERN)] = None,
 ) -> ImportResult:
     """Import the dives of a Shearwater Cloud export as drafts, or attach their profiles.
 
@@ -1663,8 +1664,11 @@ async def admin_import_shearwater_cloud(
     Every dive in it is listed in ``dives`` with its status; by default the ``new`` and
     ``attach`` dives are imported, ``only`` (comma-separated computer dive numbers) limits that.
     ``clock_offset_min`` corrects the computer's clock before matching and writing, and the
-    dives written with it carry a flag naming the correction. Each imported dive's raw logs are
-    kept in storage. With ``dry_run=true`` nothing is stored or written.
+    dives written with it carry a flag naming the correction. ``link`` (``673:675,672:680``)
+    attaches ``new`` dives to the log dives the owner chose, and ``join`` (``13+14,37+38+39``)
+    imports each group of computer dives as one dive. An attached profile fills the log dive's
+    empty times, average depth and water temperature. Each imported dive's raw logs are kept
+    in storage. With ``dry_run=true`` nothing is stored or written.
     """
     data = await file.read()
     if len(data) > get_settings().MAX_UPLOAD_BYTES:
@@ -1680,69 +1684,65 @@ async def admin_import_shearwater_cloud(
             entry.dive.start += offset
             entry.dive.end = entry.dive.end + offset if entry.dive.end else None
             entry.dive.clock_offset_min = clock_offset_min
-    entries.sort(key=lambda e: (_cloud_start(e, offset) or datetime.min, e.computer_no))
+    entries.sort(key=lambda e: (cloud_import.cloud_start(e, offset) or datetime.min, e.computer_no))
 
-    selected = _dive_numbers(only)
-    legacy = get_settings().SHEARWATER_LEGACY_SERIAL
+    try:
+        plan = cloud_import.plan(
+            store,
+            entries,
+            offset=offset,
+            only=_dive_numbers(only),
+            links=cloud_import.parse_links(link),
+            joins=cloud_import.parse_joins(join),
+            legacy_serial=get_settings().SHEARWATER_LEGACY_SERIAL,
+        )
+    except cloud_import.PlanError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     import_id = "" if dry_run else uuid4().hex
     month = computer_import.import_month()
     created: list[int] = []
     updated: list[int] = []
-    rows: list[ImportDiveOut] = []
+    rows = plan.rows
     skipped = 0
     planned = store.next_dive_number()
     first_key: str | None = None
-    for entry in entries:
-        start = _cloud_start(entry, offset)
-        computer_start = start - offset if start else None
-        row = ImportDiveOut(
-            computer_no=entry.computer_no,
-            serial=entry.serial,
-            model=entry.model,
-            start=start.isoformat(timespec="seconds") if start else "",
-            computer_start=computer_start.isoformat(timespec="seconds") if computer_start else "",
-            max_depth_m=entry.dive.max_depth_m if entry.dive else 0.0,
-            duration_min=entry.dive.duration_min if entry.dive else 0.0,
-            status="error",
-            error=entry.error,
-        )
-        rows.append(row)
-        if entry.dive is None:
-            continue
-        match = computer_import.classify(
-            store, entry.dive, serial=entry.serial, legacy_serial=legacy
-        )
-        row.status = match.status
-        row.dive_number = match.dive.number if match.dive else None
-        if match.status == "have":
+    for unit in plan.units:
+        if unit.match.status == "have":
             skipped += 1
             continue
-        if selected is not None and entry.computer_no not in selected:
+        if not unit.imported:
             continue
-        key = f"imports/{month}/{import_id}-{entry.serial}-{entry.computer_no}.swlog"
+        head = entries[unit.head]
+        members = [entries[index] for index in unit.indices]
+        blobs = [blob for member in members for blob in member.blobs]
+        key = f"imports/{month}/{import_id}-{head.serial}-{head.computer_no}.swlog"
+        computer_start = unit.dive.start - offset
         flags = [_clock_flag(clock_offset_min, computer_start)] if clock_offset_min else []
         number = await computer_import.apply(
             store,
-            entry.dive,
-            entry.blobs,
-            match,
+            unit.dive,
+            blobs,
+            unit.match,
             import_id=import_id,
             storage_key=key,
-            profile_name=_cloud_profile_name(store, entry.computer_no),
+            profile_name=_cloud_profile_name(store, head.computer_no),
             dry_run=dry_run,
             planned=planned,
             content_type="application/octet-stream",
-            label=entry.model or "Shearwater",
+            label=head.model or "Shearwater",
             flags=flags,
+            fill_empty=True,
         )
-        row.dive_number = number
-        if match.status == "attach":
+        for index in unit.indices:
+            rows[index].dive_number = number
+        if unit.match.status == "attach":
             updated.append(number)
         else:
             created.append(number)
             planned += 1
         if not dry_run:
-            first_key = first_key or computer_import.part_keys(key, len(entry.blobs))[0]
+            first_key = first_key or computer_import.part_keys(key, len(blobs))[0]
 
     dates = [date.fromisoformat(row.start[:10]) for row in rows if row.start]
     report = ImportResult(
@@ -1781,13 +1781,6 @@ async def admin_import_shearwater_cloud(
 def _cloud_dives(data: bytes) -> list[CloudDive]:
     """Every dive of a Shearwater Cloud export; raises ValueError for an unusable file."""
     return list(open_export(data).dives())
-
-
-def _cloud_start(entry: CloudDive, offset: timedelta) -> datetime | None:
-    """The corrected start of an export dive; a dive that failed to parse uses Cloud's date."""
-    if entry.dive is not None:
-        return entry.dive.start
-    return entry.logged_at + offset if entry.logged_at else None
 
 
 def _dive_numbers(only: str | None) -> set[int] | None:
