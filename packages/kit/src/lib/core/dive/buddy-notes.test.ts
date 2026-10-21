@@ -19,6 +19,26 @@ describe('signedOn', () => {
   });
 });
 
+describe('signedOn with hostile values', () => {
+  const now = new Date('2026-10-28T12:00:00Z');
+
+  it('returns an impossible date as written instead of throwing', () => {
+    expect(signedOn('2026-13-45', now)).toBe('2026-13-45');
+    expect(signedOn('9999-99-99', now)).toBe('9999-99-99');
+  });
+
+  it('returns nothing for a missing or non-text date', () => {
+    expect(signedOn(null as never, now)).toBe('');
+    expect(signedOn(undefined as never, now)).toBe('');
+    expect(signedOn(20261027 as never, now)).toBe('20261027');
+  });
+
+  it('reads the day as written, whatever the zone of the browser', () => {
+    expect(signedOn('2026-10-27T23:59:59-11:00', now)).toBe('27 October');
+    expect(signedOn('2026-10-27T00:00:00+14:00', now)).toBe('27 October');
+  });
+});
+
 describe('buddyRows', () => {
   const kim = { id: 'kim_de_boer', slug: 'kim', first_name: 'Kim', email: 'kim@example.com' };
   const robin = { id: 'robin', slug: 'robin', first_name: 'Robin', email: null };

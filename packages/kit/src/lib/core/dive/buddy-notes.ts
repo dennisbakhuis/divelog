@@ -26,9 +26,10 @@ const dayMonthYear = new Intl.DateTimeFormat('en-GB', {
  * `now`'s. The day is read from the string itself, so the server and the browser agree.
  */
 export function signedOn(iso: string, now: Date = new Date()): string {
-  const day = /^\d{4}-\d{2}-\d{2}/.exec(iso)?.[0];
-  if (!day) return iso;
+  const day = typeof iso === 'string' ? /^\d{4}-\d{2}-\d{2}/.exec(iso)?.[0] : undefined;
+  if (!day) return String(iso ?? '');
   const date = new Date(`${day}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return iso;
   const format = date.getUTCFullYear() === now.getFullYear() ? dayMonth : dayMonthYear;
   return format.format(date);
 }
