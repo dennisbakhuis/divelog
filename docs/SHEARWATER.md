@@ -24,8 +24,10 @@ mobile app's *Export account* writes a ZIP with this database and a `SyncReport.
 `dive_logs` is a decoded header table that may be empty, so everything is read from the blob.
 
 **Blob framing.** `data_bytes_1` is a 4-byte little-endian uncompressed length followed by a gzip
-stream. A standalone `.swlogdata` file is the same body, uncompressed and without a prefix. The
-body is the PNF record stream below.
+stream. The stream may be followed by zero padding (62 of the 221 Perdix AI blobs, some padded to
+exactly 8196 bytes), which is ignored; the length prefix matches the decompressed body. A
+standalone `.swlogdata` file is the same body, uncompressed and without a prefix. The body is the
+PNF record stream below.
 
 ## PNF records
 
@@ -45,7 +47,7 @@ values are big-endian, and offsets below are from the start of the record.
 | `0x30` | info event |
 | `0xE1` | extended sample: tank 3/4 pressures (log version ≥ 13) |
 | `0xFF` | final record |
-| others | not documented (the Perdix AI writes `0x51` and `0x70`–`0x75`): skip |
+| others | not documented (the Perdix AI writes `0x51`, `0x70`–`0x75` and `0x80`–`0x89`): skip |
 
 Opening and closing records 0–4 are always present. Records 5 and up depend on the log version.
 When a type appears twice, the first record counts.
@@ -115,13 +117,18 @@ When a type appears twice, the first record counts.
 | 8 | 1 | O2 % of the current gas |
 | 9 | 1 | He % of the current gas |
 | 10 | 1 | no-deco limit in minutes when the stop depth is 0, otherwise the stop time |
-| 12 | 1 | status: bit `0x10` set means open circuit |
+| 12 | 1 | status: bit `0x10` set means open circuit. A log with no open-circuit sample is a closed-circuit log and is rejected |
 | 14 | 1 | water temperature, °C or °F, signed. For a negative value *t*: `t += 102`, then if `t > 0` set `t = 0` |
 | 23 | 1 | CNS % |
 
-Sample *k* (counting from 1) is at *k* × interval. The computer keeps sampling at 0 m after
-surfacing, for up to the end-dive delay. Those trailing surface samples are not part of the dive
-time in closing 0.
+The depth, next stop depth and time to surface are 2-byte fields at offsets 1, 3 and 5; the
+next stop depth is not ×10.
+
+Sample *k* (counting from 0) is at *k* × interval, so the first sample is at t = 0. On the 221
+Perdix AI dives the last sample below 0 m then falls within a few seconds of the closing 0 dive
+time. The computer keeps sampling at 0 m after surfacing, for up to the end-dive delay (up to 60
+samples). Those trailing surface samples are not part of the dive time in closing 0; the parser
+keeps the first of them as the surface point and drops the rest.
 
 A change of (O2, He) between samples, ignoring (0, 0), is a gas switch.
 
@@ -146,4 +153,18 @@ The units byte in opening 0 applies to depths, stop depths and temperatures:
 
 A computer can write one dive number in two blobs when the diver surfaces briefly. The Perdix AI
 did this for dives 458–460. The importer merges blobs with the same serial and dive number in
-start order, and counts each join as a surface break.
+start order:
+- a later part's sample times are offset by its start minus the first part's start;
+- each join is a surface break `[last t of the earlier part, first t of the next part]`;
+- `computer_records` repeats the number once per part, the dive time is the sum of the parts'
+  and the end is the last part's.
+
+Two other shapes exist in a log and are importer behaviour, not format facts:
+- **One log, several log dives.** The diver can split one computer log into several dives in the
+  log (`profile_<n>_1.json`, `profile_<n>_2.json`, …), as for 603, 610 and 614, where short
+  surface intervals did not end the dive on the computer. Every one of those dives carries the
+  same computer number, so a dive with that number and a profile means the log is already
+  imported.
+- **Several computer numbers, one log dive.** The diver can join consecutive computer dives into
+  one profile (`computer_records: [13, 14]`), as for 13+14 and 542+543. The later numbers then
+  have no profile of their own, but they are already in the log.
