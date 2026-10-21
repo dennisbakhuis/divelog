@@ -1,5 +1,6 @@
 <script lang="ts">
   import SiteMapView from '$lib/components/dive/SiteMapView.svelte';
+  import Dialog from '$lib/components/ui/Dialog.svelte';
   import Toolbar, { type ToolItem } from '$lib/components/ui/Toolbar.svelte';
   import {
     addPin,
@@ -31,6 +32,8 @@
     onChange: (annotation: DiveMapAnnotation | null) => void;
   } = $props();
 
+  /** Screens this narrow edit the route full screen; the page shows a preview. */
+  const NARROW_QUERY = '(max-width: 700px)';
   /** How many steps Back can take back. */
   const HISTORY = 100;
 
@@ -46,15 +49,25 @@
   let tool = $state<Tool>('route');
 
   let selectedPin = $state<string | null>(null);
+  let expanded = $state(false);
+  let narrow = $state(false);
   let coarse = $state(false);
+  let bigMap = $state<ReturnType<typeof SiteMapView>>();
 
   $effect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const narrowQuery = window.matchMedia(NARROW_QUERY);
     const coarseQuery = window.matchMedia('(pointer: coarse)');
+    narrow = narrowQuery.matches;
     coarse = coarseQuery.matches;
+    const syncNarrow = (e: MediaQueryListEvent) => (narrow = e.matches);
     const syncCoarse = (e: MediaQueryListEvent) => (coarse = e.matches);
+    narrowQuery.addEventListener?.('change', syncNarrow);
     coarseQuery.addEventListener?.('change', syncCoarse);
-    return () => coarseQuery.removeEventListener?.('change', syncCoarse);
+    return () => {
+      narrowQuery.removeEventListener?.('change', syncNarrow);
+      coarseQuery.removeEventListener?.('change', syncCoarse);
+    };
   });
 
   const Tap = $derived(coarse ? 'Tap' : 'Click');
@@ -167,6 +180,8 @@
     onChange(target ? emptyAnnotation(target) : null);
     selectedPin = null;
     history = [];
+    if (target && narrow) expanded = true;
+    if (!target) expanded = false;
   }
 
   function onEdgeClick(edge: MapEdge) {
@@ -215,11 +230,14 @@
   }
 </script>
 
-{#snippet editorMap()}
+{#snippet editorMap(fill: boolean)}
   {#if value && map}
     <SiteMapView
+      bind:this={bigMap}
       {map}
       editable
+      {fill}
+      zoomControls={!fill}
       {route}
       legs={value.route}
       path={value.path}
@@ -290,7 +308,7 @@
           ? `${Tap} the point of the track where you turned the dive.`
           : `${Tap} the station where you turned the dive.`}
       {:else}
-        {Tap} the map to drop a note, then write it below.
+        {Tap} the map to drop a note, then write it {expanded ? 'above' : 'below'}.
       {/if}
     </p>
   {/if}
@@ -333,10 +351,19 @@
       </select>
     </label>
     {#if value && map}
-      {@render tools()}
-      {#if tool === 'route'}
-        <div class="tools">{@render routeActions()}</div>
+      {#if !narrow}
+        {@render tools()}
+        {#if tool === 'route'}
+          <div class="tools">{@render routeActions()}</div>
+        {/if}
       {/if}
+      <button
+        type="button"
+        class="dl-btn dl-btn-sm expand {narrow ? 'dl-btn-solid' : 'dl-btn-ghost'}"
+        aria-haspopup="dialog"
+        onclick={() => (expanded = true)}
+        ><span aria-hidden="true">⛶</span> {narrow ? 'Draw on the map' : 'Expand'}</button
+      >
       <button type="button" class="dl-btn dl-btn-ghost dl-btn-sm" onclick={() => choose('')}
         >Remove</button
       >
@@ -344,9 +371,28 @@
   </div>
 
   {#if value && map}
-    {@render editorMap()}
-    {@render hint()}
-    {@render pinRow()}
+    {#if !expanded}
+      {#if narrow}
+        <SiteMapView
+          {map}
+          title="Route on {map.title || defaultTitle(map.kind)}"
+          {route}
+          legs={value.route}
+          path={value.path}
+          pathTurn={value.turn_at}
+          turn={value.turn}
+          pins={value.pins}
+        />
+        <p class="hint">
+          {hasRoute ? annotationSummary(map, value) || 'Route drawn.' : 'No route drawn yet.'}
+          Open the map full screen to draw the way you swam.
+        </p>
+      {:else}
+        {@render editorMap(false)}
+        {@render hint()}
+        {@render pinRow()}
+      {/if}
+    {/if}
     <label>
       What happened
       <input
@@ -359,6 +405,45 @@
     </label>
   {/if}
 </div>
+
+<Dialog
+  bind:open={expanded}
+  size="full"
+  label="Route on the map"
+  showClose={false}
+  closeOnBackdrop={false}
+  initialFocus=".route-full [aria-checked='true']"
+  class="route-full-dialog"
+>
+  <div class="route-full">
+    {@render pinRow()}
+    <div class="stage">{@render editorMap(true)}</div>
+    {@render hint()}
+    <div class="strip">
+      {@render tools()}
+      <div class="tools">
+        {@render routeActions()}
+        <button
+          type="button"
+          class="dl-btn dl-btn-ghost dl-btn-sm zoom"
+          aria-label="Zoom out"
+          onclick={() => bigMap?.zoomOut()}>−</button
+        >
+        <button
+          type="button"
+          class="dl-btn dl-btn-ghost dl-btn-sm zoom"
+          aria-label="Zoom in"
+          onclick={() => bigMap?.zoomIn()}>+</button
+        >
+        <button
+          type="button"
+          class="dl-btn dl-btn-solid dl-btn-sm done"
+          onclick={() => (expanded = false)}>Done</button
+        >
+      </div>
+    </div>
+  </div>
+</Dialog>
 
 <style>
   .route-editor {
@@ -397,8 +482,50 @@
     border-color: var(--dl-color-error);
     color: var(--dl-color-error);
   }
+  :global(.route-full-dialog) {
+    overflow: hidden;
+  }
+  :global(.route-full-dialog > .dl-dialog-panel) {
+    height: 100%;
+    box-sizing: border-box;
+    padding: 0;
+    gap: 0;
+  }
+  :global(.route-full-dialog .dl-dialog-content) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+  .route-full {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+  .stage {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+  }
+  .strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .strip .tools {
+    gap: 6px;
+  }
+  .zoom {
+    min-width: 44px;
+    font-size: 1.1rem;
+  }
   @media (pointer: coarse) {
-    .route-editor :global(.dl-btn) {
+    .route-editor :global(.dl-btn),
+    .route-full :global(.dl-btn) {
       min-height: 44px;
     }
   }

@@ -256,3 +256,72 @@ describe('DiveRouteEditor map choice', () => {
     ed.destroy();
   });
 });
+
+describe('DiveRouteEditor full screen', () => {
+  it('opens the map full screen, draws with the same value and keeps it on Done', () => {
+    const ed = editor([lake]);
+    ed.button('Expand').click();
+    flushSync();
+    const dialog = ed.target.querySelector('dialog')!;
+    expect(dialog.hasAttribute('open')).toBe(true);
+    expect(dialog.getAttribute('aria-label')).toBe('Route on the map');
+    const strip = dialog.querySelector('.strip')!;
+    const labels = [...strip.querySelectorAll('button')].map(
+      (b) => b.getAttribute('aria-label') ?? b.textContent?.trim(),
+    );
+    expect(labels).toEqual([
+      'Route',
+      'Turn point',
+      'Note pin',
+      'Back: undo the last step',
+      'Turned here',
+      'Clear route',
+      'Zoom out',
+      'Zoom in',
+      'Done',
+    ]);
+    const big = svgOf(dialog);
+    expect(big.closest('.frame')!.classList.contains('fill')).toBe(true);
+    expect(dialog.querySelector('.view-controls button[aria-label="Zoom in"]')).toBeNull();
+    expect(svgOf(ed.target.querySelector('.route-editor')!)).toBeNull();
+
+    tap(big, 10, 10);
+    tap(big, 20, 10);
+    expect(ed.current()?.path).toHaveLength(2);
+    expect(dialog.querySelector('.hint')!.compareDocumentPosition(strip)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+
+    const before = dialog.querySelector('g.view')!.getAttribute('transform');
+    (strip.querySelector('button[aria-label="Zoom in"]') as HTMLButtonElement).click();
+    flushSync();
+    expect(dialog.querySelector('g.view')!.getAttribute('transform')).not.toBe(before);
+
+    (strip.querySelector('.done') as HTMLButtonElement).click();
+    flushSync();
+    expect(dialog.hasAttribute('open')).toBe(false);
+    expect(ed.current()?.path).toHaveLength(2);
+    expect(ed.target.querySelectorAll('.route-editor .track-leg')).toHaveLength(1);
+    ed.destroy();
+  });
+
+  it('on a phone shows a preview and opens full screen when a map is chosen', () => {
+    stubMedia({ narrow: true, coarse: true });
+    const ed = editor([lake, stick]);
+    expect(ed.target.querySelector('[role="radio"]')).toBeNull();
+    const select = ed.target.querySelector('select')!;
+    select.value = 'lake-1';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    flushSync();
+    const dialog = ed.target.querySelector('dialog')!;
+    expect(dialog.hasAttribute('open')).toBe(true);
+    tap(svgOf(dialog), 5, 5);
+    expect(ed.current()?.path).toEqual([{ x: 5, y: 5 }]);
+    (dialog.querySelector('.done') as HTMLButtonElement).click();
+    flushSync();
+    const preview = svgOf(ed.target.querySelector('.route-editor')!);
+    expect(preview.getAttribute('role')).toBe('img');
+    expect(ed.button('Draw on the map')).toBeTruthy();
+    ed.destroy();
+  });
+});
