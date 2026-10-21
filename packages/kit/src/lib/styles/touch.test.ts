@@ -93,4 +93,20 @@ describe('phone styles', () => {
       /\.sections a,\s*\.muted,\s*\.repo\s*\{\s*min-height:\s*var\(--dl-tap-min, 44px\)/,
     );
   });
+
+  it('gives the signing controls 44 px: the pad tools, the sign box and the dive form checkbox', () => {
+    expect(
+      rule(coarse('components/ui/SignaturePad.svelte'), '.dl-signature-tools .dl-btn'),
+    ).toMatch(/min-height:\s*var\(--dl-tap-min, 44px\)/);
+    const box = read('components/dive/SignBox.svelte');
+    expect(rule(box, '  .check')).toMatch(/min-height:\s*44px/);
+    expect(rule(box, '  .sign')).toMatch(/min-height:\s*44px/);
+    expect(rule(box, '  textarea')).toMatch(/min-height:\s*44px/);
+    expect(coarse('components/admin/BuddyNotesPanel.svelte')).toMatch(
+      /\.check,\s*\.actions \.dl-btn\s*\{\s*min-height:\s*var\(--dl-tap-min, 44px\)/,
+    );
+    expect(rule(coarse('components/admin/DiveForm.svelte'), '.save-bar .ask')).toMatch(
+      /min-height:\s*var\(--dl-tap-min, 44px\)/,
+    );
+  });
 });

@@ -57,6 +57,7 @@
     Trip,
   } from '$lib/core/dive/types';
   import { buddyRows, signRequestsMessage } from '$lib/core/dive/buddy-notes';
+  import { readFlag, writeFlag } from '$lib/core/admin/remembered-flag';
   import type { NewDiveParams } from '$lib/core/dive/config';
   import { formatDate } from '$lib/core/dive/format';
   import { toast } from '$lib/components/stores/toast.svelte';
@@ -163,20 +164,12 @@
   const noEmail = $derived(buddyList.filter((row) => !row.email));
 
   onMount(() => {
-    try {
-      askBuddies = globalThis.localStorage?.getItem(ASK_KEY) === '1';
-    } catch {
-      askBuddies = false;
-    }
+    askBuddies = readFlag(ASK_KEY);
   });
 
   function rememberAsk(value: boolean) {
     askBuddies = value;
-    try {
-      globalThis.localStorage?.setItem(ASK_KEY, value ? '1' : '0');
-    } catch {
-      // storage blocked: the choice just isn't remembered
-    }
+    writeFlag(ASK_KEY, value);
   }
 
   function firstNameOf(slug: string): string {
@@ -2256,6 +2249,11 @@
     gap: 6px;
     min-height: 32px;
     font-size: var(--dl-text-sm);
+  }
+  @media (pointer: coarse) {
+    .save-bar .ask {
+      min-height: var(--dl-tap-min, 44px);
+    }
   }
   .ask-hint {
     flex-basis: 100%;

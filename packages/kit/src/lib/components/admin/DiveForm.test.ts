@@ -11,6 +11,7 @@ vi.mock('$app/state', () => ({ page: { url: new URL('http://localhost/admin/dive
 import { beforeNavigate, goto, invalidateAll } from '$app/navigation';
 import { toast } from '$lib/components/stores/toast.svelte';
 import DiveForm from './DiveForm.svelte';
+import { writeFlag } from '$lib/core/admin/remembered-flag';
 import type {
   DiveAdmin,
   DiveTemplateOut,
@@ -1318,6 +1319,68 @@ describe('DiveForm asks buddies to sign', () => {
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual(['PUT /api/v1/admin/dives/7', SIGN]);
     expect(goto).toHaveBeenCalledWith('/admin/dives/new?date=2026-02-08', { invalidateAll: true });
     unmount(app);
+  });
+
+  describe('when the browser blocks storage', () => {
+    const blockedStorage = (): Storage => {
+      const denied = () => {
+        throw new DOMException('blocked', 'SecurityError');
+      };
+      return {
+        get length(): number {
+          return denied();
+        },
+        clear: denied,
+        getItem: denied,
+        key: denied,
+        removeItem: denied,
+        setItem: denied,
+      };
+    };
+
+    beforeEach(() => {
+      vi.stubGlobal('localStorage', blockedStorage());
+      writeFlag('dl-dive-ask-buddies', false);
+    });
+
+    it('shows the box unticked, lets it be ticked and still asks', async () => {
+      const calls = fakeFetch({ [SIGN]: json({ sent: ['kim'], skipped: [], sign_requests: [] }) });
+      const { target, app } = render({
+        dive: fakeDiveAdmin({ people_ids: ['kim_de_boer'] }),
+        people,
+      });
+      await settle();
+      expect(askBox(target)!.checked).toBe(false);
+      tick(askBox(target)!);
+      expect(askBox(target)!.checked).toBe(true);
+      saveButton(target).click();
+      await settle();
+      expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual(['PUT /api/v1/admin/dives/7', SIGN]);
+      unmount(app);
+    });
+
+    it('keeps the choice for the next form of the session, as after Save & new', async () => {
+      const first = render({ dive: fakeDiveAdmin({ people_ids: ['kim_de_boer'] }), people });
+      await settle();
+      tick(askBox(first.target)!);
+      unmount(first.app);
+      const next = render({ dive: fakeDiveAdmin({ people_ids: ['kim_de_boer'] }), people });
+      await settle();
+      expect(askBox(next.target)!.checked).toBe(true);
+      unmount(next.app);
+    });
+  });
+
+  it('is unticked in a form opened after the box was switched off', async () => {
+    localStorage.setItem('dl-dive-ask-buddies', '1');
+    const first = render({ dive: fakeDiveAdmin({ people_ids: ['kim_de_boer'] }), people });
+    await settle();
+    tick(askBox(first.target)!);
+    unmount(first.app);
+    const next = render({ dive: null, prefill: { person: 'kim' }, people });
+    await settle();
+    expect(askBox(next.target)?.checked ?? false).toBe(false);
+    unmount(next.app);
   });
 
   it('does not ask when the dive is saved as a draft', async () => {
