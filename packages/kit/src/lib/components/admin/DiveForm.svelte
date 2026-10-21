@@ -536,15 +536,22 @@
     await persist();
   }
 
+  /** Save as a draft; a save that does not go through keeps the visibility it had. */
   async function saveAsDraft() {
+    const before = form.visibility;
     form.visibility = 'draft';
-    await persist();
+    if (!(await persist())) form.visibility = before;
   }
 
   async function repin(annotation: DiveMapAnnotation, dropped: MapEdgeRef[]) {
     const map = siteMaps.find((m) => m.id === annotation.map_id);
+    const pending = formSnapshot(form, computerText) !== saved;
     form.map_annotation = annotation;
     if (!dive) return;
+    if (pending) {
+      announce(`Route re-pinned to map revision ${annotation.revision}; save the dive to keep it`);
+      return;
+    }
     const legs = dropped.map((leg) => legLabel(leg, map)).join(', ');
     if (await persist())
       toast.show({
@@ -563,11 +570,14 @@
       danger: true,
     });
     if (!ok) return;
+    busy = true;
     try {
       await adminJson(adminApi('dives', dive.number), 'DELETE');
     } catch (err) {
       error = err instanceof AdminApiError ? err.message : 'Delete failed';
       return;
+    } finally {
+      busy = false;
     }
     leaving = true;
     clearBackup(storageKey);
@@ -592,7 +602,8 @@
       if (!ok || !to) return;
       leaving = true;
       clearBackup(storageKey);
-      void goto(to);
+      if (nav.type === 'popstate' && nav.delta) history.go(nav.delta);
+      else void goto(to);
     });
   });
 
@@ -1661,8 +1672,11 @@
         rel="noopener"
         >View<span class="dl-visually-hidden"> dive #{dive.number} (new tab)</span> ↗</a
       >
-      <button type="button" class="dl-btn dl-btn-ghost dl-btn-sm danger" onclick={remove}
-        >Delete</button
+      <button
+        type="button"
+        class="dl-btn dl-btn-ghost dl-btn-sm danger"
+        disabled={busy}
+        onclick={remove}>Delete</button
       >
     {/if}
   </div>
