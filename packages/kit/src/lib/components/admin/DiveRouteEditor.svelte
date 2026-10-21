@@ -384,7 +384,7 @@
           pins={value.pins}
         />
         <p class="hint">
-          {hasRoute ? annotationSummary(map, value) || 'Route drawn.' : 'No route drawn yet.'}
+          {hasRoute ? `${annotationSummary(map, value) || 'Route drawn'}.` : 'No route drawn yet.'}
           Open the map full screen to draw the way you swam.
         </p>
       {:else}
@@ -482,16 +482,16 @@
     border-color: var(--dl-color-error);
     color: var(--dl-color-error);
   }
-  :global(.route-full-dialog) {
+  :global(dialog.dl-dialog.route-full-dialog) {
     overflow: hidden;
   }
-  :global(.route-full-dialog > .dl-dialog-panel) {
+  :global(dialog.route-full-dialog > .dl-dialog-panel) {
     height: 100%;
     box-sizing: border-box;
     padding: 0;
     gap: 0;
   }
-  :global(.route-full-dialog .dl-dialog-content) {
+  :global(dialog.route-full-dialog .dl-dialog-content) {
     flex: 1;
     min-height: 0;
     display: flex;
