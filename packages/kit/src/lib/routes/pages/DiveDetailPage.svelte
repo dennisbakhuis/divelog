@@ -1,7 +1,4 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
-  import { replaceState } from '$app/navigation';
-  import { page } from '$app/state';
   import type { PublicDataFor } from '../public';
   import {
     flagEmoji,
@@ -71,29 +68,6 @@
       : [...published, ownNote];
   });
 
-  /**
-   * Once the page shows, the address bar loses the token: it stays out of the analytics path,
-   * of links copied from the page and of the history; the page keeps it in its state. A reload
-   * is the plain dive page, and the mailed link still works.
-   */
-  $effect(() => {
-    if (!signing) return;
-    untrack(() => {
-      const url = new URL(page.url);
-      if (!url.searchParams.has('sign')) return;
-      url.searchParams.delete('sign');
-      const plain = `${url.pathname}${url.search}${url.hash}`;
-      const state = {
-        ...page.state,
-        ...(signing.state === 'expired' ? {} : { sign: signing.token }),
-      } as Parameters<typeof replaceState>[1];
-      try {
-        replaceState(plain, state);
-      } catch {
-        history.replaceState(history.state, '', plain);
-      }
-    });
-  });
   const photos = $derived(dive.attachments.filter((a) => a.kind === 'photo'));
   const scans = $derived(dive.attachments.filter((a) => a.kind === 'scan'));
   const maps = $derived(dive.attachments.filter((a) => a.kind === 'map'));

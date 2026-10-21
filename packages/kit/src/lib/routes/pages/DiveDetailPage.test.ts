@@ -182,10 +182,11 @@ describe('the dive page opened from a mailed sign link', () => {
     );
   });
 
-  it('replaces the address with the plain dive URL and keeps the token in the page state', async () => {
+  it('leaves the address alone, so Back and a reload still show the box', async () => {
     mountPage(open);
     await settle();
-    expect(replaceState).toHaveBeenCalledWith('/dive/9', { from: '/dive?tag=cave', sign: 't0k' });
+    expect(replaceState).not.toHaveBeenCalled();
+    expect(nav.page.url.searchParams.get('sign')).toBe('t0k');
   });
 
   it('submits the comment, the strokes and the choice to show the note, then thanks', async () => {
@@ -292,7 +293,7 @@ describe('the dive page opened from a mailed sign link', () => {
       'This sign link has expired; ask Diver for a new one.',
     );
     await settle();
-    expect(replaceState).toHaveBeenCalledWith('/dive/9', { from: '/dive?tag=cave' });
+    expect(replaceState).not.toHaveBeenCalled();
   });
 
   it('is the plain dive page without a link', async () => {
@@ -412,34 +413,6 @@ describe('the sign page under hostile input', () => {
     expect(target.querySelector('.dl-buddy-notes')).toBeNull();
   });
 
-  it('falls back to the history when the router is not ready to replace the address', async () => {
-    vi.mocked(replaceState).mockImplementationOnce(() => {
-      throw new Error('Cannot call replaceState(...) before router is initialized');
-    });
-    const spy = vi.spyOn(history, 'replaceState');
-    mountPage(open);
-    await settle();
-    expect(spy).toHaveBeenCalledWith(history.state, '', '/dive/9');
-    spy.mockRestore();
-  });
-
-  it('keeps the other parameters and the hash when it drops the token', async () => {
-    nav.page.url = new URL('http://localhost/dive/9?a=1&sign=t0k&b=2#story');
-    mountPage(open);
-    await settle();
-    expect(replaceState).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(replaceState).mock.calls[0][0]).toBe('/dive/9?a=1&b=2#story');
-  });
-
-  it('replaces the address once, however often the page re-renders', async () => {
-    const target = mountPage(open);
-    await settle();
-    flushSync();
-    draw(target);
-    await settle();
-    expect(replaceState).toHaveBeenCalledTimes(1);
-  });
-
   it('keeps [ and ] for typing in the comment, and pages elsewhere', () => {
     vi.mocked(goto).mockClear();
     const target = mountPage(open, publicDive({ next_number: 10 }));
@@ -509,23 +482,4 @@ describe('the sign page under hostile input', () => {
       section.querySelector('input[type="checkbox"]')!.closest('label')!.textContent,
     ).toContain('Show my note on the dive page');
   });
-
-  it.fails(
-    'shows the box again after going away and back, from the token kept in the history state',
-    async () => {
-      nav.page.url = new URL('http://localhost/dive/9');
-      nav.page.state = { from: '/dive?tag=cave', sign: 't0k' } as typeof nav.page.state;
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(async () => Response.json({ ...open, dive: publicDive() })),
-      );
-      try {
-        const target = mountPage(null);
-        await settle();
-        expect(box(target)).not.toBeNull();
-      } finally {
-        nav.page.state = { from: '/dive?tag=cave' };
-      }
-    },
-  );
 });
