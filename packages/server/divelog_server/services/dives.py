@@ -82,8 +82,10 @@ def attachment_out(media: MediaRef) -> AttachmentOut:
 
 
 def visible_media(items: list[MediaRef], owner: bool) -> list[MediaRef]:
+    """The attachments a viewer sees, by their order and then by the camera's wall clock."""
     return sorted(
-        (m for m in items if owner or m.public), key=lambda m: (m.sort, m.taken_at or datetime.min)
+        (m for m in items if owner or m.public),
+        key=lambda m: (m.sort, (m.taken_at or datetime.min).replace(tzinfo=None)),
     )
 
 
