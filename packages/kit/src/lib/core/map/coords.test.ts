@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  boundsContain,
   formatDistance,
   formatLatLon,
   metresBetween,
@@ -125,6 +126,18 @@ describe('coordinate helpers', () => {
     expect(formatDistance(120.4)).toBe('120 m');
     expect(formatDistance(3456)).toBe('3.5 km');
     expect(formatDistance(23456)).toBe('23 km');
+  });
+
+  it('tells whether a view holds a point, across the antimeridian too', () => {
+    expect(boundsContain([3, 50, 8, 54], { lat: 52, lon: 5 })).toBe(true);
+    expect(boundsContain([3, 50, 8, 54], { lat: 52, lon: 9 })).toBe(false);
+    expect(boundsContain([3, 50, 8, 54], { lat: 55, lon: 5 })).toBe(false);
+    expect(boundsContain([170, -20, 190, -10], { lat: -17.8, lon: -178.4 })).toBe(true);
+    expect(boundsContain([170, -20, 190, -10], { lat: -17.8, lon: 178.4 })).toBe(true);
+    expect(boundsContain([170, -20, -170, -10], { lat: -17.8, lon: -178.4 })).toBe(true);
+    expect(boundsContain([170, -20, 190, -10], { lat: -17.8, lon: -160 })).toBe(false);
+    expect(boundsContain([-190, -20, -170, -10], { lat: -17.8, lon: 178.4 })).toBe(true);
+    expect(boundsContain([-300, -80, 300, 80], { lat: 0, lon: 120 })).toBe(true);
   });
 
   it('nudges the pin by a share of the view', () => {

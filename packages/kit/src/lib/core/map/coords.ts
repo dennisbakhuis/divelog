@@ -273,6 +273,22 @@ export function formatLatLon(lat: number, lon: number, digits = 6): string {
   return `${lat.toFixed(digits)}, ${lon.toFixed(digits)}`;
 }
 
+/**
+ * Whether a view's bounds `[west, south, east, north]` hold a point, across the
+ * antimeridian too: MapLibre reports a view over the date line as west 170, east 190
+ * (or west > east once wrapped), and the point's longitude may be either side of ±180.
+ */
+export function boundsContain(
+  [west, south, east, north]: readonly [number, number, number, number],
+  { lat, lon }: LatLon,
+): boolean {
+  if (lat < south || lat > north) return false;
+  if (east - west >= 360) return true;
+  const span = (((east - west) % 360) + 360) % 360;
+  const offset = (((lon - west) % 360) + 360) % 360;
+  return offset <= span;
+}
+
 /** Metres between two points on a sphere; for "120 m away" hints. */
 export function metresBetween(a: LatLon, b: LatLon): number {
   const rad = Math.PI / 180;
