@@ -18,7 +18,7 @@ instance layers under its own log.
 | `packages/kit` | `@divelog/kit`: pages, components, server helpers, styles | Svelte 5, SvelteKit 2 |
 | `apps/reference` | Minimal SvelteKit app mounting the kit; dev playground and standalone image | |
 | `schema/v1` | JSON Schema of the data formats, exported from the server models | |
-| `docs/` | `FORMAT.md` data format, `KIT.md` mounting the kit, `DEPLOY.md`, `CONTRIBUTING.md` | |
+| `docs/` | `FORMAT.md` data format, `SHEARWATER.md` Shearwater records, `KIT.md` mounting the kit, `DEPLOY.md`, `CONTRIBUTING.md` | |
 
 Code is AGPL-3.0-only (see `LICENSE` and `NOTICE`). The shared site data in `divelog-sites` is
 licensed separately, in three layers:
@@ -34,6 +34,7 @@ Documentation:
 - [`docs/KIT.md`](docs/KIT.md): mounting the kit in a SvelteKit app, config, theming, adopt and pull.
 - [`docs/DEPLOY.md`](docs/DEPLOY.md): the server and reference images, compose, the data repositories.
 - [`docs/FORMAT.md`](docs/FORMAT.md): the log and commons file formats, revisions, overlays and forks.
+- [`docs/SHEARWATER.md`](docs/SHEARWATER.md): the Shearwater Cloud database and dive record format the importer reads.
 - [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md): working on this repository and on the commons.
 
 One diver, one instance, one log repository; multi-user accounts are not a goal.
