@@ -69,6 +69,10 @@ unchanged; the server adds `POST /auth/verify`, `pillow-heif`, and stricter vali
   dive's site. Site create checks the country, region and id prefix, claims the id under the
   lock, and a 409 says whether the log or the commons has it. Trip saves keep the override's
   merge list and cover, and a trip slug is validated.
+- Images: the server and reference images pin their base by digest with the October 2026
+  trust stores (Debian `ca-certificates` 20250419+deb13u1, Node 22.23.4, certifi 2026.10.19),
+  and boto3 verifies against the OS store, refusing chains forged from the compromised eMudhra
+  intermediates.
 
 ## 0.4.2 — the CLI finds the commons inside the container (18 October 2026)
 
