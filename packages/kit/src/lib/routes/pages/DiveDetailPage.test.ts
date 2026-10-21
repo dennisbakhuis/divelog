@@ -285,3 +285,53 @@ describe('the dive page opened from a mailed sign link', () => {
     expect(replaceState).not.toHaveBeenCalled();
   });
 });
+
+describe('the buddy notes on the dive page', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-28T12:00:00Z'));
+    nav.page.url = new URL('http://localhost/dive/9');
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const section = (target: HTMLElement) => target.querySelector('.dl-buddy-notes');
+
+  it('shows the public notes right after the buddies', () => {
+    const target = mountPage(null, publicDive({ buddy_notes: [note] }));
+    const notes = section(target)!;
+    expect(notes.previousElementSibling!.classList.contains('context-cards')).toBe(true);
+    expect(notes.querySelector('svg')!.getAttribute('aria-label')).toBe('Signature of Alex');
+    expect(notes.querySelector('blockquote')!.textContent).toBe('“Cold feet, great vis.”');
+  });
+
+  it('has no section without notes', () => {
+    expect(section(mountPage(null))).toBeNull();
+  });
+
+  it("shows the signing buddy's own note on a used link, private or not", () => {
+    nav.page.url = new URL('http://localhost/dive/9?sign=t0k');
+    const own = { ...note, public: false, comment: 'Only for Sam' };
+    const target = mountPage({ ...open, state: 'used', note: own });
+    expect(section(target)!.querySelector('blockquote')!.textContent).toBe('“Only for Sam”');
+    expect(box(target)!.textContent).toContain('visitors of the dive page do not see it');
+  });
+
+  it('adds the note signed on the page', async () => {
+    nav.page.url = new URL('http://localhost/dive/9?sign=t0k');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ note }), { status: 200 })),
+    );
+    const target = mountPage(open);
+    expect(section(target)).toBeNull();
+    const comment = target.querySelector<HTMLTextAreaElement>('textarea')!;
+    comment.value = 'Cold feet, great vis.';
+    comment.dispatchEvent(new Event('input', { bubbles: true }));
+    signButton(target).click();
+    await settle();
+    expect(section(target)!.querySelector('blockquote')!.textContent).toBe(
+      '“Cold feet, great vis.”',
+    );
+    expect(box(target)!.textContent).toContain('Your note is on the dive page.');
+  });
+});

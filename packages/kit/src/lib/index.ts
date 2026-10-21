@@ -4,6 +4,7 @@
  * disclosure, toolbar, signature pad, skip link, live region) and the motion helpers they share. Pure logic is in `./core`,
  * page components in `./routes`, server helpers in `./server`.
  */
+export { default as BuddyNotes } from './components/dive/BuddyNotes.svelte';
 export { default as Charts } from './components/dive/Charts.svelte';
 export { default as DetailTop } from './components/dive/DetailTop.svelte';
 export { default as DiveFacts } from './components/dive/DiveFacts.svelte';
@@ -22,6 +23,7 @@ export { default as MapLegend } from './components/dive/MapLegend.svelte';
 export { default as MapOptions } from './components/dive/MapOptions.svelte';
 export { default as MapPanel } from './components/dive/MapPanel.svelte';
 export { default as SignBox } from './components/dive/SignBox.svelte';
+export { default as SignatureImage } from './components/dive/SignatureImage.svelte';
 export { default as SiteLocatorMap } from './components/dive/SiteLocatorMap.svelte';
 export { default as SiteMapThumb } from './components/dive/SiteMapThumb.svelte';
 export { default as SiteMapView } from './components/dive/SiteMapView.svelte';

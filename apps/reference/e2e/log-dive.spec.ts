@@ -165,6 +165,12 @@ test.describe('logging a dive', () => {
     await signing.goto(link!);
     await expect(signing.getByText(/You signed this dive on \d+ \w+/)).toBeVisible();
     await expect(signing.getByRole('button', { name: 'Sign the dive' })).toHaveCount(0);
+    const shown = signing.getByRole('region', { name: 'Buddy notes' });
+    await expect(shown).toContainText('“Cold feet, great vis.”');
+    await expect(shown.getByRole('link', { name: 'Alex' })).toHaveAttribute(
+      'href',
+      '/dive/people/alex',
+    );
     await buddy.close();
 
     await page.reload();

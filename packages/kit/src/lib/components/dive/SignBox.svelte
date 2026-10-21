@@ -96,14 +96,14 @@
     <p class="line" role="status">
       {signed.public
         ? 'Your note is on the dive page.'
-        : `Your note is kept for ${owner}; it is not on the dive page.`}
+        : `Your note is kept for ${owner}; visitors of the dive page do not see it.`}
     </p>
   {:else if linkState === 'used'}
     <h2 id="dl-sign-box-title" class="title">
       You signed this dive{note ? ` on ${signedOn(note.signed_at)}` : ''}.
     </h2>
     {#if note && !note.public}
-      <p class="line">Your note is kept for {owner}; it is not on the dive page.</p>
+      <p class="line">Your note is kept for {owner}; visitors of the dive page do not see it.</p>
     {/if}
   {:else}
     <h2 id="dl-sign-box-title" class="title">

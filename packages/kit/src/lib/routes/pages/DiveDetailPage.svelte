@@ -16,6 +16,7 @@
   } from '$lib/core/dive/format';
   import type { Attachment, BuddyNote, Dive } from '$lib/core/dive/types';
   import SignBox from '$lib/components/dive/SignBox.svelte';
+  import BuddyNotes from '$lib/components/dive/BuddyNotes.svelte';
   import DiveFacts from '$lib/components/dive/DiveFacts.svelte';
   import DiveProfile from '$lib/components/dive/DiveProfile.svelte';
   import Gallery from '$lib/components/dive/Gallery.svelte';
@@ -60,6 +61,15 @@
         : signing.note
       : null,
   );
+
+  /** The public notes, with the signing buddy's own in place of theirs (shown even if private). */
+  const notes = $derived.by(() => {
+    const published = dive.buddy_notes ?? [];
+    if (!ownNote) return published;
+    return published.some((n) => n.person === ownNote.person)
+      ? published.map((n) => (n.person === ownNote.person ? ownNote : n))
+      : [...published, ownNote];
+  });
 
   /**
    * Once the page shows, the address bar loses the token: it stays out of the analytics path,
@@ -441,6 +451,8 @@
       {/if}
     </div>
   {/if}
+
+  <BuddyNotes {notes} buddies={dive.buddies} />
 
   {#if provenance && !hasProfile}
     <p class="provenance">{provenance}</p>
