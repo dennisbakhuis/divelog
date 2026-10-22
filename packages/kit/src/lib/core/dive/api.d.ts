@@ -1303,11 +1303,44 @@ export interface paths {
      * Admin Import Shearwater
      * @description Attach Perdix profiles to the dives they belong to, or create drafts for new ones.
      *
-     *     A dive matches when it starts within ten minutes of the computer's start time, or already
-     *     lists the computer's dive number. Every file is kept as-is in storage. With
+     *     A dive matches when it already lists the computer's dive number, or starts within ten
+     *     minutes of the computer's start time. Every file is kept as-is in storage. With
      *     ``dry_run=true`` nothing is stored or written; the result says what would happen.
      */
     post: operations['admin_import_shearwater_api_v1_admin_import_shearwater_post'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/v1/admin/import/shearwater-cloud': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Admin Import Shearwater Cloud
+     * @description Import the dives of a Shearwater Cloud export as drafts, or attach their profiles.
+     *
+     *     The upload is the database the mobile app exports (Export (*.db)), the desktop
+     *     ``dive_data.db``, or a ZIP holding either.
+     *     Every dive in it is listed in ``dives`` with its status; by default the ``new`` and
+     *     ``attach`` dives are imported, ``only`` (comma-separated computer dive numbers) limits that.
+     *     ``clock_offset_min`` corrects the computer's clock before matching and writing, and the
+     *     dives written with it carry a flag naming the correction. ``link`` (``673:675,672:680``)
+     *     attaches ``new`` dives to the log dives the owner chose, and ``join`` (``13+14,37+38+39``)
+     *     imports each group of computer dives as one dive. ``split`` (``614@1740,614@3970``) cuts a
+     *     dive at the surface breaks starting at those seconds into parts, each its own log dive,
+     *     with its own profile; ``link=614.2:612`` attaches a part. An attached profile fills the
+     *     log dive's empty times, average depth and water temperature. Each imported dive's raw logs
+     *     are kept in storage. With ``dry_run=true`` nothing is stored or written.
+     */
+    post: operations['admin_import_shearwater_cloud_api_v1_admin_import_shearwater_cloud_post'];
     delete?: never;
     options?: never;
     head?: never;
@@ -1575,6 +1608,11 @@ export interface components {
     Body_admin_import_shearwater_api_v1_admin_import_shearwater_post: {
       /** Files */
       files: string[];
+    };
+    /** Body_admin_import_shearwater_cloud_api_v1_admin_import_shearwater_cloud_post */
+    Body_admin_import_shearwater_cloud_api_v1_admin_import_shearwater_cloud_post: {
+      /** File */
+      file: string;
     };
     /** Body_admin_import_subsurface_api_v1_admin_import_subsurface_post */
     Body_admin_import_subsurface_api_v1_admin_import_subsurface_post: {
@@ -2789,6 +2827,144 @@ export interface components {
       detail?: components['schemas']['ValidationError'][];
     };
     /**
+     * ImportBreakOut
+     * @description A surface interval inside a computer dive, where the owner may split it.
+     *
+     *     ``start_s`` and ``end_s`` are the seconds of its first and last surface sample; ``start_s``
+     *     names the break in ``split``. ``start`` and ``end`` are the corrected wall-clock times as
+     *     ``HH:MM``. ``suggested`` is true when a log dive without this computer's profile starts in
+     *     or just after the break.
+     */
+    ImportBreakOut: {
+      /** Start S */
+      start_s: number;
+      /** End S */
+      end_s: number;
+      /** Minutes */
+      minutes: number;
+      /** Start */
+      start: string;
+      /** End */
+      end: string;
+      /**
+       * Suggested
+       * @default false
+       */
+      suggested: boolean;
+    };
+    /**
+     * ImportCandidateOut
+     * @description A log dive a new computer dive may belong to: same date, no profile from this computer.
+     *
+     *     ``site`` is the site's name, else the name as logged. ``minutes_apart`` is the distance
+     *     between the dive's ``time_in`` and the corrected computer start in whole minutes, null
+     *     without a ``time_in``.
+     */
+    ImportCandidateOut: {
+      /** Number */
+      number: number;
+      /**
+       * Date
+       * Format: date
+       */
+      date: string;
+      /** Time In */
+      time_in: string | null;
+      /** Site */
+      site: string | null;
+      /** Max Depth M */
+      max_depth_m: number;
+      /** Minutes Apart */
+      minutes_apart: number | null;
+    };
+    /**
+     * ImportDiveOut
+     * @description One dive of a dive computer export and how it relates to the log.
+     *
+     *     ``start`` is the local start after the clock offset, ``computer_start`` as the computer
+     *     logged it, both ISO 8601 without a zone. ``status`` is ``new`` (not in the log),
+     *     ``attach`` (a log dive without this profile), ``have`` (already imported) or ``error``
+     *     (the log could not be read; ``error`` says why). ``dive_number`` is the log dive it
+     *     matches, or the number a new dive gets (on a dry run) or got.
+     *     ``selected`` is whether a preview ticks the row by default. A ``new`` row lists the
+     *     same-day log dives it may belong to in ``candidates`` and the one to pre-select in
+     *     ``suggested``. ``surface_before_min`` is the time since the previous dive of the same
+     *     computer that day ended. ``joined_to`` names the first dive of the join a row is part of.
+     *     ``breaks`` lists the dive's surface intervals (none for an error or a joined row) and
+     *     ``parts`` the parts of a dive the request split; the row's status then describes part 1.
+     */
+    ImportDiveOut: {
+      /** Computer No */
+      computer_no: number;
+      /** Serial */
+      serial: string;
+      /** Model */
+      model: string | null;
+      /** Start */
+      start: string;
+      /** Computer Start */
+      computer_start: string;
+      /** Max Depth M */
+      max_depth_m: number;
+      /** Duration Min */
+      duration_min: number;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: 'new' | 'attach' | 'have' | 'error';
+      /** Dive Number */
+      dive_number: number | null;
+      /** Error */
+      error: string | null;
+      /**
+       * Selected
+       * @default false
+       */
+      selected: boolean;
+      /** Candidates */
+      candidates: components['schemas']['ImportCandidateOut'][];
+      /** Suggested */
+      suggested: number | null;
+      /** Surface Before Min */
+      surface_before_min: number | null;
+      /** Joined To */
+      joined_to: number | null;
+      /** Breaks */
+      breaks: components['schemas']['ImportBreakOut'][];
+      /** Parts */
+      parts: components['schemas']['ImportPartOut'][];
+    };
+    /**
+     * ImportPartOut
+     * @description One part of a computer dive the request split, and the log dive it becomes.
+     *
+     *     ``part`` counts from 1; ``start`` is the corrected local start. ``dive_number`` is the
+     *     attach target, or the number a new dive gets (on a dry run) or got. A ``new`` part lists
+     *     its ``candidates`` and ``suggested`` as a row does.
+     */
+    ImportPartOut: {
+      /** Part */
+      part: number;
+      /** Start */
+      start: string;
+      /** Duration Min */
+      duration_min: number;
+      /** Max Depth M */
+      max_depth_m: number;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: 'new' | 'attach';
+      /** Dive Number */
+      dive_number: number | null;
+      /** Candidates */
+      candidates: components['schemas']['ImportCandidateOut'][];
+      /** Suggested */
+      suggested: number | null;
+    };
+    /**
      * ImportRecordOut
      * @description One past import as the import page lists it; ``created_at`` is ISO 8601 as stored.
      */
@@ -2816,6 +2992,7 @@ export interface components {
      *     get), ``updated`` the dives a profile was attached to, ``skipped`` the dives already
      *     complete. ``dives_in_file`` counts the dives read, ``first_date``/``last_date`` span them.
      *     On a dry run ``import_id`` is empty and ``sites`` lists the sites that would be created.
+     *     A dive computer export lists its dives in ``dives``, oldest first.
      */
     ImportResult: {
       /** Import Id */
@@ -2849,6 +3026,8 @@ export interface components {
       first_date: string | null;
       /** Last Date */
       last_date: string | null;
+      /** Dives */
+      dives: components['schemas']['ImportDiveOut'][];
     };
     /**
      * ImportSiteOut
@@ -3896,7 +4075,8 @@ export interface components {
      * SignIn
      * @description A buddy's note: a comment, a drawing, or both, and whether visitors may see it.
      *
-     *     Points are rounded to whole numbers; an empty comment or drawing counts as none.
+     *     Points are rounded to whole numbers, a lone surrogate (which no file can hold) becomes a
+     *     question mark, and an empty comment or drawing counts as none.
      */
     SignIn: {
       /** Comment */
@@ -7357,6 +7537,46 @@ export interface operations {
     requestBody: {
       content: {
         'multipart/form-data': components['schemas']['Body_admin_import_shearwater_api_v1_admin_import_shearwater_post'];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportResult'];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['HTTPValidationError'];
+        };
+      };
+    };
+  };
+  admin_import_shearwater_cloud_api_v1_admin_import_shearwater_cloud_post: {
+    parameters: {
+      query?: {
+        dry_run?: boolean;
+        only?: string | null;
+        clock_offset_min?: number;
+        link?: string | null;
+        join?: string | null;
+        split?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'multipart/form-data': components['schemas']['Body_admin_import_shearwater_cloud_api_v1_admin_import_shearwater_cloud_post'];
       };
     };
     responses: {

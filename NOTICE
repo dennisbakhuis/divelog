@@ -10,3 +10,10 @@ server, you must offer its source to the users who interact with it.
 Dive-site data shared through the divelog-sites commons is licensed separately:
 the database under the Open Database License 1.0, descriptions and drawn maps
 under CC BY-SA 4.0, photos under the licence named in their manifest entry.
+
+Third-party knowledge: the Shearwater dive data format described in
+docs/SHEARWATER.md was learned from libdivecomputer
+(https://github.com/libdivecomputer/libdivecomputer, LGPL-2.1-or-later,
+Copyright Jef Driesen and contributors) and Subsurface
+(https://github.com/subsurface/subsurface). No code from either project is
+included; the parser is written from that description.

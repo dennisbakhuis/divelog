@@ -863,6 +863,92 @@ class ImportSiteOut(ApiModel):
     origin: Literal["log", "commons", "fork"]
 
 
+class ImportCandidateOut(ApiModel):
+    """A log dive a new computer dive may belong to: same date, no profile from this computer.
+
+    ``site`` is the site's name, else the name as logged. ``minutes_apart`` is the distance
+    between the dive's ``time_in`` and the corrected computer start in whole minutes, null
+    without a ``time_in``.
+    """
+
+    number: int
+    date: date
+    time_in: str | None = None
+    site: str | None = None
+    max_depth_m: float
+    minutes_apart: int | None = None
+
+
+class ImportBreakOut(ApiModel):
+    """A surface interval inside a computer dive, where the owner may split it.
+
+    ``start_s`` and ``end_s`` are the seconds of its first and last surface sample; ``start_s``
+    names the break in ``split``. ``start`` and ``end`` are the corrected wall-clock times as
+    ``HH:MM``. ``suggested`` is true when a log dive without this computer's profile starts in
+    or just after the break.
+    """
+
+    start_s: int
+    end_s: int
+    minutes: int
+    start: str
+    end: str
+    suggested: bool = False
+
+
+class ImportPartOut(ApiModel):
+    """One part of a computer dive the request split, and the log dive it becomes.
+
+    ``part`` counts from 1; ``start`` is the corrected local start. ``dive_number`` is the
+    attach target, or the number a new dive gets (on a dry run) or got. A ``new`` part lists
+    its ``candidates`` and ``suggested`` as a row does.
+    """
+
+    part: int
+    start: str
+    duration_min: float
+    max_depth_m: float
+    status: Literal["new", "attach"]
+    dive_number: int | None = None
+    candidates: list[ImportCandidateOut] = Field(default_factory=list)
+    suggested: int | None = None
+
+
+class ImportDiveOut(ApiModel):
+    """One dive of a dive computer export and how it relates to the log.
+
+    ``start`` is the local start after the clock offset, ``computer_start`` as the computer
+    logged it, both ISO 8601 without a zone. ``status`` is ``new`` (not in the log),
+    ``attach`` (a log dive without this profile), ``have`` (already imported) or ``error``
+    (the log could not be read; ``error`` says why). ``dive_number`` is the log dive it
+    matches, or the number a new dive gets (on a dry run) or got.
+    ``selected`` is whether a preview ticks the row by default. A ``new`` row lists the
+    same-day log dives it may belong to in ``candidates`` and the one to pre-select in
+    ``suggested``. ``surface_before_min`` is the time since the previous dive of the same
+    computer that day ended. ``joined_to`` names the first dive of the join a row is part of.
+    ``breaks`` lists the dive's surface intervals (none for an error or a joined row) and
+    ``parts`` the parts of a dive the request split; the row's status then describes part 1.
+    """
+
+    computer_no: int
+    serial: str
+    model: str | None = None
+    start: str
+    computer_start: str
+    max_depth_m: float
+    duration_min: float
+    status: Literal["new", "attach", "have", "error"]
+    dive_number: int | None = None
+    error: str | None = None
+    selected: bool = False
+    candidates: list[ImportCandidateOut] = Field(default_factory=list)
+    suggested: int | None = None
+    surface_before_min: int | None = None
+    joined_to: int | None = None
+    breaks: list[ImportBreakOut] = Field(default_factory=list)
+    parts: list[ImportPartOut] = Field(default_factory=list)
+
+
 class ImportResult(ApiModel):
     """What an import did, or with ``dry_run`` what it would do; nothing is written then.
 
@@ -870,6 +956,7 @@ class ImportResult(ApiModel):
     get), ``updated`` the dives a profile was attached to, ``skipped`` the dives already
     complete. ``dives_in_file`` counts the dives read, ``first_date``/``last_date`` span them.
     On a dry run ``import_id`` is empty and ``sites`` lists the sites that would be created.
+    A dive computer export lists its dives in ``dives``, oldest first.
     """
 
     import_id: str
@@ -883,6 +970,7 @@ class ImportResult(ApiModel):
     dives_in_file: int = 0
     first_date: date | None = None
     last_date: date | None = None
+    dives: list[ImportDiveOut] = Field(default_factory=list)
 
 
 class ImportRecordOut(ApiModel):

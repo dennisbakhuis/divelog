@@ -12,7 +12,12 @@
 </script>
 
 <p class="crumbs"><a href={urls.admin.dives()}>Dives</a> › new</p>
-<h1>New dive</h1>
+<div class="head">
+  <h1>New dive</h1>
+  <a class="dl-btn dl-btn-ghost dl-btn-sm" href={`${urls.admin.import()}#shearwater-cloud`}
+    >Import from Shearwater</a
+  >
+</div>
 {#key formKey}
   <DiveForm
     dive={null}
@@ -29,6 +34,17 @@
 {/key}
 
 <style>
+  .head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--dl-space-3);
+    margin-bottom: var(--dl-space-3);
+  }
+  .head h1 {
+    margin-bottom: 0;
+  }
   .crumbs {
     font-size: var(--dl-text-md);
     color: var(--dl-color-text-faint);

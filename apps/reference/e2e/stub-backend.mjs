@@ -8,6 +8,9 @@
  * editor's (form data, template, list pages, create and update, kept in memory) and the site
  * map editor's (site, OpenStreetMap seed, map create and update, also kept in memory) and the
  * site workspace's (countries, licences, field classes, nearby sites, created sites).
+ * `POST /api/v1/admin/import/shearwater-cloud` answers from its query alone (`dry_run`, `only`,
+ * `clock_offset_min`, `link`, `join`, `split`) with a canned export of eight dives; the upload
+ * itself is not read.
  * Buddies signing a dive work in memory too: the owner's sign requests, withdrawals and note
  * deletions, the public sign page and its post; every mail "sent" is listed at
  * `GET /_e2e/mails` (`?to=` filters by address) as `[{to, subject, text}]`, and the mailed

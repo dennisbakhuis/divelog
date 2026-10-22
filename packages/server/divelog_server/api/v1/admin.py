@@ -15,7 +15,8 @@ from fastapi.responses import FileResponse
 from divelog_server.api.v1.public import region_out
 from divelog_server.core.config import get_settings
 from divelog_server.core.deps import StateDep, StoreDep, require_owner
-from divelog_server.importers.shearwater import gas_of, parse_shearwater
+from divelog_server.importers.shearwater import parse_shearwater
+from divelog_server.importers.shearwater_cloud import CloudDive, open_export
 from divelog_server.importers.site_match import MATCH_RADIUS_M, match_site
 from divelog_server.importers.subsurface import gas_for, parse_subsurface
 from divelog_server.schemas.admin import (
@@ -58,7 +59,7 @@ from divelog_server.schemas.dive import (
 )
 from divelog_server.schemas.gear import GearItemIn, GearItemOut, GearSetupIn, GearSetupOut
 from divelog_server.schemas.signing import SignRequestsIn, SignRequestsOut
-from divelog_server.services import admin_views, signing
+from divelog_server.services import admin_views, cloud_import, computer_import, signing
 from divelog_server.services import buddy_notes as notes_service
 from divelog_server.services import dives as dive_service
 from divelog_server.services.images import IMAGE_MIMES, image_format, process_image
@@ -1568,20 +1569,16 @@ async def admin_import_subsurface(
     return report
 
 
-MATCH_WINDOW = timedelta(minutes=10)
-
-
 @router.post("/import/shearwater", response_model=ImportResult)
 async def admin_import_shearwater(
     store: StoreDep, files: list[UploadFile] = File(...), dry_run: bool = False
 ) -> ImportResult:
     """Attach Perdix profiles to the dives they belong to, or create drafts for new ones.
 
-    A dive matches when it starts within ten minutes of the computer's start time, or already
-    lists the computer's dive number. Every file is kept as-is in storage. With
+    A dive matches when it already lists the computer's dive number, or starts within ten
+    minutes of the computer's start time. Every file is kept as-is in storage. With
     ``dry_run=true`` nothing is stored or written; the result says what would happen.
     """
-    storage = get_storage()
     import_id = "" if dry_run else uuid4().hex
     created: list[int] = []
     updated: list[int] = []
@@ -1600,62 +1597,29 @@ async def admin_import_shearwater(
                 status_code=400, detail=f"{file.filename}: could not parse export: {exc}"
             ) from exc
         dates.append(computer.start.date())
-        match = _match_computer(store, computer.start, computer.number)
-        complete = match is not None and computer.number in match.computer and match.profiles
-        if dry_run:
-            if complete:
-                skipped += 1
-            elif match is not None:
-                updated.append(match.number)
-            else:
-                created.append(planned)
-                planned += 1
-            continue
-
-        key = f"imports/{datetime.now(UTC).strftime('%Y/%m')}/{import_id}-{computer.number}.xml"
-        first_key = first_key or key
-        await storage.put(key, data, "application/xml")
-        if complete:
-            skipped += 1
-            continue
+        match = computer_import.classify(store, computer, serial=None)
+        key = f"imports/{computer_import.import_month()}/{import_id}-{computer.number}.xml"
+        if not dry_run:
+            first_key = first_key or key
         profile_name = f"perdix_{computer.serial}_{computer.number}.json"
-        payload = computer.profile()
-        if match is not None:
-            payload["log_dive_no"] = match.number
-            relative = store.save_profile(profile_name, payload)
-            if relative not in match.profiles:
-                match.profiles.append(relative)
-            if computer.number not in match.computer:
-                match.computer.append(computer.number)
-            match.import_id = import_id
-            await store.save_dive(
-                match, f"Attach Perdix #{computer.number} to dive #{match.number}"
-            )
-            updated.append(match.number)
-            continue
-
-        number = store.next_dive_number()
-        payload["log_dive_no"] = number
-        gas, o2, he = gas_of(computer)
-        dive = DiveRecord(
-            number=number,
-            date=computer.start.date(),
-            time_in=computer.time_in,
-            time_out=computer.time_out,
-            duration_min=max(computer.duration_min, 1),
-            max_depth_m=computer.max_depth_m,
-            avg_depth_m=computer.avg_depth_m,
-            water_temp_c=min(computer.temp_c, default=None),
-            gas=gas,
-            o2_pct=o2,
-            he_pct=he,
-            computer=[computer.number],
-            profiles=[store.save_profile(profile_name, payload)],
-            visibility="draft",
+        number = await computer_import.apply(
+            store,
+            computer,
+            [data],
+            match,
             import_id=import_id,
+            storage_key=key,
+            profile_name=profile_name,
+            dry_run=dry_run,
+            planned=planned,
         )
-        await store.save_dive(dive, f"Import Perdix #{computer.number} as draft dive #{number}")
-        created.append(number)
+        if match.status == "have":
+            skipped += 1
+        elif match.status == "attach":
+            updated.append(number)
+        else:
+            created.append(number)
+            planned += 1
 
     report = ImportResult(
         import_id=import_id,
@@ -1683,18 +1647,177 @@ async def admin_import_shearwater(
     return report
 
 
-def _match_computer(store: Store, start: datetime, computer_number: int) -> DiveRecord | None:
-    """The dive that starts within the window of a computer record, else one already citing it."""
-    for dive in store.dives.values():
-        if computer_number in dive.computer:
-            return dive
-    for dive in store.dives.values():
-        if dive.date != start.date() or not dive.time_in:
+@router.post("/import/shearwater-cloud", response_model=ImportResult)
+async def admin_import_shearwater_cloud(
+    store: StoreDep,
+    file: UploadFile = File(...),
+    dry_run: bool = False,
+    only: str | None = None,
+    clock_offset_min: Annotated[int, Query(ge=-1440, le=1440)] = 0,
+    link: Annotated[str | None, Query(pattern=cloud_import.LINK_PATTERN)] = None,
+    join: Annotated[str | None, Query(pattern=cloud_import.JOIN_PATTERN)] = None,
+    split: Annotated[str | None, Query(pattern=cloud_import.SPLIT_PATTERN)] = None,
+) -> ImportResult:
+    """Import the dives of a Shearwater Cloud export as drafts, or attach their profiles.
+
+    The upload is the database the mobile app exports (Export (*.db)), the desktop
+    ``dive_data.db``, or a ZIP holding either.
+    Every dive in it is listed in ``dives`` with its status; by default the ``new`` and
+    ``attach`` dives are imported, ``only`` (comma-separated computer dive numbers) limits that.
+    ``clock_offset_min`` corrects the computer's clock before matching and writing, and the
+    dives written with it carry a flag naming the correction. ``link`` (``673:675,672:680``)
+    attaches ``new`` dives to the log dives the owner chose, and ``join`` (``13+14,37+38+39``)
+    imports each group of computer dives as one dive. ``split`` (``614@1740,614@3970``) cuts a
+    dive at the surface breaks starting at those seconds into parts, each its own log dive,
+    with its own profile; ``link=614.2:612`` attaches a part. An attached profile fills the
+    log dive's empty times, average depth and water temperature. Each imported dive's raw logs
+    are kept in storage. With ``dry_run=true`` nothing is stored or written.
+    """
+    data = await file.read()
+    if len(data) > get_settings().MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large")
+    try:
+        entries = await asyncio.to_thread(_cloud_dives, data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Could not read export: {exc}") from exc
+
+    offset = timedelta(minutes=clock_offset_min)
+    for entry in entries:
+        if entry.dive is not None:
+            entry.dive.start += offset
+            entry.dive.end = entry.dive.end + offset if entry.dive.end else None
+            entry.dive.clock_offset_min = clock_offset_min
+    entries.sort(key=lambda e: (cloud_import.cloud_start(e, offset) or datetime.min, e.computer_no))
+
+    try:
+        plan = cloud_import.plan(
+            store,
+            entries,
+            offset=offset,
+            only=_dive_numbers(only),
+            links=cloud_import.parse_links(link),
+            joins=cloud_import.parse_joins(join),
+            splits=cloud_import.parse_splits(split),
+        )
+    except cloud_import.PlanError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    import_id = "" if dry_run else uuid4().hex
+    month = computer_import.import_month()
+    created: list[int] = []
+    updated: list[int] = []
+    rows = plan.rows
+    skipped = 0
+    planned = store.next_dive_number()
+    first_key: str | None = None
+    for unit in plan.units:
+        if unit.match.status == "have":
+            skipped += 1
             continue
-        began = datetime.combine(dive.date, datetime.strptime(dive.time_in, "%H:%M").time())
-        if abs(began - start) <= MATCH_WINDOW:
-            return dive
-    return None
+        if not unit.imported:
+            continue
+        head = entries[unit.head]
+        members = [entries[index] for index in unit.indices]
+        blobs = [blob for member in members for blob in member.blobs] if unit.part <= 1 else []
+        key = f"imports/{month}/{import_id}-{head.serial}-{head.computer_no}.swlog"
+        computer_start = unit.dive.start - offset
+        flags = [_clock_flag(clock_offset_min, computer_start)] if clock_offset_min else []
+        number = await computer_import.apply(
+            store,
+            unit.dive,
+            blobs,
+            unit.match,
+            import_id=import_id,
+            storage_key=key,
+            profile_name=_cloud_profile_name(store, head.computer_no),
+            dry_run=dry_run,
+            planned=planned,
+            content_type="application/octet-stream",
+            label=head.model or "Shearwater",
+            flags=flags,
+            fill_empty=True,
+        )
+        if unit.part:
+            rows[unit.head].parts[unit.part - 1].dive_number = number
+        if unit.part <= 1:
+            for index in unit.indices:
+                rows[index].dive_number = number
+        if unit.match.status == "attach":
+            updated.append(number)
+        else:
+            created.append(number)
+            planned += 1
+        if not dry_run and blobs:
+            first_key = first_key or computer_import.part_keys(key, len(blobs))[0]
+
+    dates = [date.fromisoformat(row.start[:10]) for row in rows if row.start]
+    report = ImportResult(
+        import_id=import_id,
+        created=created,
+        updated=updated,
+        skipped=skipped,
+        sites_created=0,
+        dry_run=dry_run,
+        dives_in_file=len(rows),
+        first_date=min(dates, default=None),
+        last_date=max(dates, default=None),
+        dives=rows,
+    )
+    if dry_run:
+        return report
+    record = ImportRecord(
+        id=import_id,
+        format="shearwater-cloud",
+        original_name=(file.filename or "")[:255],
+        storage_key=first_key or "",
+        created_at=datetime.now(UTC),
+        created=created,
+        updated=updated,
+    )
+    await store.save_import(record, f"Record Shearwater Cloud import {import_id[:8]}")
+    logger.info(
+        "shearwater cloud import: %d created, %d updated, %d skipped",
+        len(created),
+        len(updated),
+        skipped,
+    )
+    return report
+
+
+def _cloud_dives(data: bytes) -> list[CloudDive]:
+    """Every dive of a Shearwater Cloud export; raises ValueError for an unusable file."""
+    return list(open_export(data).dives())
+
+
+def _dive_numbers(only: str | None) -> set[int] | None:
+    """The computer dive numbers of ``only=673,674``; None (also for an empty one) imports all."""
+    parts = [part.strip() for part in (only or "").split(",") if part.strip()]
+    return {int(part) for part in parts if part.isdigit()} if parts else None
+
+
+def _clock_flag(offset_min: int, computer_start: datetime | None) -> str:
+    """The review flag of a clock correction: ``time corrected by +7 h (was 07:44)``."""
+    sign = "+" if offset_min > 0 else "-"
+    hours, minutes = divmod(abs(offset_min), 60)
+    parts = [f"{hours} h"] if hours else []
+    parts += [f"{minutes} min"] if minutes else []
+    was = f" (was {computer_start:%H:%M})" if computer_start else ""
+    return f"time corrected by {sign}{' '.join(parts)}{was}"
+
+
+def _cloud_profile_name(store: Store, computer_no: int) -> Callable[[int], str]:
+    """Profile names after the log dive, ``profile_00674.json``, or with the computer number."""
+
+    def name(number: int) -> str:
+        stem = f"profile_{number:05d}"
+        candidates = [stem, f"{stem}_{computer_no}"]
+        candidates += [f"{stem}_{computer_no}_{k}" for k in range(2, 100)]
+        for candidate in candidates:
+            if not (store.root / "profiles" / f"{candidate}.json").exists():
+                return f"{candidate}.json"
+        return f"{stem}_{computer_no}_{uuid4().hex[:6]}.json"
+
+    return name
 
 
 @router.get("/imports", response_model=list[ImportRecordOut])

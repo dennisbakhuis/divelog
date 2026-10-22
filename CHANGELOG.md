@@ -3,6 +3,37 @@
 `@divelog/kit` and `divelog-server` share version numbers. API major and data format stay at 1
 unless a section says otherwise.
 
+## 0.6.0 — Shearwater dives from the phone (22 October 2026)
+
+Dives come into the log from a Shearwater computer without the desktop app: the database the
+Shearwater Cloud app exports (Profile tab → Export (\*.db)) is uploaded on the import page, and
+the server reads the computer's own dive records from it. The API changes are additive
+(`POST /admin/import/shearwater-cloud`, `ImportResult.dives`); data format stays 1.
+
+- The import page opens with a Shearwater Cloud card. It takes the app's `.db` export, the
+  desktop `dive_data.db` or an account ZIP, and previews every dive in it: a new draft, a
+  profile for a logged dive, already in the log, or unreadable. Only dives newer than the log's
+  latest imported one start ticked, so the whole export can be uploaded every time. "Import
+  from Shearwater" on the Dives and New dive pages goes straight to it.
+- A dive is matched by its computer number and serial, else by the nearest logged dive that day
+  within 10 minutes, never one that already has a profile from that computer. A clock offset
+  corrects a drifting computer clock and flags the dive ("time corrected by +7 h (was 07:44)").
+- Each new dive can belong to a logged dive of the same day ("Belongs to"), with the clearly
+  nearest one suggested. Adding a profile to a logged dive only fills its empty time in, time
+  out, average depth and water temperature.
+- Dives the computer ended at a surface break can be joined ("Same dive as #13 (surfaced 12
+  min)") into one dive with one profile, and a dive it kept going through a surface break can be
+  split at the break into one dive per part, each with its own profile and "Belongs to". A
+  break where a logged dive starts is suggested; neither happens on its own.
+- Shearwater PNF dive logs are parsed by a parser written from `docs/SHEARWATER.md`, with the
+  format knowledge credited to libdivecomputer and Subsurface in `NOTICE`: samples on the
+  computer's real interval from t = 0, the surface tail after the dive trimmed, logs split in
+  two by the computer merged. `divelog import shearwater-pnf` uses it and writes full profiles,
+  with the stop depth from the right field.
+- The raw log of each imported dive is kept under `imports/YYYY/MM/`, and the import is listed
+  with format `shearwater-cloud`. The Shearwater XML import shares the matching, so it no longer
+  attaches a profile by time to a dive that already has one.
+
 ## 0.5.0 — logging from a phone, buddies sign by e-mail, patched trust stores (21 October 2026)
 
 Every admin function has to work on a phone; this release makes logging a dive at a new or
