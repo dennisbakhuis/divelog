@@ -3,7 +3,7 @@
 `@divelog/kit` and `divelog-server` share version numbers. API major and data format stay at 1
 unless a section says otherwise.
 
-## Unreleased
+## 0.6.1 — dives recognised by computer and date (22 October 2026)
 
 - A computer dive number only matches a logged dive dated within a day of the computer dive, so
   a new computer whose numbers restart at 1 no longer attaches its #14 to a hand-logged dive
