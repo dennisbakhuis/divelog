@@ -2,7 +2,8 @@
 
 ``classify`` decides whether a computer dive is ``new`` to the log, belongs to a log dive that
 still lacks its profile (``attach``), or is already imported (``have``). ``apply`` then stores
-the raw log and writes the draft dive or the attached profile.
+the raw log and writes the draft dive or the attached profile. ``Profiles`` reads the log's
+stored profiles once per import, for the serial and Shearwater Cloud ids they name.
 """
 
 import re
@@ -18,6 +19,7 @@ from divelog_server.store.models import DiveRecord
 from divelog_server.store.store import Store
 
 MATCH_WINDOW = timedelta(minutes=10)
+NUMBER_WINDOW = timedelta(days=1)
 SERIAL = re.compile(r"[0-9A-Fa-f]{8}")
 
 Status = Literal["new", "attach", "have"]
@@ -31,15 +33,67 @@ class Match:
     dive: DiveRecord | None = None
 
 
-def classify(store: Store, dive: ShearwaterDive, *, serial: str | None) -> Match:
+@dataclass(frozen=True)
+class ProfileSource:
+    """The computer a stored profile names: its serial (or ``""``) and Cloud ``source_ids``."""
+
+    serial: str = ""
+    ids: tuple[str, ...] = ()
+
+
+class Profiles:
+    """The log's stored profiles as matching needs them, each file read at most once.
+
+    Build one per import, before anything is written: ``source`` reads a profile on first use
+    and ``dive_with_id`` indexes every profile's ``source_ids`` on first use.
+
+    Parameters
+    ----------
+    store : Store
+        The log.
+    """
+
+    def __init__(self, store: Store) -> None:
+        self.store = store
+        self._sources: dict[str, ProfileSource] = {}
+        self._by_id: dict[str, DiveRecord] | None = None
+
+    def source(self, relative: str) -> ProfileSource:
+        """What the profile at ``relative`` names; empty when it is missing or unreadable."""
+        if relative not in self._sources:
+            self._sources[relative] = _read_source(self.store, relative)
+        return self._sources[relative]
+
+    def dive_with_id(self, ids: Collection[str]) -> DiveRecord | None:
+        """The log dive with a profile naming one of ``ids``, the lowest number when several do."""
+        if not ids:
+            return None
+        if self._by_id is None:
+            self._by_id = {}
+            for holder in sorted(self.store.dives.values(), key=lambda d: d.number):
+                for relative in holder.profiles:
+                    for source_id in self.source(relative).ids:
+                        self._by_id.setdefault(source_id, holder)
+        found = [self._by_id[i] for i in ids if i in self._by_id]
+        return min(found, key=lambda d: d.number) if found else None
+
+
+def classify(
+    store: Store,
+    dive: ShearwaterDive,
+    *,
+    serial: str | None,
+    profiles: Profiles | None = None,
+) -> Match:
     """Find the log dive a computer dive belongs to.
 
-    A log dive whose ``computer`` list holds the dive number matches; several can, when the
-    owner split one log into several dives or joined several numbers into one. If one of them
-    has a profile from this computer the dive is ``have``; otherwise the first is ``attach``.
-    Without a number match, the dive on the same date starting nearest to it, within
-    ``MATCH_WINDOW`` and without a profile from this computer, is ``attach``, and anything
-    else is ``new``.
+    A log dive holding a profile with one of the dive's ``source_ids`` makes it ``have``.
+    Otherwise a log dive whose ``computer`` list holds the dive number and whose date is
+    within ``NUMBER_WINDOW`` of the dive's matches; several can, when the owner split one log
+    into several dives or joined several numbers into one. If one of them has a profile from
+    this computer the dive is ``have``; otherwise the first is ``attach``. Without a number
+    match, the dive on the same date starting nearest to it, within ``MATCH_WINDOW`` and
+    without a profile from this computer, is ``attach``, and anything else is ``new``.
 
     Parameters
     ----------
@@ -50,21 +104,54 @@ def classify(store: Store, dive: ShearwaterDive, *, serial: str | None) -> Match
     serial : str or None
         The computer's serial. A profiled dive with this number only counts as ``have`` when
         its profile names the same serial or none; None skips that check.
+    profiles : Profiles, optional
+        The log's profiles, built once per import; a fresh one when not given.
 
     Returns
     -------
     Match
         The status and the matched log dive (None for ``new``).
     """
-    numbered = [d for d in store.dives.values() if dive.number in d.computer]
+    profiles = profiles or Profiles(store)
+    known = profiles.dive_with_id(dive.source_ids)
+    if known is not None:
+        return Match("have", known)
+    numbered = numbered_dives(store, dive.number, dive.start)
     for candidate in numbered:
-        if candidate.profiles and _same_computer(store, candidate, serial):
+        if candidate.profiles and _same_computer(profiles, candidate, serial):
             return Match("have", candidate)
     for candidate in numbered:
         if not candidate.profiles:
             return Match("attach", candidate)
-    nearest = nearest_in_window(store, dive.start, serial=serial)
+    nearest = nearest_in_window(store, dive.start, serial=serial, profiles=profiles)
     return Match("attach", nearest) if nearest is not None else Match("new")
+
+
+def numbered_dives(store: Store, number: int, start: datetime) -> list[DiveRecord]:
+    """The log dives listing computer dive ``number``, dated within ``NUMBER_WINDOW`` of ``start``.
+
+    A computer's numbers restart when the owner buys a new one, so a number only identifies a
+    dive near its date.
+
+    Parameters
+    ----------
+    store : Store
+        The log.
+    number : int
+        The computer dive number.
+    start : datetime
+        The computer dive's corrected start.
+
+    Returns
+    -------
+    list of DiveRecord
+        The dives in the log's order.
+    """
+    return [
+        candidate
+        for candidate in store.dives.values()
+        if number in candidate.computer and abs(candidate.date - start.date()) <= NUMBER_WINDOW
+    ]
 
 
 def nearest_in_window(
@@ -73,6 +160,7 @@ def nearest_in_window(
     *,
     serial: str | None,
     exclude: Collection[int] = (),
+    profiles: Profiles | None = None,
 ) -> DiveRecord | None:
     """The log dive starting nearest to ``start`` on its date, within ``MATCH_WINDOW``.
 
@@ -86,19 +174,22 @@ def nearest_in_window(
         The computer's serial: dives with a profile from it are left out.
     exclude : collection of int
         Log dive numbers to leave out, such as those other dives attach to.
+    profiles : Profiles, optional
+        The log's profiles, built once per import; a fresh one when not given.
 
     Returns
     -------
     DiveRecord or None
         The nearest dive, the lowest number on a tie, or None when none is in the window.
     """
+    profiles = profiles or Profiles(store)
     window = [
         (apart, candidate.number, candidate)
         for candidate, apart in _same_day(store, start)
         if apart is not None
         and apart <= MATCH_WINDOW
         and candidate.number not in exclude
-        and not has_profile_from(store, candidate, serial)
+        and not has_profile_from(store, candidate, serial, profiles=profiles)
     ]
     return min(window, key=lambda item: item[:2])[2] if window else None
 
@@ -109,6 +200,7 @@ def candidates(
     *,
     serial: str | None,
     exclude: Collection[int] = (),
+    profiles: Profiles | None = None,
 ) -> list[tuple[DiveRecord, int | None]]:
     """The log dives a new computer dive may belong to, nearest first.
 
@@ -122,6 +214,8 @@ def candidates(
         The computer's serial: dives with a profile from it are left out.
     exclude : collection of int
         Log dive numbers to leave out, such as those other dives attach to.
+    profiles : Profiles, optional
+        The log's profiles, built once per import; a fresh one when not given.
 
     Returns
     -------
@@ -129,10 +223,12 @@ def candidates(
         The dives on ``start``'s date with their distance from it in whole minutes (None
         without a ``time_in``), by distance with unknown distances last, then by number.
     """
+    profiles = profiles or Profiles(store)
     found = [
         (candidate, None if apart is None else round(apart.total_seconds() / 60))
         for candidate, apart in _same_day(store, start)
-        if candidate.number not in exclude and not has_profile_from(store, candidate, serial)
+        if candidate.number not in exclude
+        and not has_profile_from(store, candidate, serial, profiles=profiles)
     ]
     return sorted(found, key=lambda item: (item[1] is None, item[1] or 0, item[0].number))
 
@@ -144,6 +240,7 @@ def starting_between(
     *,
     serial: str | None,
     exclude: Collection[int] = (),
+    profiles: Profiles | None = None,
 ) -> list[DiveRecord]:
     """The log dives on ``earliest``'s date whose ``time_in`` lies in ``[earliest, latest]``.
 
@@ -157,12 +254,15 @@ def starting_between(
         The computer's serial: dives with a profile from it are left out.
     exclude : collection of int
         Log dive numbers to leave out, such as those other dives attach to.
+    profiles : Profiles, optional
+        The log's profiles, built once per import; a fresh one when not given.
 
     Returns
     -------
     list of DiveRecord
         The dives in the log's order.
     """
+    profiles = profiles or Profiles(store)
     return [
         candidate
         for candidate in store.dives.values()
@@ -170,13 +270,18 @@ def starting_between(
         and candidate.number not in exclude
         and (began := _began(candidate)) is not None
         and earliest <= began <= latest
-        and not has_profile_from(store, candidate, serial)
+        and not has_profile_from(store, candidate, serial, profiles=profiles)
     ]
 
 
-def has_profile_from(store: Store, dive: DiveRecord, serial: str | None) -> bool:
-    """Whether the dive holds a profile from the computer with ``serial``, as ``have`` means."""
-    return bool(dive.profiles) and _same_computer(store, dive, serial)
+def has_profile_from(
+    store: Store, dive: DiveRecord, serial: str | None, *, profiles: Profiles | None = None
+) -> bool:
+    """Whether the dive holds a profile from the computer with ``serial``, as ``have`` means.
+
+    ``profiles`` is the log's profiles, built once per import; a fresh one when not given.
+    """
+    return bool(dive.profiles) and _same_computer(profiles or Profiles(store), dive, serial)
 
 
 def _same_day(store: Store, start: datetime) -> list[tuple[DiveRecord, timedelta | None]]:
@@ -204,7 +309,7 @@ def computer_numbers(dive: ShearwaterDive) -> list[int]:
     return list(dict.fromkeys(dive.computer_records or [dive.number]))
 
 
-def _same_computer(store: Store, dive: DiveRecord, serial: str | None) -> bool:
+def _same_computer(profiles: Profiles, dive: DiveRecord, serial: str | None) -> bool:
     """Whether one of the dive's profiles came from the computer with ``serial``.
 
     A profile's serial is the last word of its ``source`` when that is eight hex digits. An
@@ -214,22 +319,25 @@ def _same_computer(store: Store, dive: DiveRecord, serial: str | None) -> bool:
     if not serial:
         return True
     for relative in dive.profiles:
-        theirs = _profile_serial(store, relative)
+        theirs = profiles.source(relative).serial
         if not theirs or theirs.upper() == serial.upper():
             return True
     return False
 
 
-def _profile_serial(store: Store, relative: str) -> str:
-    """The serial a stored profile's ``source`` names, or an empty string."""
+def _read_source(store: Store, relative: str) -> ProfileSource:
+    """The serial a stored profile's ``source`` names and its ``source_ids``, read from disk."""
     path = store.root / relative
     try:
         payload = read_json(path) if path.is_file() else None
     except ValueError:
-        return ""
-    source = payload.get("source") if isinstance(payload, dict) else None
-    words = str(source or "").split()
-    return words[-1].upper() if words and SERIAL.fullmatch(words[-1]) else ""
+        return ProfileSource()
+    if not isinstance(payload, dict):
+        return ProfileSource()
+    words = str(payload.get("source") or "").split()
+    serial = words[-1].upper() if words and SERIAL.fullmatch(words[-1]) else ""
+    ids = payload.get("source_ids")
+    return ProfileSource(serial, tuple(str(i) for i in ids) if isinstance(ids, list) else ())
 
 
 def part_keys(storage_key: str, parts: int) -> list[str]:

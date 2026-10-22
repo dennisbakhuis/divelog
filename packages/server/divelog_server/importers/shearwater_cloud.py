@@ -4,7 +4,8 @@ The mobile app's Export (*.db) button on the Profile tab writes the Cloud SQLite
 desktop app keeps the same database as ``dive_data.db``, and an account ZIP holds it too. All
 are accepted. The database is opened in memory, only read, and each ``sw-pnf`` blob in it is
 parsed with ``shearwater_pnf``. Logs the computer split at a surface break (same serial and
-dive number) are merged into one dive.
+dive number) are merged into one dive. Each log's ``DiveId`` becomes one of the dive's
+``source_ids``.
 """
 
 import io
@@ -28,7 +29,7 @@ CHUNK_BYTES = 1024 * 1024
 TABLES = ("log_data", "dive_details")
 PNF_FORMAT = "sw-pnf"
 LOGS_QUERY = """
-    SELECT l.file_name, l.data_bytes_1, d.SerialNumber, d.DiveDate
+    SELECT l.log_id, l.file_name, l.data_bytes_1, d.SerialNumber, d.DiveDate
     FROM log_data AS l LEFT JOIN dive_details AS d ON d.DiveId = l.log_id
     WHERE l.format = ?
     ORDER BY l.log_id
@@ -38,8 +39,9 @@ FILE_NAME = re.compile(r"^(?P<model>[^\[]*)\[(?P<serial>[0-9A-Fa-f]+)\]#(?P<numb
 
 @dataclass
 class CloudLog:
-    """One ``log_data`` row with the ``dive_details`` it joins."""
+    """One ``log_data`` row with the ``dive_details`` it joins; ``log_id`` is its ``DiveId``."""
 
+    log_id: str
     file_name: str
     blob: bytes | None
     serial: str
@@ -50,9 +52,9 @@ class CloudLog:
 class CloudDive:
     """One dive in the export: the parsed dive, or why its log could not be read.
 
-    ``file_names`` and ``blobs`` hold every log of the dive in start order; more than one when
-    the computer split it. ``logged_at`` is the start Shearwater Cloud recorded, for a dive
-    whose log could not be parsed.
+    ``file_names``, ``blobs`` and ``source_ids`` (the ``DiveId`` of each) hold every log of the
+    dive in start order; more than one when the computer split it. ``logged_at`` is the start
+    Shearwater Cloud recorded, for a dive whose log could not be parsed.
     """
 
     serial: str
@@ -63,6 +65,7 @@ class CloudDive:
     error: str | None = None
     model: str | None = None
     logged_at: datetime | None = None
+    source_ids: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -71,6 +74,7 @@ class _Group:
 
     file_names: list[str] = field(default_factory=list)
     blobs: list[bytes] = field(default_factory=list)
+    log_ids: list[str] = field(default_factory=list)
     dives: list[ShearwaterDive] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     model: str | None = None
@@ -113,6 +117,7 @@ class CloudExport:
             group = groups.setdefault(key, _Group())
             group.file_names.append(log.file_name)
             group.blobs.append(log.blob or b"")
+            group.log_ids.append(log.log_id)
             group.model = group.model or model
             group.logged_at = group.logged_at or log.logged_at
             if dive is not None:
@@ -131,6 +136,7 @@ class CloudExport:
                     error="; ".join(group.errors),
                     model=group.model,
                     logged_at=group.logged_at,
+                    source_ids=[i for i in group.log_ids if i],
                 )
                 continue
             order = sorted(range(len(group.dives)), key=lambda k: group.dives[k].start)
@@ -142,6 +148,7 @@ class CloudExport:
                 dive=merge_parts(group.dives),
                 model=group.model,
                 logged_at=group.logged_at,
+                source_ids=[group.log_ids[k] for k in order if group.log_ids[k]],
             )
 
 
@@ -150,9 +157,11 @@ def _parse(log: CloudLog) -> tuple[ShearwaterDive | None, str | None]:
     if not log.blob:
         return None, "the log has no dive data"
     try:
-        return parse_pnf(unwrap(log.blob), serial=log.serial or None), None
+        dive = parse_pnf(unwrap(log.blob), serial=log.serial or None)
     except ValueError as exc:
         return None, str(exc)
+    dive.source_ids = [log.log_id] if log.log_id else []
+    return dive, None
 
 
 def open_export(data: bytes) -> CloudExport:
@@ -245,12 +254,13 @@ def _read_logs(data: bytes) -> list[CloudLog] | None:
         connection.close()
     return [
         CloudLog(
+            log_id=str(log_id or "").strip(),
             file_name=str(file_name or ""),
             blob=bytes(blob) if isinstance(blob, bytes | bytearray | memoryview) else None,
             serial=str(serial or "").strip().upper(),
             logged_at=_logged_at(logged_at),
         )
-        for file_name, blob, serial, logged_at in rows
+        for log_id, file_name, blob, serial, logged_at in rows
     ]
 
 

@@ -23,6 +23,15 @@ mobile app's *Export account* writes a ZIP with this database and a `SyncReport.
 
 `dive_logs` is a decoded header table that may be empty, so everything is read from the blob.
 
+**DiveId.** `log_data.log_id` (= `dive_details.DiveId`) is a string of 18 digits, such as
+`723431761786175088`. On all 221 dives it is `72343176 × 10^10` plus the dive's start as epoch
+seconds: the computer's local wall clock read as UTC, so the start before any clock correction
+(`1786175088` is 2026-08-08 07:44:48, dive #674). The prefix is fixed per computer; how it is
+derived from the serial is unknown. The id is identical in the phone and desktop exports. A dive
+the computer split into two blobs (458–460) has one `DiveId` per blob. It is not used as the key
+because XML and Bluetooth downloads lack it; the importer stores it in `source_ids` and
+recognises it (see [Matching dives to the log](#matching-dives-to-the-log)).
+
 **Blob framing.** `data_bytes_1` is a 4-byte little-endian uncompressed length followed by a gzip
 stream. The stream may be followed by zero padding (62 of the 221 Perdix AI blobs, some padded to
 exactly 8196 bytes), which is ignored; the length prefix matches the decompressed body. A
@@ -163,8 +172,8 @@ Two other shapes exist in a log and are importer behaviour, not format facts:
 - **One log, several log dives.** The diver can split one computer log into several dives in the
   log (`profile_<n>_1.json`, `profile_<n>_2.json`, …), as for 603, 610 and 614, where short
   surface intervals did not end the dive on the computer. Every one of those dives carries the
-  same computer number, so a dive with that number and a profile means the log is already
-  imported. The Cloud import never splits on its own, it only offers the breaks
+  same computer number, so a dive with that number, a date within a day of the computer dive's
+  and a profile means the log is already imported. The Cloud import never splits on its own, it only offers the breaks
   (`surface_breaks_of`): runs of samples at 0.3 m or shallower lasting at least 60 s, runs less
   than 180 s apart merged into one break, and only breaks that start 180 s after the first
   sample and end 180 s before the last sample below 0.3 m, so the surface tail never counts. A
@@ -173,8 +182,31 @@ Two other shapes exist in a log and are importer behaviour, not format facts:
   (`split_at`): part 1 runs from t = 0 to the first break's first surface sample, each later
   part from the previous break's last surface sample, shifted to t = 0, and each part gets its
   own dive time, depths, temperatures and gas at its start. Each part is matched on its own
-  (a `link=614.2:612`, else the nearest dive within 10 min, else a dive with the number and no
-  profile) and becomes its own log dive with its own profile.
+  (a `link=614.2:612`, else the nearest dive within 10 min, else a dive with the number, dated
+  within a day, and no profile) and becomes its own log dive with its own profile, which keeps
+  the dive's `source_ids`.
 - **Several computer numbers, one log dive.** The diver can join consecutive computer dives into
   one profile (`computer_records: [13, 14]`), as for 13+14 and 542+543. The later numbers then
   have no profile of their own, but they are already in the log.
+
+## Matching dives to the log
+
+The XML and Cloud imports decide per computer dive whether it is already in the log (`have`),
+belongs to a logged dive without its profile (`attach`) or is `new`, in this order:
+
+1. **Cloud id.** A log dive holding a profile whose `source_ids` contains one of the dive's
+   `DiveId`s has it. Ids are unique, so neither the number nor the date is checked. The Cloud
+   import writes `"source_ids"` right after `"source"` (`"Perdix AI 344FDE85"`): one id per blob,
+   in start order; a joined dive lists those of every dive joined, and each part of a split dive
+   gets all of the dive's ids. XML and command-line imports write no `source_ids`.
+2. **Computer number, near its date.** A log dive whose `computer` list holds the dive number
+   matches only when its `date` is within a day of the computer dive's corrected start date. A
+   new computer's numbers restart at 1, so a hand-logged dive `computer: [14]` from years ago must
+   not take the new computer's #14. With a profile from this computer (its `source` names this
+   serial or none) the dive is `have`; a dive without profiles is `attach`. A number on a far
+   date is ignored.
+3. **Time.** The logged dive on the same date starting nearest to the corrected start, within
+   10 min and without a profile from this computer, is `attach`.
+4. Anything else is `new`.
+
+The log's profiles are read once per import for their serials and ids.

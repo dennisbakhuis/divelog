@@ -73,7 +73,7 @@ def test_dives_merge_split_logs_and_report_errors(tmp_path: Path) -> None:
     assert errors == ["broken.swlogzp: Predator-style (FFFF) logs are not supported"]
     first, split = (d.profile() for d in dives)
     assert first["t_s"] == [0, 10, 20, 30] and first["depth_m"] == [2.0, 18.5, 1.0, 0.0]
-    assert first["source"] == "Perdix AI DEADBEEF"
+    assert first["source"] == "Perdix AI DEADBEEF" and "source_ids" not in first
     assert split["computer_records"] == [8, 8] and split["surface_breaks"] == [[10, 300]]
     assert shearwater_pnf.file_name(dives[0]) == "shearwater_2025-03-01_0007.json"
 

@@ -28,7 +28,8 @@ class ShearwaterDive:
     ``start`` and ``end`` are local wall-clock times, already shifted by ``clock_offset_min``
     when the computer's clock was corrected. ``computer_records`` lists the computer dive
     numbers merged into this dive, and ``surface_breaks`` the ``[from, to]`` seconds between
-    them; both stay empty for a single log.
+    them; both stay empty for a single log. ``source_ids`` are the Shearwater Cloud ``DiveId``
+    of each log the dive came from, empty for other imports.
     """
 
     number: int
@@ -54,6 +55,7 @@ class ShearwaterDive:
     gases: list[list[int]] = field(default_factory=list)
     computer_records: list[int] = field(default_factory=list)
     surface_breaks: list[list[int]] = field(default_factory=list)
+    source_ids: list[str] = field(default_factory=list)
 
     @property
     def time_in(self) -> str:
@@ -74,7 +76,10 @@ class ShearwaterDive:
         return round(statistics.median(gaps), 1) if gaps else None
 
     def profile(self) -> dict[str, Any]:
-        """The columnar JSON document the data repository stores per dive."""
+        """The columnar JSON document the data repository stores per dive.
+
+        ``source_ids`` follows ``source`` only when the dive has any.
+        """
         return {
             "computer_no": self.number,
             "computer_records": self.computer_records or [self.number],
@@ -95,6 +100,7 @@ class ShearwaterDive:
             "gas_switches": self.gas_switches,
             "partial": None,
             "source": f"{self.model_name or 'Perdix'} {self.serial}",
+            **({"source_ids": list(self.source_ids)} if self.source_ids else {}),
             "t_s": self.t_s,
             "depth_m": self.depth_m,
             "temp_c": self.temp_c,

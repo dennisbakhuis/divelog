@@ -3,6 +3,17 @@
 `@divelog/kit` and `divelog-server` share version numbers. API major and data format stay at 1
 unless a section says otherwise.
 
+## 0.6.1 — dives recognised by computer and date (22 October 2026)
+
+- A computer dive number only matches a logged dive dated within a day of the computer dive, so
+  a new computer whose numbers restart at 1 no longer attaches its #14 to a hand-logged dive
+  `computer: [14]` from years ago. A number on a far date falls through to the time match. This
+  holds for the Shearwater Cloud and XML imports.
+- Profiles from the Shearwater Cloud import keep the Cloud `DiveId` of each log in
+  `"source_ids"`, after `"source"`; joined and split dives carry the ids of their logs. A dive
+  whose id is in a profile is recognised as already in the log, even after its computer number
+  was removed from the dive, and cannot be linked, joined or split again.
+
 ## 0.6.0 — Shearwater dives from the phone (22 October 2026)
 
 Dives come into the log from a Shearwater computer without the desktop app: the database the
