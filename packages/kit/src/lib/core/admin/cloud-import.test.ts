@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applySplits,
+  breakLabel,
   candidateLabel,
+  carryPartChoices,
+  carrySplits,
   carryChoices,
   carryTicks,
   choiceOf,
@@ -10,27 +14,37 @@ import {
   cloudErrorMessage,
   cloudFields,
   cloudLines,
+  chooseSplit,
   formatClockOffset,
   isTicked,
   joinLabel,
   joinParam,
   linkParam,
   MAX_CLOCK_OFFSET_MIN,
+  needsSplitRun,
   nothingNew,
   onlyParam,
   parseChoice,
   parseClockOffset,
+  partChoiceOf,
   previewAnnouncement,
   previewRows,
   selectionLine,
   setTick,
   rowOptions,
+  splitParam,
   tickedCount,
   viewRows,
   type CloudRow,
 } from './cloud-import.js';
 import { AdminApiError } from './client.js';
-import type { ImportCandidate, ImportDive, ImportResult } from '$lib/core/dive/types.js';
+import type {
+  ImportBreak,
+  ImportCandidate,
+  ImportDive,
+  ImportPart,
+  ImportResult,
+} from '$lib/core/dive/types.js';
 
 function dive(overrides: Partial<ImportDive> = {}): ImportDive {
   return {
@@ -49,6 +63,8 @@ function dive(overrides: Partial<ImportDive> = {}): ImportDive {
     suggested: null,
     surface_before_min: null,
     joined_to: null,
+    breaks: [],
+    parts: [],
     ...overrides,
   };
 }
@@ -448,7 +464,14 @@ describe('the default ticks and the older dives', () => {
 
   it('ticks everything readable for a server without the newer fields', () => {
     const legacy = dive();
-    for (const key of ['selected', 'candidates', 'suggested', 'surface_before_min'] as const)
+    for (const key of [
+      'selected',
+      'candidates',
+      'suggested',
+      'surface_before_min',
+      'breaks',
+      'parts',
+    ] as const)
       delete (legacy as Partial<ImportDive>)[key];
     const before = dive({ computer_no: 673, start: '2026-08-08T06:00:00' });
     const preview = previewRows(result([before, legacy]));
@@ -457,6 +480,8 @@ describe('the default ticks and the older dives', () => {
       candidates: [],
       suggested: null,
       joinable: { computerNo: 673, surfaceMin: null },
+      breaks: [],
+      parts: [],
     });
   });
 
@@ -642,6 +667,13 @@ describe('joining dives', () => {
 });
 
 describe('the commit fields', () => {
+  it('carries the splits', () => {
+    expect(cloudFields({ dryRun: true, split: '614@1740', clockOffsetMin: 0 })).toEqual({
+      dry_run: 'true',
+      split: '614@1740',
+    });
+  });
+
   it('carries the links and the joins', () => {
     expect(
       cloudFields({
@@ -652,5 +684,254 @@ describe('the commit fields', () => {
         clockOffsetMin: 0,
       }),
     ).toEqual({ only: '673,674', link: '673:675', join: '673+674' });
+  });
+});
+
+function surface(overrides: Partial<ImportBreak> = {}): ImportBreak {
+  return {
+    start_s: 1740,
+    end_s: 2340,
+    minutes: 10,
+    start: '11:48',
+    end: '11:58',
+    suggested: true,
+    ...overrides,
+  };
+}
+
+function piece(overrides: Partial<ImportPart> = {}): ImportPart {
+  return {
+    part: 1,
+    start: '2026-08-09T11:19:00',
+    duration_min: 29,
+    max_depth_m: 18.4,
+    status: 'attach',
+    dive_number: 611,
+    candidates: [],
+    suggested: null,
+    ...overrides,
+  };
+}
+
+const LATE = surface({ start_s: 3970, end_s: 4090, minutes: 2, start: '12:25', end: '12:27' });
+
+/**
+ * 614 has a suggested break at 29 min and another at 66 min, and a candidate; 615 may join it;
+ * 613 may join 612 and has no breaks; 616 is unreadable.
+ */
+const CAVE = [
+  dive({ computer_no: 612, ...at('2026-08-09T09:00:00') }),
+  dive({ computer_no: 613, ...at('2026-08-09T10:00:00'), surface_before_min: 2 }),
+  dive({
+    computer_no: 614,
+    ...at('2026-08-09T11:19:00'),
+    surface_before_min: 21,
+    candidates: [candidate({ number: 611, date: '2026-08-09', time_in: '11:20' })],
+    suggested: 611,
+    breaks: [surface(), { ...LATE, suggested: false }],
+  }),
+  dive({ computer_no: 615, ...at('2026-08-09T13:00:00'), surface_before_min: 20 }),
+  dive({
+    computer_no: 616,
+    ...at('2026-08-09T15:00:00'),
+    status: 'error',
+    error: 'bad blob',
+    breaks: [surface()],
+  }),
+];
+
+const CUT = [
+  piece(),
+  piece({
+    part: 2,
+    start: '2026-08-09T11:58:00',
+    duration_min: 42.84,
+    max_depth_m: 13.2,
+    status: 'new',
+    dive_number: 652,
+    candidates: [
+      candidate({ number: 612, date: '2026-08-09', time_in: '12:00', minutes_apart: 2 }),
+      candidate({ number: 618, date: '2026-08-09', time_in: '16:00', site: null }),
+    ],
+    suggested: 612,
+  }),
+];
+
+const cutAt = (split: string, parts: ImportPart[] = CUT) =>
+  previewRows(result(CAVE.map((d) => (d.computer_no === 614 ? { ...d, parts } : d))), split).rows;
+
+describe('splitting a dive', () => {
+  const raw = previewRows(result(CAVE)).rows;
+  const by = (rows: CloudRow[], n: number) => rows.find((r) => r.computerNo === n)!;
+
+  it('labels a break by when it starts in the dive, how long and the wall clock', () => {
+    expect(breakLabel(surface())).toBe('29 min · surfaced 10 min (11:48–11:58)');
+    expect(breakLabel(surface({ start_s: 3040 }))).toBe('51 min · surfaced 10 min (11:48–11:58)');
+  });
+
+  it('keeps the breaks of readable rows and the cut the dry run sent', () => {
+    expect(by(raw, 614).breaks).toEqual([
+      { startS: 1740, suggested: true, label: '29 min · surfaced 10 min (11:48–11:58)' },
+      { startS: 3970, suggested: false, label: '66 min · surfaced 2 min (12:25–12:27)' },
+    ]);
+    expect(by(raw, 614)).toMatchObject({ split: [], cut: [], parts: [] });
+    expect(by(raw, 616).breaks).toEqual([]);
+    const cut = by(cutAt('614@3970,614@1740,612@99'), 614);
+    expect(cut.cut).toEqual([1740, 3970]);
+    expect(by(cutAt('614@1740'), 616).cut).toEqual([]);
+  });
+
+  it('describes each part', () => {
+    const [first, second] = by(cutAt('614@1740'), 614).parts;
+    expect(first).toMatchObject({
+      key: '614.1',
+      part: 1,
+      status: 'attach',
+      title: 'Part 1 · 11:19 · 29 min · 18.4 m',
+      outcome: 'add profile to dive #611',
+      candidates: [],
+      suggested: null,
+    });
+    expect(second).toMatchObject({
+      key: '614.2',
+      title: 'Part 2 · 11:58 · 42.8 min · 13.2 m',
+      outcome: 'new draft #652',
+      suggested: 612,
+    });
+    const odd = by(cutAt('614@1740', [piece({ status: 'new', suggested: 999 })]), 614).parts[0];
+    expect(odd.suggested).toBeNull();
+    const legacy = piece({ status: 'new' });
+    delete (legacy as Partial<ImportPart>).candidates;
+    delete (legacy as Partial<ImportPart>).suggested;
+    expect(by(cutAt('614@1740', [legacy]), 614).parts[0]).toMatchObject({
+      candidates: [],
+      suggested: null,
+    });
+  });
+
+  it('splits at the suggested breaks unless the owner chose otherwise', () => {
+    const rows = applySplits(raw, {}, {});
+    expect(by(rows, 614)).toMatchObject({
+      split: [1740],
+      joinable: null,
+      candidates: [],
+      suggested: null,
+    });
+    expect(by(rows, 615).joinable).toBeNull();
+    expect(by(rows, 613).joinable).toEqual({ computerNo: 612, surfaceMin: 2 });
+    expect(by(rows, 616).split).toEqual([]);
+    expect(by(applySplits(raw, { 614: [3970, 1740] }, {}), 614).split).toEqual([1740, 3970]);
+    expect(by(applySplits(raw, { 614: [5000] }, {}), 614).split).toEqual([]);
+    const whole = applySplits(raw, { 614: [] }, {});
+    expect(by(whole, 614)).toMatchObject({ split: [], suggested: 611 });
+    expect(by(whole, 615).joinable).toEqual({ computerNo: 614, surfaceMin: 20 });
+  });
+
+  it('lets a join win over a suggested break, and a ticked break over a join', () => {
+    const joined = applySplits(raw, {}, { 615: 'join' });
+    expect(by(joined, 614).split).toEqual([]);
+    expect(by(joined, 615).joinable).toEqual({ computerNo: 614, surfaceMin: 20 });
+    expect(joinParam(joined, { 615: 'join' })).toBe('614+615');
+    const both = applySplits(raw, { 614: [1740] }, { 615: 'join' });
+    expect(by(both, 615).joinable).toBeNull();
+    expect(joinParam(both, { 615: 'join' })).toBeUndefined();
+    expect(by(applySplits(raw, {}, { 614: 'join' }), 614).split).toEqual([]);
+  });
+
+  it('builds the split value and knows when the dry run is out of date', () => {
+    expect(splitParam(raw)).toBeUndefined();
+    expect(splitParam(applySplits(raw, {}, {}))).toBe('614@1740');
+    expect(splitParam(applySplits(raw, { 614: [1740, 3970] }, {}))).toBe('614@1740,614@3970');
+    expect(needsSplitRun(raw)).toBe(false);
+    expect(needsSplitRun(applySplits(raw, {}, {}))).toBe(true);
+    expect(needsSplitRun(applySplits(cutAt('614@1740'), {}, {}))).toBe(false);
+    expect(needsSplitRun(applySplits(cutAt('614@1740'), { 614: [] }, {}))).toBe(true);
+  });
+
+  it('ticks and unticks one break, keeping the others', () => {
+    const row = by(applySplits(raw, {}, {}), 614);
+    expect(chooseSplit({}, row, 3970, true)).toEqual({ 614: [1740, 3970] });
+    expect(chooseSplit({}, row, 1740, false)).toEqual({ 614: [] });
+    expect(chooseSplit({ 613: [] }, row, 1740, true)).toEqual({ 613: [], 614: [1740] });
+  });
+
+  it('shows the Split control on a row alone, the parts once the dry run cut it', () => {
+    const shown = (rows: CloudRow[], choices = {}, parts = {}) =>
+      viewRows(rows, choices, parts).find((v) => v.row.computerNo === 614)!;
+    const before = shown(applySplits(raw, {}, {}));
+    expect(before.breaks).toEqual([
+      {
+        startS: 1740,
+        suggested: true,
+        label: '29 min · surfaced 10 min (11:48–11:58)',
+        checked: true,
+      },
+      {
+        startS: 3970,
+        suggested: false,
+        label: '66 min · surfaced 2 min (12:25–12:27)',
+        checked: false,
+      },
+    ]);
+    expect(before.outcome).toBe('split into 2 dives');
+    expect(before.options).toEqual([{ value: 'own', label: 'New draft' }]);
+    expect(before.parts).toEqual([]);
+    const after = shown(applySplits(cutAt('614@1740'), {}, {}), {}, { '614.2': 618 });
+    expect(after.parts.map((p) => [p.part.key, p.value, p.outcome])).toEqual([
+      ['614.1', 'own', 'add profile to dive #611'],
+      ['614.2', '618', 'add profile to dive #618'],
+    ]);
+    expect(after.parts[1].options).toEqual([
+      { value: 'own', label: 'New draft' },
+      { value: '612', label: 'Dive #612 · 12:00 · Slijk-Ewijk · 2 min apart' },
+      { value: '618', label: 'Dive #618 · 16:00 · 5 min apart' },
+    ]);
+    expect(shown(applySplits(cutAt('614@1740'), { 614: [] }, {})).parts).toEqual([]);
+    const views = viewRows(applySplits(raw, {}, { 615: 'join' }), { 615: 'join' });
+    expect(views.find((v) => v.row.computerNo === 614)!.breaks).toEqual([]);
+    expect(views.find((v) => v.row.computerNo === 615)!.breaks).toEqual([]);
+    expect(views.find((v) => v.row.computerNo === 616)!.breaks).toEqual([]);
+  });
+
+  it('links the parts of a split dive instead of the dive', () => {
+    const rows = applySplits(cutAt('614@1740'), {}, {});
+    expect(linkParam(rows, { 614: 611 })).toBe('614.2:612');
+    expect(linkParam(rows, {}, { '614.2': 'own' })).toBeUndefined();
+    expect(linkParam(rows, { 613: 618 }, { '614.1': 618, '614.2': 618 })).toBe('614.2:618');
+    const stale = applySplits(cutAt('614@1740'), { 614: [1740, 3970] }, {});
+    expect(linkParam(stale, {})).toBeUndefined();
+  });
+
+  it('defaults a part to its suggestion and keeps a choice while it applies', () => {
+    const [first, second] = by(cutAt('614@1740'), 614).parts;
+    expect(partChoiceOf(second, {})).toBe(612);
+    expect(partChoiceOf(second, { '614.2': 'own' })).toBe('own');
+    expect(partChoiceOf(second, { '614.2': 'join' })).toBe(612);
+    expect(partChoiceOf(first, { '614.1': 612 })).toBe('own');
+  });
+
+  it('carries the ticks of breaks that still exist and part choices of the same cut', () => {
+    const after = previewRows(
+      result(CAVE.map((d) => (d.computer_no === 614 ? { ...d, breaks: [surface()] } : d))),
+    ).rows;
+    expect(carrySplits(after, { 614: [1740, 3970], 613: [1], 999: [1] })).toEqual({ 614: [1740] });
+    const cut = cutAt('614@1740');
+    const choices = { '614.2': 618, '614.1': 'own' as const, '614.3': 612 };
+    expect(carryPartChoices(cut, cut, choices)).toEqual({ '614.2': 618, '614.1': 'own' });
+    expect(carryPartChoices(cut, cutAt('614@1740,614@3970'), choices)).toEqual({});
+    expect(carryPartChoices(cut, raw, choices)).toEqual({});
+  });
+
+  it('counts a split dive once per part and names it in the announcement', () => {
+    const report = result(CAVE);
+    const rows = applySplits(raw, {}, {});
+    const preview = { ...previewRows(report), rows };
+    expect(tickedCount(rows, [612, 613, 614, 615])).toBe(5);
+    expect(selectionLine(preview, [614])).toBe('2 of 5 dives selected');
+    expect(onlyParam(rows, [612, 613, 614, 615])).toBeUndefined();
+    expect(previewAnnouncement(report, preview, [614])).toBe(
+      '5 dives in the export from 2026-08-06 to 2026-08-08; 0 dives already in the log; ' +
+        '2 of 5 dives selected; Perdix AI #614 split into 2 dives',
+    );
   });
 });

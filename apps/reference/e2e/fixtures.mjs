@@ -1030,7 +1030,8 @@ const when = (d) => `${d.date} ${d.time_in ?? ''} ${String(d.number).padStart(6,
 /**
  * The Shearwater Cloud export the stub "reads": computer start, depth, minutes, status and the
  * server's `selected`. 117 is new but older than 118, the newest dive the log has, so it is not
- * selected; 123 starts 10 minutes after 122 surfaced.
+ * selected; 123 starts 10 minutes after 122 surfaced; 124 is a cave dive with surface breaks
+ * (`CLOUD_CAVE`).
  */
 const CLOUD_DIVES = [
   [117, '2026-10-15T10:30:00', 19.4, 44, 'new', false],
@@ -1040,12 +1041,33 @@ const CLOUD_DIVES = [
   [121, '2026-10-17T14:10:00', 31.2, 47, 'new', true],
   [122, '2026-10-18T09:20:00', 27.8, 55, 'new', true],
   [123, '2026-10-18T10:25:00', 8.4, 14, 'new', true],
+  [124, '2026-10-19T11:00:00', 24.6, 70, 'attach', true],
 ];
+
+/**
+ * 124 surfaced twice: at 29 min for 10 min, suggested because dive 5 was logged at 11:47, and
+ * at 55 min for 2 min. Log dive 4 holds its start. The suggestion stays whatever the offset, so
+ * a clock correction never triggers a second re-run.
+ */
+const CLOUD_CAVE = {
+  computerNo: 124,
+  logged: 4,
+  breaks: [
+    { start_s: 1740, end_s: 2340, minutes: 10, suggested: true },
+    { start_s: 3300, end_s: 3420, minutes: 2, suggested: false },
+  ],
+  depths: [24.6, 12.3, 6.2],
+};
+
+const MATCH_WINDOW_MIN = 10;
 
 /** Log dives without a profile on the export's days: the candidates of its new dives. */
 const CLOUD_CANDIDATES = [
   { number: 2, date: '2026-10-17', time_in: '14:20', site: 'Slijk-Ewijk', max_depth_m: 9.5 },
   { number: 1, date: '2026-10-17', time_in: '21:30', site: null, max_depth_m: 6.1 },
+  { number: 5, date: '2026-10-19', time_in: '11:47', site: 'Cenote Tortuga', max_depth_m: 12.3 },
+  { number: 7, date: '2026-10-19', time_in: '13:00', site: null, max_depth_m: 8 },
+  { number: 6, date: '2026-10-19', time_in: '15:30', site: null, max_depth_m: 6.2 },
 ];
 
 /** `start` moved by `minutes`, both local ISO date-times without a zone. */
@@ -1057,9 +1079,14 @@ function shiftLocal(start, minutes) {
 
 const minutesOf = (iso) => Date.parse(`${iso}Z`) / 60000;
 
-/** The candidates of a new dive starting at `start`, nearest first, and the one to suggest. */
-function candidatesAt(start) {
-  const candidates = CLOUD_CANDIDATES.filter((c) => c.date === start.slice(0, 10))
+/**
+ * The candidates of a new dive starting at `start`, nearest first, and the one to suggest; the
+ * log dives in `taken` are left out.
+ */
+function candidatesAt(start, taken = new Set()) {
+  const candidates = CLOUD_CANDIDATES.filter(
+    (c) => c.date === start.slice(0, 10) && !taken.has(c.number),
+  )
     .map((c) => ({
       ...c,
       minutes_apart: Math.round(
@@ -1076,13 +1103,68 @@ function candidatesAt(start) {
   return { candidates, suggested };
 }
 
+/** `HH:MM` of `seconds` after the local date-time `start`. */
+const clockAfter = (start, seconds) => shiftLocal(start, seconds / 60).slice(11, 16);
+
+/** The surface breaks of the cave dive starting at `start`, as the server lists them. */
+function caveBreaks(start) {
+  return CLOUD_CAVE.breaks.map((b) => ({
+    ...b,
+    start: clockAfter(start, b.start_s),
+    end: clockAfter(start, b.end_s),
+  }));
+}
+
 /**
- * `POST /admin/import/shearwater-cloud` from its query alone (the upload is not read): seven
- * dives, four new (one older than the log's newest), one attaching a profile to dive 3, one
- * logged and one unreadable. `only` picks among the new and attach ones, `clock_offset_min` moves
+ * The cave dive cut at the breaks starting at `cuts` (seconds): part 1 keeps the dive's own
+ * match, a later part attaches to a log dive within the match window of its start, else it is
+ * new with the day's candidates no earlier part took or was suggested.
+ */
+function caveParts(dive, cuts) {
+  const ends = new Map(CLOUD_CAVE.breaks.map((b) => [b.start_s, b.end_s]));
+  const from = [0, ...cuts.map((s) => ends.get(s))];
+  const taken = new Set([dive.dive_number]);
+  return from.map((t0, i) => {
+    const start = shiftLocal(dive.start, t0 / 60);
+    const part = {
+      part: i + 1,
+      start,
+      duration_min: Math.round(((cuts[i] ?? dive.duration_min * 60) - t0) / 6) / 10,
+      max_depth_m: CLOUD_CAVE.depths[i],
+    };
+    if (i === 0)
+      return {
+        ...part,
+        status: dive.status,
+        dive_number: dive.dive_number,
+        candidates: [],
+        suggested: null,
+      };
+    const { candidates, suggested } = candidatesAt(start, taken);
+    const near = candidates[0];
+    if (near && near.minutes_apart <= MATCH_WINDOW_MIN) {
+      taken.add(near.number);
+      return {
+        ...part,
+        status: 'attach',
+        dive_number: near.number,
+        candidates: [],
+        suggested: null,
+      };
+    }
+    if (suggested !== null) taken.add(suggested);
+    return { ...part, status: 'new', dive_number: null, candidates, suggested };
+  });
+}
+
+/**
+ * `POST /admin/import/shearwater-cloud` from its query alone (the upload is not read): eight
+ * dives, four new (one older than the log's newest), one attaching a profile to dive 3, the cave
+ * dive attaching to dive 4, one logged and one unreadable. `only` picks among the new and attach ones, `clock_offset_min` moves
  * the starts and with them the candidates, `link` (`121:2`) attaches a new dive to a log dive and
  * `join` (`122+123`) makes one dive of several, its first row carrying the merged values and the
- * others `joined_to`.
+ * others `joined_to`. `split` (`124@1740`) cuts the cave dive into `parts`, and a part link
+ * (`124.2:7`) attaches one of them.
  */
 export function cloudImport(query, nextNumber) {
   const offset = Number(query.get('clock_offset_min') ?? 0);
@@ -1093,12 +1175,25 @@ export function cloudImport(query, nextNumber) {
     ];
   const dryRun = query.get('dry_run') === 'true';
   const only = query.get('only')?.split(',').map(Number);
+  const pairs = (query.get('link') ?? '').split(',').filter(Boolean);
   const links = new Map(
-    (query.get('link') ?? '')
-      .split(',')
-      .filter(Boolean)
-      .map((pair) => pair.split(':').map(Number)),
+    pairs.filter((pair) => !pair.includes('.')).map((pair) => pair.split(':').map(Number)),
   );
+  const partLinks = new Map(
+    pairs
+      .filter((pair) => pair.includes('.'))
+      .map((pair) => [pair.split(':')[0], Number(pair.split(':')[1])]),
+  );
+  const cuts = (query.get('split') ?? '')
+    .split(',')
+    .filter(Boolean)
+    .map((pair) => pair.split('@').map(Number));
+  for (const [n, at] of cuts)
+    if (n !== CLOUD_CAVE.computerNo || !CLOUD_CAVE.breaks.some((b) => b.start_s === at))
+      return [
+        400,
+        { detail: `Cannot split #${n}: no surface break at ${Math.round(at / 60)} min` },
+      ];
   const groups = (query.get('join') ?? '')
     .split(',')
     .filter(Boolean)
@@ -1116,7 +1211,14 @@ export function cloudImport(query, nextNumber) {
       max_depth_m: depth,
       duration_min: minutes,
       status,
-      dive_number: status === 'have' ? 2 : status === 'attach' ? 3 : null,
+      dive_number:
+        status === 'have'
+          ? 2
+          : status === 'attach'
+            ? n === CLOUD_CAVE.computerNo
+              ? CLOUD_CAVE.logged
+              : 3
+            : null,
       error: status === 'error' ? 'Log 120 ends early' : null,
       selected,
       ...(status === 'new' ? candidatesAt(start) : { candidates: [], suggested: null }),
@@ -1124,11 +1226,24 @@ export function cloudImport(query, nextNumber) {
         ? Math.round(minutesOf(start) - minutesOf(shiftLocal(before[1], offset)) - before[3])
         : null,
       joined_to: null,
+      breaks: n === CLOUD_CAVE.computerNo ? caveBreaks(start) : [],
+      parts: [],
     };
   });
   const byNo = new Map(dives.map((d) => [d.computer_no, d]));
+  const cave = byNo.get(CLOUD_CAVE.computerNo);
+  const caveCuts = cuts.map(([, at]) => at).sort((a, b) => a - b);
+  if (caveCuts.length && (!only || only.includes(cave.computer_no)))
+    cave.parts = caveParts(cave, caveCuts);
+  for (const [key, target] of partLinks) {
+    const part = cave.parts[Number(key.split('.')[1]) - 1];
+    if (!key.startsWith(`${cave.computer_no}.`) || !part)
+      return [400, { detail: `Cannot link #${key}: the dive has ${cave.parts.length} parts` }];
+    Object.assign(part, { status: 'attach', dive_number: target, candidates: [], suggested: null });
+  }
   for (const [n, target] of links) {
     const d = byNo.get(n);
+    if (d?.parts.length) return [400, { detail: `Cannot link #${n}: it is split, link its parts` }];
     if (d?.status !== 'new') return [400, { detail: `Cannot link #${n}: not a new dive` }];
     Object.assign(d, { status: 'attach', dive_number: target, candidates: [], suggested: null });
   }
@@ -1141,8 +1256,11 @@ export function cloudImport(query, nextNumber) {
   }
   const picked = (d) => !only || only.includes(d.joined_to ?? d.computer_no);
   let number = nextNumber;
-  for (const d of dives)
-    if (d.status === 'new' && d.joined_to === null && picked(d)) d.dive_number = number++;
+  for (const d of dives) {
+    for (const part of d.parts) if (part.status === 'new') part.dive_number = number++;
+    if (d.parts.length) d.dive_number = d.parts[0].dive_number;
+    else if (d.status === 'new' && d.joined_to === null && picked(d)) d.dive_number = number++;
+  }
   for (const d of dives)
     if (d.joined_to !== null) {
       const head = byNo.get(d.joined_to);
@@ -1150,7 +1268,9 @@ export function cloudImport(query, nextNumber) {
     }
   const imported = (status) =>
     dives
-      .filter((d) => d.status === status && d.joined_to === null && picked(d))
+      .filter((d) => d.joined_to === null && picked(d))
+      .flatMap((d) => (d.parts.length ? d.parts : [d]))
+      .filter((d) => d.status === status)
       .map((d) => d.dive_number);
   const starts = dives.map((d) => d.start.slice(0, 10));
   return [

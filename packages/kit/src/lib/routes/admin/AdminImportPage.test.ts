@@ -6,7 +6,8 @@ vi.mock('$app/navigation', () => ({ invalidateAll: vi.fn(async () => {}) }));
 import { invalidateAll } from '$app/navigation';
 import AdminImportPage from './AdminImportPage.svelte';
 import { CLOUD_EXPORT_HELP } from '$lib/core/admin/cloud-import.js';
-import type { ImportDive, ImportResult } from '$lib/core/dive/types.js';
+import type { ImportDive, ImportPart, ImportResult } from '$lib/core/dive/types.js';
+import { registerLiveRegion, resetAnnouncer } from '$lib/core/ui/announce.js';
 
 function report(overrides: Partial<ImportResult> = {}): ImportResult {
   return {
@@ -207,11 +208,50 @@ describe('AdminImportPage', () => {
         suggested: null,
         surface_before_min: null,
         joined_to: null,
+        breaks: [],
+        parts: [],
         ...overrides,
       };
     }
 
     let rich = false;
+    let cave = false;
+
+    const candidate = (number: number, time_in: string, minutes_apart: number) => ({
+      number,
+      date: '2026-08-09',
+      time_in,
+      site: null,
+      max_depth_m: 12,
+      minutes_apart,
+    });
+
+    /** The parts of 676 cut at the `split` breaks: 1 new, 2 suggests 662, 3 new with a candidate. */
+    function caveParts(url: URL): ImportPart[] {
+      const at = (url.searchParams.get('split') ?? '')
+        .split(',')
+        .filter((pair) => pair.startsWith('676@'))
+        .map((pair) => Number(pair.slice(4)))
+        .sort((a, b) => a - b);
+      if (!at.length) return [];
+      const ends = { 1740: 2340, 3970: 4090 } as Record<number, number>;
+      const starts = [0, ...at.map((s) => ends[s])];
+      return starts.map((from, i) => ({
+        part: i + 1,
+        start: `2026-08-09T${['11:00', '11:39', '12:08'][starts.length === 2 && i ? 1 : i]}:00`,
+        duration_min: ((at[i] ?? 4200) - from) / 60,
+        max_depth_m: [24.6, 13.2, 6][i],
+        status: 'new',
+        dive_number: 654 + i,
+        candidates:
+          i === 1
+            ? [candidate(662, '11:40', 1), candidate(663, '15:00', 200)]
+            : i === 2
+              ? [candidate(663, '15:00', 172)]
+              : [],
+        suggested: i === 1 ? 662 : null,
+      }));
+    }
 
     /**
      * The stub's export: 674 and 673 new, 671 attaches, 670 is logged, 672 is unreadable. With
@@ -291,6 +331,45 @@ describe('AdminImportPage', () => {
           }),
         );
       }
+      if (cave)
+        dives.push(
+          cloudDive({
+            computer_no: 676,
+            ...at('2026-08-09T11:00:00'),
+            max_depth_m: 24.6,
+            duration_min: 70,
+            dive_number: 654,
+            candidates: [candidate(662, '11:40', 40), candidate(663, '15:00', 240)],
+            suggested: 662,
+            breaks: [
+              {
+                start_s: 1740,
+                end_s: 2340,
+                minutes: 10,
+                start: '11:29',
+                end: '11:39',
+                suggested: true,
+              },
+              {
+                start_s: 3970,
+                end_s: 4090,
+                minutes: 2,
+                start: '12:06',
+                end: '12:08',
+                suggested: false,
+              },
+            ],
+            parts: caveParts(url),
+          }),
+          cloudDive({
+            computer_no: 677,
+            ...at('2026-08-09T13:00:00'),
+            max_depth_m: 8,
+            duration_min: 30,
+            dive_number: 657,
+            surface_before_min: 50,
+          }),
+        );
       const dry = url.searchParams.get('dry_run') === 'true';
       const only = url.searchParams.get('only')?.split(',').map(Number);
       const picked = (n: number) => !only || only.includes(n);
@@ -315,6 +394,7 @@ describe('AdminImportPage', () => {
       answer: (url: URL) => Response = (url) => new Response(JSON.stringify(exportReport(url))),
     ) {
       rich = false;
+      cave = false;
       cloudCalls.length = 0;
       vi.stubGlobal(
         'fetch',
@@ -700,6 +780,192 @@ describe('AdminImportPage', () => {
         join: '674+675',
       });
       unmount(app);
+    });
+
+    describe('a dive with a surface break', () => {
+      const spoken: string[] = [];
+
+      beforeEach(() => {
+        spoken.length = 0;
+        resetAnnouncer();
+        registerLiveRegion((a) => spoken.push(a.text));
+      });
+
+      afterEach(() => resetAnnouncer());
+
+      async function cavePreview() {
+        stubCloud();
+        cave = true;
+        const opened = await preview();
+        await settle();
+        return opened;
+      }
+
+      const item = (target: HTMLElement, n: number) =>
+        [...target.querySelectorAll('.preview strong')]
+          .find((s) => s.textContent?.startsWith(`Perdix AI #${n}`))!
+          .closest('li')!;
+      const splitBoxes = (target: HTMLElement) => [
+        ...item(target, 676).querySelectorAll<HTMLInputElement>('.split input[type=checkbox]'),
+      ];
+      const parts = (target: HTMLElement) => [
+        ...item(target, 676).querySelectorAll<HTMLLIElement>('.parts > li'),
+      ];
+
+      it('splits it at the suggested break right after the preview and links a part', async () => {
+        const { target, app } = await cavePreview();
+        expect(cloudCalls.map(query)).toEqual([
+          { dry_run: 'true' },
+          { dry_run: 'true', split: '676@1740' },
+        ]);
+        expect(spoken).toHaveLength(1);
+        expect(spoken[0]).toMatch(/^Preview ready: .*Perdix AI #676 split into 2 dives$/);
+        const row = item(target, 676);
+        const fieldset = row.querySelector<HTMLFieldSetElement>('fieldset.split')!;
+        expect(fieldset.querySelector('legend')?.textContent).toBe('Split this dive at');
+        expect(fieldset.getAttribute('aria-describedby')).toBe('dl-cloud-344FDE85-676');
+        expect(
+          splitBoxes(target).map((b) => [b.closest('label')!.textContent!.trim(), b.checked]),
+        ).toEqual([
+          ['29 min · surfaced 10 min (11:29–11:39)', true],
+          ['66 min · surfaced 2 min (12:06–12:08)', false],
+        ]);
+        expect(row.querySelector('label.dive-row')!.textContent).toContain('split into 2 dives');
+        expect(belongsTo(target, 676)!.closest('.parts')).not.toBeNull();
+        expect(row.querySelector('.parts')!.getAttribute('aria-label')).toBe(
+          'Parts of Perdix AI #676',
+        );
+        const [first, second] = parts(target);
+        expect(first.textContent).toContain('Part 1 · 11:00 · 29 min · 24.6 m');
+        expect(first.textContent).toContain('new draft #654');
+        expect(first.querySelector('select')).toBeNull();
+        expect(second.textContent).toContain('Part 2 · 11:39 · 31 min · 13.2 m');
+        const select = second.querySelector('select')!;
+        expect(document.querySelector(`label[for="${select.id}"]`)?.textContent).toContain(
+          'Belongs to',
+        );
+        expect(select.getAttribute('aria-describedby')).toBe('dl-cloud-344FDE85-676-part-2');
+        expect([...select.options].map((o) => o.textContent)).toEqual([
+          'New draft',
+          'Dive #662 · 11:40 · 1 min apart',
+          'Dive #663 · 15:00 · 200 min apart',
+        ]);
+        expect(select.value).toBe('662');
+        expect(second.textContent).toContain('add profile to dive #662');
+        expect(belongsTo(target, 677)).toBeNull();
+        expect(target.querySelector('.preview')!.textContent).toContain('6 of 6 dives selected');
+        pick(select, '663');
+        expect(second.textContent).toContain('add profile to dive #663');
+        importButton(target).click();
+        await settle();
+        expect(query(cloudCalls[2])).toEqual({ link: '676.2:663', split: '676@1740' });
+        unmount(app);
+      });
+
+      it('re-runs the dry run after a pause when a break is ticked, holding Import till then', async () => {
+        const { target, app } = await cavePreview();
+        splitBoxes(target)[1].click();
+        flushSync();
+        expect(importButton(target).disabled).toBe(true);
+        expect(parts(target)).toHaveLength(0);
+        expect(item(target, 676).textContent).toContain('split into 3 dives');
+        await new Promise((r) => setTimeout(r, 100));
+        expect(cloudCalls).toHaveLength(2);
+        await new Promise((r) => setTimeout(r, 400));
+        await settle();
+        expect(query(cloudCalls[2])).toEqual({ dry_run: 'true', split: '676@1740,676@3970' });
+        expect(parts(target).map((p) => p.querySelector('strong')!.textContent)).toEqual([
+          'Part 1 · 11:00 · 29 min · 24.6 m',
+          'Part 2 · 11:39 · 27.2 min · 13.2 m',
+          'Part 3 · 12:08 · 1.8 min · 6 m',
+        ]);
+        expect(spoken.at(-1)).toMatch(/^Split applied: .*Perdix AI #676 split into 3 dives$/);
+        expect(importButton(target).disabled).toBe(false);
+        for (const box of splitBoxes(target)) box.click();
+        flushSync();
+        await new Promise((r) => setTimeout(r, 450));
+        await settle();
+        expect(query(cloudCalls[3])).toEqual({ dry_run: 'true' });
+        expect(parts(target)).toHaveLength(0);
+        expect(splitBoxes(target).map((b) => b.checked)).toEqual([false, false]);
+        expect(belongsTo(target, 676)!.value).toBe('662');
+        importButton(target).click();
+        await settle();
+        expect(query(cloudCalls[4])).toEqual({ link: '676:662' });
+        unmount(app);
+      });
+
+      it('keeps the splits and the part choices across a clock offset re-run', async () => {
+        const { target, app } = await cavePreview();
+        pick(parts(target)[1].querySelector('select')!, 'own');
+        const offset = offsetInput(target);
+        typeOffset(offset, '+1 h');
+        offset.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        await settle();
+        expect(query(cloudCalls[2])).toEqual({
+          dry_run: 'true',
+          split: '676@1740',
+          clock_offset_min: '60',
+        });
+        expect(cloudCalls).toHaveLength(3);
+        expect(parts(target)[1].querySelector('select')!.value).toBe('own');
+        expect(spoken.at(-1)).toMatch(/^Clock offset applied: /);
+        importButton(target).click();
+        await settle();
+        expect(query(cloudCalls[3])).toEqual({ split: '676@1740', clock_offset_min: '60' });
+        unmount(app);
+      });
+
+      it('joins the next dive only once the break is unticked, and then hides Split', async () => {
+        const { target, app } = await cavePreview();
+        splitBoxes(target)[0].click();
+        flushSync();
+        expect([...belongsTo(target, 677)!.options].map((o) => o.textContent)).toEqual([
+          'New draft',
+          'Same dive as #676 (surfaced 50 min)',
+        ]);
+        pick(belongsTo(target, 677)!, 'join');
+        expect(item(target, 676).querySelector('fieldset.split')).toBeNull();
+        expect(item(target, 677).querySelector('fieldset.split')).toBeNull();
+        await new Promise((r) => setTimeout(r, 450));
+        await settle();
+        expect(query(cloudCalls[2])).toEqual({ dry_run: 'true' });
+        expect(target.querySelector('.preview')!.textContent).toContain(
+          'Perdix AI #676 + #677, one dive',
+        );
+        importButton(target).click();
+        await settle();
+        expect(query(cloudCalls[3])).toEqual({ link: '676:662', join: '676+677' });
+        unmount(app);
+      });
+
+      it('keeps the preview when a split re-run fails', async () => {
+        let fail = false;
+        stubCloud((url) =>
+          fail
+            ? new Response(
+                JSON.stringify({ detail: 'Cannot split #676: no surface break at 66 min' }),
+                {
+                  status: 400,
+                },
+              )
+            : new Response(JSON.stringify(exportReport(url))),
+        );
+        cave = true;
+        const { target, app } = await preview();
+        await settle();
+        fail = true;
+        splitBoxes(target)[1].click();
+        flushSync();
+        await new Promise((r) => setTimeout(r, 450));
+        await settle();
+        expect(target.querySelector('[role=alert]')?.textContent).toBe(
+          'Cannot split #676: no surface break at 66 min',
+        );
+        expect(parts(target)).toHaveLength(0);
+        expect(importButton(target).disabled).toBe(true);
+        unmount(app);
+      });
     });
 
     it('focuses the export input when the page opens at #shearwater-cloud', () => {

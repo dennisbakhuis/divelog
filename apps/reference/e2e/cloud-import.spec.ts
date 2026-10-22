@@ -5,8 +5,9 @@ import { OWNER_COOKIE } from './fixtures.mjs';
 /*
  * The Shearwater Cloud export import against the stub: picking the export on a phone by
  * touch, linking a dive to a log dive, joining two, unticking one, correcting the clock and
- * importing; the same by keyboard alone; the way in from the Dives page; and axe on the open
- * preview. The stub answers from the query, so any bytes will do.
+ * importing; splitting the cave dive at its surface breaks and linking a part; the same by
+ * keyboard alone; the way in from the Dives page; and axe on the open preview. The stub answers
+ * from the query, so any bytes will do.
  */
 
 test.use({ colorScheme: 'dark', reducedMotion: 'reduce' });
@@ -27,6 +28,16 @@ async function open(page: Page) {
   await page.waitForLoadState('networkidle');
 }
 
+/** Every import request's query from now on, in order. */
+function track(page: Page): Record<string, string>[] {
+  const sent: Record<string, string>[] = [];
+  page.on('request', (r: Request) => {
+    if (r.method() === 'POST' && r.url().includes(ENDPOINT))
+      sent.push(Object.fromEntries(new URL(r.url()).searchParams));
+  });
+  return sent;
+}
+
 /** The query of the next import request the page sends. */
 function nextImport(page: Page): Promise<Record<string, string>> {
   return page
@@ -44,6 +55,15 @@ const item = (page: Page, n: number) =>
     .filter({ hasText: `Perdix AI #${n}` });
 const belongsTo = (page: Page, n: number) =>
   item(page, n).getByRole('combobox', { name: 'Belongs to' });
+const rowBoxes = (page: Page) => dives(page).getByRole('checkbox', { name: /^Perdix AI/ });
+const splitAt = (page: Page) =>
+  item(page, 124).getByRole('group', { name: 'Split this dive at' }).getByRole('checkbox');
+const parts = (page: Page) =>
+  item(page, 124).getByRole('list', { name: 'Parts of Perdix AI #124' }).getByRole('listitem');
+const partSelect = (page: Page, n: number) =>
+  parts(page)
+    .nth(n - 1)
+    .getByRole('combobox', { name: 'Belongs to' });
 
 async function overflow(page: Page): Promise<number> {
   return page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -72,9 +92,10 @@ test.describe('on a phone', () => {
     await expect(preview(page)).toBeFocused();
     await expect(preview(page)).toContainText('1 dive already in the log');
     await expect(preview(page)).toContainText("can't be read: Log 120 ends early");
-    await expect(preview(page)).toContainText('4 of 5 dives selected');
-    const boxes = dives(page).getByRole('checkbox');
-    await expect(boxes).toHaveCount(4);
+    await expect(preview(page)).toContainText('6 of 7 dives selected');
+    await expect(parts(page)).toHaveCount(2);
+    const boxes = rowBoxes(page);
+    await expect(boxes).toHaveCount(5);
     for (const box of await boxes.all()) await expect(box).toBeChecked();
     expect(await overflow(page)).toBeLessThanOrEqual(0);
 
@@ -97,21 +118,25 @@ test.describe('on a phone', () => {
     await expect(item(page, 123)).toContainText('same dive as #122');
     await expect(item(page, 122)).toContainText('Perdix AI #122 + #123, one dive');
     await expect(item(page, 122)).toContainText('27.8 m, 69 min');
-    await expect(preview(page)).toContainText('3 of 4 dives selected');
+    await expect(preview(page)).toContainText('5 of 6 dives selected');
     expect(await overflow(page)).toBeLessThanOrEqual(0);
 
     const row = dives(page).locator('label', { hasText: 'Perdix AI #119' });
     expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     await row.tap();
     await expect(row.getByRole('checkbox')).not.toBeChecked();
-    await expect(preview(page)).toContainText('2 of 4 dives selected');
+    await expect(preview(page)).toContainText('4 of 6 dives selected');
 
     const offset = preview(page).getByRole('textbox', { name: 'Clock offset' });
     await offset.tap();
     await offset.fill('+7 h');
     const rerun = nextImport(page);
     await offset.press('Enter');
-    expect(await rerun).toEqual({ dry_run: 'true', clock_offset_min: '420' });
+    expect(await rerun).toEqual({
+      dry_run: 'true',
+      split: '124@1740',
+      clock_offset_min: '420',
+    });
     await expect(dives(page)).toContainText('18 Oct 2026 16:20 (computer 09:20)');
     await expect(row.getByRole('checkbox')).not.toBeChecked();
     await expect(belongsTo(page, 121)).toHaveValue('1');
@@ -125,16 +150,66 @@ test.describe('on a phone', () => {
     expect((await importButton.boundingBox())!.height).toBeGreaterThanOrEqual(44);
     await importButton.tap();
     expect(await commit).toEqual({
-      only: '121,122,123',
+      only: '121,122,123,124',
       link: '121:1',
       join: '122+123',
+      split: '124@1740',
       clock_offset_min: '420',
     });
     const done = page.getByRole('region', { name: 'Imported' });
     await expect(done).toBeFocused();
-    await expect(done).toContainText('1 new draft created');
+    await expect(done).toContainText('2 new drafts created');
     await expect(done).toContainText('Profiles added to #1');
     await expect(done.getByRole('link', { name: 'Review drafts' })).toBeVisible();
+    expect(await overflow(page)).toBeLessThanOrEqual(0);
+  });
+
+  test('splits the cave dive at its surface breaks and links a part', async ({ page }) => {
+    await open(page);
+    const sent = track(page);
+    await page.getByLabel('Shearwater Cloud export').setInputFiles(EXPORT);
+    await expect(parts(page)).toHaveCount(2);
+    expect(sent).toEqual([{ dry_run: 'true' }, { dry_run: 'true', split: '124@1740' }]);
+    await expect(item(page, 124).locator('label.dive-row')).toContainText('split into 2 dives');
+    await expect(belongsTo(page, 124)).toHaveCount(0);
+    await expect(splitAt(page)).toHaveCount(2);
+    await expect(
+      item(page, 124).getByRole('checkbox', { name: '29 min · surfaced 10 min (11:29–11:39)' }),
+    ).toBeChecked();
+    const late = item(page, 124).getByRole('checkbox', {
+      name: '55 min · surfaced 2 min (11:55–11:57)',
+    });
+    await expect(late).not.toBeChecked();
+    await expect(parts(page).nth(0)).toContainText('Part 1 · 11:00 · 29 min · 24.6 m');
+    await expect(parts(page).nth(0)).toContainText('add profile to dive #4');
+    await expect(parts(page).nth(1)).toContainText('Part 2 · 11:39 · 31 min · 12.3 m');
+    await expect(parts(page).nth(1)).toContainText('add profile to dive #5');
+    await expect(parts(page).getByRole('combobox')).toHaveCount(0);
+    expect(await overflow(page)).toBeLessThanOrEqual(0);
+
+    const lateRow = item(page, 124).locator('label', { hasText: '55 min · surfaced 2 min' });
+    expect((await lateRow.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await lateRow.tap();
+    await expect(late).toBeChecked();
+    await expect(preview(page).getByRole('button', { name: 'Import', exact: true })).toBeDisabled();
+    await expect(parts(page)).toHaveCount(3);
+    expect(sent[2]).toEqual({ dry_run: 'true', split: '124@1740,124@3300' });
+    await expect(parts(page).nth(2)).toContainText('Part 3 · 11:57 · 13 min · 6.2 m');
+    await expect(partSelect(page, 3)).toHaveValue('own');
+    await partSelect(page, 3).selectOption({ label: 'Dive #7 · 13:00 · 63 min apart' });
+    await expect(parts(page).nth(2)).toContainText('add profile to dive #7');
+    await expect(preview(page)).toContainText('7 of 8 dives selected');
+    expect(await overflow(page)).toBeLessThanOrEqual(0);
+
+    const commit = nextImport(page);
+    await preview(page).getByRole('button', { name: 'Import', exact: true }).tap();
+    expect(await commit).toEqual({
+      only: '119,121,122,123,124',
+      link: '121:2,124.3:7',
+      split: '124@1740,124@3300',
+    });
+    const done = page.getByRole('region', { name: 'Imported' });
+    await expect(done).toContainText('Profiles added to #3, #2, #4, #5, #7');
     expect(await overflow(page)).toBeLessThanOrEqual(0);
   });
 });
@@ -157,6 +232,7 @@ test('works by keyboard alone', async ({ page }) => {
   await (await chooser).setFiles(EXPORT);
   await dryRun;
   await expect(preview(page)).toBeFocused();
+  await expect(parts(page)).toHaveCount(2);
 
   await page.keyboard.press('Tab');
   const offset = preview(page).getByRole('textbox', { name: 'Clock offset' });
@@ -164,10 +240,36 @@ test('works by keyboard alone', async ({ page }) => {
   await page.keyboard.type('-30 min');
   const rerun = nextImport(page);
   await page.keyboard.press('Enter');
-  expect(await rerun).toEqual({ dry_run: 'true', clock_offset_min: '-30' });
+  expect(await rerun).toEqual({
+    dry_run: 'true',
+    split: '124@1740',
+    clock_offset_min: '-30',
+  });
   await expect(dives(page)).toContainText('(computer 09:20)');
   await expect(offset).toBeFocused();
 
+  await page.keyboard.press('Tab');
+  await expect(dives(page).getByRole('checkbox', { name: /Perdix AI #124/ })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(splitAt(page).nth(0)).toBeFocused();
+  await expect(splitAt(page).nth(0)).toBeChecked();
+  await page.keyboard.press('Tab');
+  await expect(splitAt(page).nth(1)).toBeFocused();
+  const split = nextImport(page);
+  await page.keyboard.press('Space');
+  expect(await split).toEqual({
+    dry_run: 'true',
+    split: '124@1740,124@3300',
+    clock_offset_min: '-30',
+  });
+  await expect(parts(page)).toHaveCount(3);
+  await expect(splitAt(page).nth(1)).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(partSelect(page, 2)).toBeFocused();
+  await expect(partSelect(page, 2)).toHaveValue('5');
+  await page.keyboard.press('Tab');
+  await expect(partSelect(page, 3)).toBeFocused();
+  await expect(partSelect(page, 3)).toHaveValue('own');
   await page.keyboard.press('Tab');
   await expect(dives(page).getByRole('checkbox', { name: /Perdix AI #123/ })).toBeFocused();
   await page.keyboard.press('Tab');
@@ -188,7 +290,12 @@ test('works by keyboard alone', async ({ page }) => {
   await expect(preview(page).getByRole('button', { name: 'Import', exact: true })).toBeFocused();
   const commit = nextImport(page);
   await page.keyboard.press('Enter');
-  expect(await commit).toEqual({ only: '119,122,123', link: '121:2', clock_offset_min: '-30' });
+  expect(await commit).toEqual({
+    only: '119,122,123,124',
+    link: '121:2,124.2:5',
+    split: '124@1740,124@3300',
+    clock_offset_min: '-30',
+  });
   await expect(page.getByRole('region', { name: 'Imported' })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: /^#\d+$/ }).first()).toBeFocused();
@@ -215,8 +322,11 @@ for (const viewport of [
     await page.setViewportSize(viewport);
     await open(page);
     await page.getByLabel('Shearwater Cloud export').setInputFiles(EXPORT);
-    await expect(dives(page).getByRole('checkbox')).toHaveCount(4);
+    await expect(rowBoxes(page)).toHaveCount(5);
     await expect(belongsTo(page, 121)).toBeVisible();
+    await expect(parts(page)).toHaveCount(2);
+    await splitAt(page).nth(1).check();
+    await expect(partSelect(page, 3)).toBeVisible();
     await older(page).locator('summary').click();
     await expect(older(page).getByRole('checkbox')).toBeVisible();
     await preview(page).getByRole('textbox', { name: 'Clock offset' }).fill('soon');

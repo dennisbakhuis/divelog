@@ -6,27 +6,36 @@
   import { importLines } from '$lib/core/admin/dive-list';
   import {
     CLOUD_EXPORT_HELP,
+    applySplits,
     carryChoices,
+    carryPartChoices,
+    carrySplits,
     carryTicks,
     chooseRow,
+    chooseSplit,
     cloudErrorMessage,
     cloudFields,
     cloudLines,
     cloudSections,
     joinParam,
     linkParam,
+    needsSplitRun,
     nothingNew,
     onlyParam,
+    parseChoice,
     parseClockOffset,
     previewAnnouncement,
     previewRows,
     selectionLine,
     setTick,
+    splitParam,
     tickedCount,
     viewRows,
     type CloudChoices,
+    type CloudPartChoices,
     type CloudPreview,
     type CloudRowView,
+    type CloudSplits,
   } from '$lib/core/admin/cloud-import';
   import { getDivelog } from '$lib/core/dive/context';
   import type { ImportResult } from '$lib/core/dive/types';
@@ -46,6 +55,7 @@
     cloud: 'Shearwater Cloud export',
   };
   const OFFSET_DELAY_MS = 500;
+  const SPLIT_DELAY_MS = 400;
   const CLOUD_HASH = '#shearwater-cloud';
 
   let busy = $state(false);
@@ -58,18 +68,27 @@
   let cloud = $state<CloudPreview | null>(null);
   let ticked = $state<number[]>([]);
   let choices = $state<CloudChoices>({});
+  let splits = $state<CloudSplits>({});
+  let partChoices = $state<CloudPartChoices>({});
   let cloudInput = $state<HTMLInputElement>();
   let cloudCard = $state<HTMLElement>();
   let offsetText = $state('');
   let offsetMin = $state(0);
   let offsetError = $state('');
-  let checking = $state(false);
+  let checking = $state('');
   let offsetTimer: ReturnType<typeof setTimeout> | undefined;
+  let splitTimer: ReturnType<typeof setTimeout> | undefined;
   let runs = 0;
   const offsetDirty = $derived(parseClockOffset(offsetText) !== offsetMin);
-  const cloudViews = $derived(cloud ? cloudSections(viewRows(cloud.rows, choices)) : null);
+  const rows = $derived(cloud ? applySplits(cloud.rows, splits, choices) : []);
+  const shown = $derived<CloudPreview | null>(cloud ? { ...cloud, rows } : null);
+  const splitDirty = $derived(needsSplitRun(rows));
+  const cloudViews = $derived(cloud ? cloudSections(viewRows(rows, choices, partChoices)) : null);
 
-  $effect(() => () => clearTimeout(offsetTimer));
+  $effect(() => () => {
+    clearTimeout(offsetTimer);
+    clearTimeout(splitTimer);
+  });
 
   onMount(() => {
     if (location.hash !== CLOUD_HASH) return;
@@ -77,17 +96,26 @@
     cloudCard?.scrollIntoView({ block: 'start' });
   });
 
-  /** The dry run sends the file and the offset; the commit adds the ticks, links and joins. */
-  function sendCloud(file: File, dryRun: boolean, clockOffsetMin: number): Promise<ImportResult> {
-    const rows = !dryRun && cloud ? cloud.rows : null;
+  /**
+   * The dry run sends the file, the offset and the splits; the commit adds the ticks, links and
+   * joins.
+   */
+  function sendCloud(
+    file: File,
+    dryRun: boolean,
+    clockOffsetMin: number,
+    split = splitParam(rows),
+  ): Promise<ImportResult> {
+    const commit = !dryRun && cloud ? rows : null;
     return adminUpload<ImportResult>(
       '/admin/import/shearwater-cloud',
       file,
       cloudFields({
         dryRun,
-        only: rows ? onlyParam(rows, ticked, choices) : undefined,
-        link: rows ? linkParam(rows, choices) : undefined,
-        join: rows ? joinParam(rows, choices) : undefined,
+        only: commit ? onlyParam(commit, ticked, choices) : undefined,
+        link: commit ? linkParam(commit, choices, partChoices) : undefined,
+        join: commit ? joinParam(commit, choices) : undefined,
+        split,
         clockOffsetMin,
       }),
     );
@@ -95,7 +123,23 @@
 
   function pick(row: number, value: string) {
     if (!cloud) return;
-    ({ choices, ticked } = chooseRow(cloud.rows, choices, ticked, row, value));
+    ({ choices, ticked } = chooseRow(rows, choices, ticked, row, value));
+  }
+
+  function pickPart(key: string, value: string) {
+    partChoices = { ...partChoices, [key]: parseChoice(value) };
+  }
+
+  /** A break ticked or unticked: the dry run again with the new splits, once the owner pauses. */
+  function toggleBreak(n: number, at: number, on: boolean) {
+    const row = rows.find((r) => r.computerNo === n);
+    if (!row) return;
+    splits = chooseSplit(splits, row, at, on);
+    clearTimeout(splitTimer);
+    splitTimer = setTimeout(
+      () => void recheck(parseClockOffset(offsetText) ?? offsetMin, 'Split applied'),
+      SPLIT_DELAY_MS,
+    );
   }
 
   function send(format: Format, files: File[], dryRun: boolean): Promise<ImportResult> {
@@ -120,10 +164,11 @@
       if (format === 'cloud') {
         cloud = previewRows(preview);
         ticked = cloud.ticked;
-        announce(`Preview ready: ${previewAnnouncement(preview, cloud)}`);
+        if (!splitDirty) announce(`Preview ready: ${previewAnnouncement(preview, cloud)}`);
       } else announce(`Preview ready: ${importLines(preview).join('; ')}`);
       await tick();
       outcome?.focus();
+      if (format === 'cloud' && splitDirty) void recheck(0, 'Preview ready', true);
     } catch (err) {
       error =
         format === 'cloud'
@@ -171,36 +216,51 @@
 
   function resetCloud() {
     clearTimeout(offsetTimer);
+    clearTimeout(splitTimer);
     runs++;
     cloud = null;
     ticked = [];
     choices = {};
+    splits = {};
+    partChoices = {};
     offsetText = '';
     offsetMin = 0;
     offsetError = '';
-    checking = false;
+    checking = '';
   }
 
-  /** The dry run again with another clock offset; the ticks carry over, focus stays put. */
-  async function recheck(min: number) {
+  /**
+   * The dry run again with another clock offset or other splits; the ticks and choices carry
+   * over, focus stays put. When the new rows split differently (a break suggested only now), it
+   * runs once more by itself.
+   */
+  async function recheck(min: number, said: string, again = false) {
     if (!pending || pending.format !== 'cloud' || !cloud) return;
+    clearTimeout(splitTimer);
     const run = ++runs;
-    checking = true;
+    const split = splitParam(rows);
+    checking = min === offsetMin ? 'Splitting the dive…' : 'Applying the clock offset…';
     error = '';
     try {
-      const next = await sendCloud(pending.files[0], true, min);
+      const next = await sendCloud(pending.files[0], true, min, split);
       if (run !== runs || !cloud) return;
-      const rows = previewRows(next);
-      ticked = carryTicks(rows.rows, cloud.rows, ticked);
-      choices = carryChoices(rows.rows, choices);
-      cloud = rows;
+      const fresh = previewRows(next, split);
+      ticked = carryTicks(fresh.rows, cloud.rows, ticked);
+      choices = carryChoices(fresh.rows, choices);
+      splits = carrySplits(fresh.rows, splits);
+      partChoices = carryPartChoices(fresh.rows, cloud.rows, partChoices);
+      cloud = fresh;
       preview = next;
       offsetMin = min;
-      announce(`Clock offset applied: ${previewAnnouncement(next, rows)}`);
+      if (splitDirty && !again) {
+        void recheck(min, said, true);
+        return;
+      }
+      announce(`${said}: ${previewAnnouncement(next, shown!, ticked, choices)}`);
     } catch (err) {
       if (run === runs) error = cloudErrorMessage(err, 'Could not read the file');
     } finally {
-      if (run === runs) checking = false;
+      if (run === runs) checking = '';
     }
   }
 
@@ -208,7 +268,7 @@
     clearTimeout(offsetTimer);
     const min = parseClockOffset(offsetText);
     offsetError = min === null ? 'Use a form like +7 h, -30 min or +1:30, at most a day' : '';
-    if (min !== null && min !== offsetMin) void recheck(min);
+    if (min !== null && min !== offsetMin) void recheck(min, 'Clock offset applied');
   }
 
   function typeOffset(text: string) {
@@ -277,13 +337,7 @@
 </div>
 
 <p class="status" role="status">
-  {checking
-    ? 'Applying the clock offset…'
-    : busy
-      ? preview
-        ? 'Importing…'
-        : 'Reading the file…'
-      : ''}
+  {checking ? checking : busy ? (preview ? 'Importing…' : 'Reading the file…') : ''}
 </p>
 {#if error}<p class="error" role="alert">{error}</p>{/if}
 
@@ -299,8 +353,8 @@
         ? ''
         : 's'}
     </h2>
-    {#if cloud}
-      {@render cloudPreview(preview, cloud)}
+    {#if shown}
+      {@render cloudPreview(preview, shown)}
     {:else}
       <ul class="lines">
         {#each importLines(preview) as line (line)}<li>{line}</li>{/each}
@@ -323,7 +377,7 @@
         class="dl-btn dl-btn-solid dl-btn-sm"
         disabled={busy ||
           (cloud
-            ? checking || offsetDirty || !tickedCount(cloud.rows, ticked, choices)
+            ? !!checking || offsetDirty || splitDirty || !tickedCount(rows, ticked, choices)
             : !preview.created.length && !preview.updated.length)}
         onclick={commit}>Import</button
       >
@@ -438,23 +492,71 @@
       <div class="dive-row joined">{@render diveText(view)}</div>
     {/if}
     {#if view.options.length > 1}
-      <Field label="Belongs to" describedby="dl-cloud-{view.row.key}" class="belongs">
-        {#snippet children(control)}
-          <select
-            {...control}
-            class="dl-select"
-            disabled={busy}
-            value={view.value}
-            onchange={(e) => pick(view.row.computerNo, e.currentTarget.value)}
-          >
-            {#each view.options as option (option.value)}
-              <option value={option.value}>{option.label}</option>
-            {/each}
-          </select>
-        {/snippet}
-      </Field>
+      {@render belongsTo(view.options, view.value, `dl-cloud-${view.row.key}`, (value) =>
+        pick(view.row.computerNo, value),
+      )}
+    {/if}
+    {#if view.breaks.length}
+      <fieldset class="split" aria-describedby="dl-cloud-{view.row.key}">
+        <legend>Split this dive at</legend>
+        {#each view.breaks as brk (brk.startS)}
+          <label class="split-break">
+            <input
+              type="checkbox"
+              checked={brk.checked}
+              disabled={busy}
+              onchange={(e) =>
+                toggleBreak(view.row.computerNo, brk.startS, e.currentTarget.checked)}
+            />
+            <span>{brk.label}</span>
+          </label>
+        {/each}
+      </fieldset>
+    {/if}
+    {#if view.parts.length}
+      <ol class="parts" aria-label="Parts of {view.row.title}">
+        {#each view.parts as part (part.part.key)}
+          {@const id = `dl-cloud-${view.row.key}-part-${part.part.part}`}
+          <li class="part">
+            <span class="dive-text" {id}>
+              <strong>{part.part.title}</strong>
+              <span class="outcome {part.value === 'own' ? part.part.status : ''}"
+                >{part.outcome}</span
+              >
+            </span>
+            {#if part.options.length > 1}
+              {@render belongsTo(part.options, part.value, id, (value) =>
+                pickPart(part.part.key, value),
+              )}
+            {/if}
+          </li>
+        {/each}
+      </ol>
     {/if}
   </li>
+{/snippet}
+
+{#snippet belongsTo(
+  options: CloudRowView['options'],
+  value: string,
+  describedby: string,
+  onpick: (value: string) => void,
+)}
+  <Field label="Belongs to" {describedby} class="belongs">
+    {#snippet children(control)}
+      <select
+        {...control}
+        class="dl-select"
+        disabled={busy}
+        {value}
+        onchange={(e) => onpick(e.currentTarget.value)}
+      >
+        {#each options as option (option.value)}
+          <option value={option.value}>{option.label}</option>
+        {/each}
+      </select>
+    {/snippet}
+  </Field>
 {/snippet}
 
 {#if result}
@@ -615,6 +717,58 @@
   .dive-item :global(.belongs select) {
     width: 100%;
   }
+  .split {
+    border: 0;
+    margin: 0 0 10px calc(1em + 10px);
+    padding: 0;
+    min-width: 0;
+    max-width: 32rem;
+  }
+  .split legend {
+    padding: 0;
+    margin-bottom: 4px;
+    font-size: var(--dl-text-sm);
+    font-weight: 600;
+    color: var(--dl-color-text-muted);
+  }
+  :global(.divelog) .split-break {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 0;
+    font-size: var(--dl-text-md);
+    color: var(--dl-color-text);
+    font-variant-numeric: tabular-nums;
+  }
+  .split-break input {
+    flex: none;
+  }
+  .parts {
+    list-style: none;
+    margin: 0 0 10px calc(1em + 10px);
+    padding: 0 0 0 12px;
+    border-left: 2px solid var(--dl-color-accent);
+    max-width: 32rem;
+    font-size: var(--dl-text-md);
+  }
+  .parts .part + .part {
+    border-top: 1px solid var(--dl-color-border);
+  }
+  .part .dive-text {
+    padding: 8px 0 6px;
+  }
+  .part .dive-text strong {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .part :global(.belongs) {
+    margin: 0 0 8px;
+    max-width: none;
+  }
+  .part :global(.belongs select) {
+    width: 100%;
+  }
   .summary :global(.older) {
     margin: 4px 0 10px;
   }
@@ -644,7 +798,8 @@
     margin-top: 12px;
   }
   @media (pointer: coarse) {
-    :global(.divelog) .dive-row {
+    :global(.divelog) .dive-row,
+    :global(.divelog) .split-break {
       min-height: var(--dl-tap-min);
     }
   }

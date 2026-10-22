@@ -248,6 +248,12 @@ export type ImportDive = Schemas['ImportDiveOut'];
 /** A log dive a new computer dive may belong to: same day, no profile from this computer yet. */
 export type ImportCandidate = Schemas['ImportCandidateOut'];
 
+/** A surface break inside a computer dive, where the owner may split it into several log dives. */
+export type ImportBreak = Schemas['ImportBreakOut'];
+
+/** One part of a computer dive split at its surface breaks, logged as its own dive. */
+export type ImportPart = Schemas['ImportPartOut'];
+
 /** One imported site: matched to a site in the log or the commons, or created as personal. */
 export type ImportSite = Schemas['ImportSiteOut'];
 
