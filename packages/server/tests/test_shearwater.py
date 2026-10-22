@@ -4,6 +4,7 @@ from pathlib import Path
 from httpx import AsyncClient
 
 from divelog_server.importers.shearwater import gas_of, parse_shearwater
+from divelog_server.services.storage import get_storage
 from divelog_server.store.store import Store
 
 FIXTURE = Path(__file__).parent / "fixtures" / "perdix_sample.xml"
@@ -51,6 +52,9 @@ async def test_import_creates_draft_then_attaches(owner_client: AsyncClient, sto
 
     imports = (await owner_client.get("/api/v1/admin/imports")).json()
     assert imports[0]["format"] == "shearwater-xml"
+    record = store.imports[first.json()["import_id"]]
+    assert record.storage_key.endswith(f"/{record.id}-11.xml")
+    assert await get_storage().get(record.storage_key) == FIXTURE.read_bytes()
 
 
 async def test_import_attaches_to_matching_dive(owner_client: AsyncClient, store: Store) -> None:

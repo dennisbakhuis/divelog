@@ -7,6 +7,7 @@ stored profiles once per import, for the serial and Shearwater Cloud ids they na
 """
 
 import re
+from collections import Counter
 from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -340,37 +341,41 @@ def _read_source(store: Store, relative: str) -> ProfileSource:
     return ProfileSource(serial, tuple(str(i) for i in ids) if isinstance(ids, list) else ())
 
 
-def part_keys(storage_key: str, parts: int) -> list[str]:
-    """The storage keys of a dive's raw logs: ``storage_key`` itself, or one per part.
+def raw_keys(stem: str, numbers: Sequence[int], extension: str) -> list[str]:
+    """The storage keys of a dive's raw logs, one per log, named after its computer dive number.
 
     Parameters
     ----------
-    storage_key : str
-        The key of a single log, such as ``imports/2026/10/<id>-344FDE85-674.swlog``.
-    parts : int
-        How many logs the dive has.
+    stem : str
+        The key without number and extension, such as ``imports/2026/10/<id>-344FDE85``.
+    numbers : sequence of int
+        The computer dive number of each log, in order.
+    extension : str
+        The file extension, such as ``swlog``.
 
     Returns
     -------
     list of str
-        ``[storage_key]`` for one log, else the key with ``-1``, ``-2``, … before the extension.
+        ``<stem>-<number>.<extension>`` per log; a number with several logs (a dive the
+        computer split) gets ``-1``, ``-2``, … after it.
     """
-    if parts <= 1:
-        return [storage_key]
-    stem, dot, extension = storage_key.rpartition(".")
-    if not dot:
-        stem, extension = storage_key, ""
-    return [f"{stem}-{part}{dot}{extension}" for part in range(1, parts + 1)]
+    counts = Counter(numbers)
+    seen: Counter[int] = Counter()
+    keys = []
+    for number in numbers:
+        seen[number] += 1
+        part = f"-{seen[number]}" if counts[number] > 1 else ""
+        keys.append(f"{stem}-{number}{part}.{extension}")
+    return keys
 
 
 async def apply(
     store: Store,
     dive: ShearwaterDive,
-    raw: Sequence[bytes],
+    raw: Sequence[tuple[str, bytes]],
     match: Match,
     *,
     import_id: str,
-    storage_key: str,
     profile_name: str | Callable[[int], str],
     dry_run: bool,
     planned: int,
@@ -391,15 +396,14 @@ async def apply(
         The log.
     dive : ShearwaterDive
         The computer dive.
-    raw : sequence of bytes
-        The dive's logs as uploaded; more than one for a dive the computer split, none when
-        another part of the same log already stored them.
+    raw : sequence of (str, bytes)
+        The storage key and content of each of the dive's logs as uploaded; more than one for
+        a joined dive or one the computer split, none when another part of the same log
+        already stored them.
     match : Match
         The result of ``classify``.
     import_id : str
         The import the dive is written under.
-    storage_key : str
-        Where the raw log is stored; ``part_keys`` derives one key per log.
     profile_name : str or callable
         The profile file name, or a function giving it for the number of the log dive the
         profile belongs to.
@@ -426,7 +430,7 @@ async def apply(
         return match.dive.number if match.dive is not None else planned
 
     storage = get_storage()
-    for key, data in zip(part_keys(storage_key, len(raw)) if raw else [], raw, strict=True):
+    for key, data in raw:
         await storage.put(key, data, content_type)
     if match.status == "have" and match.dive is not None:
         return match.dive.number
