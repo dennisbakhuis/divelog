@@ -8,7 +8,8 @@ naming the computer. The format is described in ``docs/SHEARWATER.md``; the resu
 
 import zlib
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from divelog_server.importers.shearwater import DECO_MODELS, ShearwaterDive, _gas_label
 
@@ -26,6 +27,10 @@ OPEN_CIRCUIT = 0x10
 FREEDIVE_MODE = 7
 GASES = 10
 FEET_TO_M = 0.3048
+SURFACE_M = 0.3
+BREAK_MIN_S = 60
+BREAK_MERGE_S = 180
+BREAK_MARGIN_S = 180
 MODELS = {
     3: "Petrel 2",
     5: "Perdix",
@@ -290,3 +295,116 @@ def merge_parts(parts: list[ShearwaterDive]) -> ShearwaterDive:
     if len(ordered) == 1:
         merged.computer_records = list(head.computer_records)
     return merged
+
+
+def surface_breaks_of(dive: ShearwaterDive) -> list[tuple[int, int]]:
+    """The surface intervals inside a dive, where the owner may cut it into several dives.
+
+    A break is a run of consecutive samples at most ``SURFACE_M`` deep lasting at least
+    ``BREAK_MIN_S``; runs less than ``BREAK_MERGE_S`` apart are one break. Only breaks that
+    start ``BREAK_MARGIN_S`` after the first sample and end ``BREAK_MARGIN_S`` before the last
+    sample below the surface count, so the surface before the descent and the tail after the
+    ascent never do.
+
+    Parameters
+    ----------
+    dive : ShearwaterDive
+        The computer dive.
+
+    Returns
+    -------
+    list of (int, int)
+        ``(start_s, end_s)`` of each break: the times of its first and last surface sample.
+    """
+    runs: list[list[int]] = []
+    at_surface = False
+    for t, depth in zip(dive.t_s, dive.depth_m, strict=False):
+        if depth <= SURFACE_M and at_surface:
+            runs[-1][1] = t
+        elif depth <= SURFACE_M:
+            runs.append([t, t])
+        at_surface = depth <= SURFACE_M
+    breaks: list[list[int]] = []
+    for first, last in runs:
+        if last - first < BREAK_MIN_S:
+            continue
+        if breaks and first - breaks[-1][1] < BREAK_MERGE_S:
+            breaks[-1][1] = last
+        else:
+            breaks.append([first, last])
+    below = [t for t, depth in zip(dive.t_s, dive.depth_m, strict=False) if depth > SURFACE_M]
+    if not below:
+        return []
+    earliest, latest = dive.t_s[0] + BREAK_MARGIN_S, below[-1] - BREAK_MARGIN_S
+    return [(first, last) for first, last in breaks if first >= earliest and last <= latest]
+
+
+def split_at(dive: ShearwaterDive, breaks: list[tuple[int, int]]) -> list[ShearwaterDive]:
+    """Cut one computer dive into several dives at surface breaks.
+
+    Part 1 runs from t = 0 to the first break's start, a later part from the previous break's
+    end to the next break's start or the end of the dive. Each part's samples are shifted to
+    start at t = 0 and its start moves by that much; its dive time, depths, temperatures and
+    gas switches come from its own samples, the first switch being the gas in use when it
+    starts.
+
+    Parameters
+    ----------
+    dive : ShearwaterDive
+        The computer dive.
+    breaks : list of (int, int)
+        ``(start_s, end_s)`` of the breaks to cut at, as ``surface_breaks_of`` gives them.
+
+    Returns
+    -------
+    list of ShearwaterDive
+        The parts in time order, each with ``computer_records`` naming the computer dive.
+    """
+    cuts = sorted(breaks)
+    edges = [0, *(t for cut in cuts for t in cut)]
+    bounds: list[tuple[int, int | None]] = [
+        (edges[k], edges[k + 1] if k + 1 < len(edges) else None) for k in range(0, len(edges), 2)
+    ]
+    return [_part(dive, lo, hi) for lo, hi in bounds]
+
+
+def _part(dive: ShearwaterDive, lo: int, hi: int | None) -> ShearwaterDive:
+    """The samples of ``dive`` from ``lo`` to ``hi`` seconds (to the end for None) as a dive."""
+    keep = [k for k, t in enumerate(dive.t_s) if t >= lo and (hi is None or t <= hi)]
+    t_s = [dive.t_s[k] - lo for k in keep]
+    depth_m = _picked(dive.depth_m, keep)
+    start = dive.start + timedelta(seconds=lo)
+    return replace(
+        dive,
+        start=start,
+        end=dive.end if hi is None else dive.start + timedelta(seconds=hi),
+        max_depth_m=max(depth_m, default=0.0),
+        duration_min=round(t_s[-1] / 60, 1) if t_s else 0.0,
+        t_s=t_s,
+        depth_m=depth_m,
+        temp_c=_picked(dive.temp_c, keep),
+        ndl_min=_picked(dive.ndl_min, keep),
+        tts_min=_picked(dive.tts_min, keep),
+        stop_depth_m=_picked(dive.stop_depth_m, keep),
+        gas_switches=_switches_within(dive.gas_switches, lo, hi),
+        computer_records=[dive.number],
+        surface_breaks=[
+            [a - lo, b - lo] for a, b in dive.surface_breaks if a >= lo and (hi is None or b <= hi)
+        ],
+    )
+
+
+def _picked(values: list[Any], keep: list[int]) -> list[Any]:
+    """The values of one sample column at the indices ``keep``."""
+    return [values[k] for k in keep if k < len(values)]
+
+
+def _switches_within(switches: list[list[Any]], lo: int, hi: int | None) -> list[list[Any]]:
+    """The gas switches from ``lo`` to ``hi`` shifted to ``lo``, led by the gas in use at ``lo``."""
+    ordered = sorted(switches, key=lambda switch: switch[0])
+    in_use = [gas for t, gas in ordered if t <= lo]
+    found: list[list[Any]] = [[0, in_use[-1]]] if in_use else []
+    for t, gas in ordered:
+        if t > lo and (hi is None or t <= hi) and (not found or found[-1][1] != gas):
+            found.append([t - lo, gas])
+    return found

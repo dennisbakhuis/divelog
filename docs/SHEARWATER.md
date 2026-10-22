@@ -164,7 +164,17 @@ Two other shapes exist in a log and are importer behaviour, not format facts:
   log (`profile_<n>_1.json`, `profile_<n>_2.json`, …), as for 603, 610 and 614, where short
   surface intervals did not end the dive on the computer. Every one of those dives carries the
   same computer number, so a dive with that number and a profile means the log is already
-  imported.
+  imported. The Cloud import never splits on its own, it only offers the breaks
+  (`surface_breaks_of`): runs of samples at 0.3 m or shallower lasting at least 60 s, runs less
+  than 180 s apart merged into one break, and only breaks that start 180 s after the first
+  sample and end 180 s before the last sample below 0.3 m, so the surface tail never counts. A
+  break is suggested when a log dive without this computer's profile starts between a minute
+  before it and 10 min after it. With `split=614@1740,614@3970` the import cuts the log there
+  (`split_at`): part 1 runs from t = 0 to the first break's first surface sample, each later
+  part from the previous break's last surface sample, shifted to t = 0, and each part gets its
+  own dive time, depths, temperatures and gas at its start. Each part is matched on its own
+  (a `link=614.2:612`, else the nearest dive within 10 min, else a dive with the number and no
+  profile) and becomes its own log dive with its own profile.
 - **Several computer numbers, one log dive.** The diver can join consecutive computer dives into
   one profile (`computer_records: [13, 14]`), as for 13+14 and 542+543. The later numbers then
   have no profile of their own, but they are already in the log.

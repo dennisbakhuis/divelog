@@ -1656,6 +1656,7 @@ async def admin_import_shearwater_cloud(
     clock_offset_min: Annotated[int, Query(ge=-1440, le=1440)] = 0,
     link: Annotated[str | None, Query(pattern=cloud_import.LINK_PATTERN)] = None,
     join: Annotated[str | None, Query(pattern=cloud_import.JOIN_PATTERN)] = None,
+    split: Annotated[str | None, Query(pattern=cloud_import.SPLIT_PATTERN)] = None,
 ) -> ImportResult:
     """Import the dives of a Shearwater Cloud export as drafts, or attach their profiles.
 
@@ -1666,9 +1667,11 @@ async def admin_import_shearwater_cloud(
     ``clock_offset_min`` corrects the computer's clock before matching and writing, and the
     dives written with it carry a flag naming the correction. ``link`` (``673:675,672:680``)
     attaches ``new`` dives to the log dives the owner chose, and ``join`` (``13+14,37+38+39``)
-    imports each group of computer dives as one dive. An attached profile fills the log dive's
-    empty times, average depth and water temperature. Each imported dive's raw logs are kept
-    in storage. With ``dry_run=true`` nothing is stored or written.
+    imports each group of computer dives as one dive. ``split`` (``614@1740,614@3970``) cuts a
+    dive at the surface breaks starting at those seconds into parts, each its own log dive,
+    with its own profile; ``link=614.2:612`` attaches a part. An attached profile fills the
+    log dive's empty times, average depth and water temperature. Each imported dive's raw logs
+    are kept in storage. With ``dry_run=true`` nothing is stored or written.
     """
     data = await file.read()
     if len(data) > get_settings().MAX_UPLOAD_BYTES:
@@ -1695,6 +1698,7 @@ async def admin_import_shearwater_cloud(
             links=cloud_import.parse_links(link),
             joins=cloud_import.parse_joins(join),
             legacy_serial=get_settings().SHEARWATER_LEGACY_SERIAL,
+            splits=cloud_import.parse_splits(split),
         )
     except cloud_import.PlanError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1715,7 +1719,7 @@ async def admin_import_shearwater_cloud(
             continue
         head = entries[unit.head]
         members = [entries[index] for index in unit.indices]
-        blobs = [blob for member in members for blob in member.blobs]
+        blobs = [blob for member in members for blob in member.blobs] if unit.part <= 1 else []
         key = f"imports/{month}/{import_id}-{head.serial}-{head.computer_no}.swlog"
         computer_start = unit.dive.start - offset
         flags = [_clock_flag(clock_offset_min, computer_start)] if clock_offset_min else []
@@ -1734,14 +1738,17 @@ async def admin_import_shearwater_cloud(
             flags=flags,
             fill_empty=True,
         )
-        for index in unit.indices:
-            rows[index].dive_number = number
+        if unit.part:
+            rows[unit.head].parts[unit.part - 1].dive_number = number
+        if unit.part <= 1:
+            for index in unit.indices:
+                rows[index].dive_number = number
         if unit.match.status == "attach":
             updated.append(number)
         else:
             created.append(number)
             planned += 1
-        if not dry_run:
+        if not dry_run and blobs:
             first_key = first_key or computer_import.part_keys(key, len(blobs))[0]
 
     dates = [date.fromisoformat(row.start[:10]) for row in rows if row.start]

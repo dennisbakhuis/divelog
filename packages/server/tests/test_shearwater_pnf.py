@@ -1,12 +1,18 @@
 import gzip
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from divelog_server.importers.shearwater import ShearwaterDive, gas_of, parse_shearwater
-from divelog_server.importers.shearwater_pnf import merge_parts, parse_pnf, unwrap
+from divelog_server.importers.shearwater_pnf import (
+    merge_parts,
+    parse_pnf,
+    split_at,
+    surface_breaks_of,
+    unwrap,
+)
 from tests import pnf_builder as pnf
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -323,3 +329,160 @@ def test_golden_dives(number: str) -> None:
 def test_golden_fixtures_cover_the_planned_dives() -> None:
     assert set(golden_parts()) == {"64", "457", "458", "550", "674"}
     assert len(golden_parts()["458"]) == 2
+
+
+SPLIT_START = datetime(2025, 2, 25, 11, 34, 29)
+
+
+def built(
+    *segments: tuple[float, int],
+    gas_switches: list[list[object]] | None = None,
+    temps: list[float] | None = None,
+) -> ShearwaterDive:
+    """A dive of ``(depth, seconds)`` segments sampled every ten seconds from t = 0."""
+    depths = [depth for depth, seconds in segments for _ in range(seconds // 10)]
+    t_s = [10 * k for k in range(len(depths))]
+    return ShearwaterDive(
+        number=603,
+        start=SPLIT_START,
+        end=SPLIT_START + timedelta(seconds=t_s[-1]),
+        max_depth_m=max(depths),
+        duration_min=round(t_s[-1] / 60, 1),
+        gf="55/85",
+        deco_model="ZHL-16C",
+        surface_pressure_mbar=1013,
+        serial="344FDE85",
+        t_s=t_s,
+        depth_m=depths,
+        temp_c=temps or [24.0] * len(depths),
+        ndl_min=[99] * len(depths),
+        tts_min=[0] * len(depths),
+        stop_depth_m=[0.0] * len(depths),
+        gas_switches=gas_switches if gas_switches is not None else [[0, "32"]],
+        model_name="Perdix AI",
+        log_version=13,
+        water_density=1020,
+    )
+
+
+@pytest.mark.parametrize(("seconds", "found"), [(60, []), (70, [(610, 670)]), (480, [(610, 1080)])])
+def test_a_break_lasts_at_least_a_minute(seconds: int, found: list[tuple[int, int]]) -> None:
+    dive = built((0.0, 10), (12.0, 600), (0.0, seconds), (12.0, 600), (0.0, 10))
+    assert surface_breaks_of(dive) == found
+
+
+@pytest.mark.parametrize("depth", [0.0, 0.2, 0.3])
+def test_surface_is_three_decimetres_or_less(depth: float) -> None:
+    dive = built((0.0, 10), (12.0, 600), (depth, 120), (12.0, 600), (0.0, 10))
+    assert surface_breaks_of(dive) == [(610, 720)]
+
+
+def test_shallow_water_is_not_the_surface() -> None:
+    dive = built((0.0, 10), (12.0, 600), (0.4, 120), (12.0, 600), (0.0, 10))
+    assert surface_breaks_of(dive) == []
+
+
+@pytest.mark.parametrize(
+    ("gap", "found"),
+    [(170, [(610, 960)]), (180, [(610, 700), (880, 970)]), (60, [(610, 850)])],
+)
+def test_runs_close_together_are_one_break(gap: int, found: list[tuple[int, int]]) -> None:
+    dive = built(
+        (0.0, 10), (12.0, 600), (0.0, 100), (1.5, gap - 10), (0.0, 100), (12.0, 600), (0.0, 10)
+    )
+    assert surface_breaks_of(dive) == found
+
+
+def test_a_short_run_does_not_bridge_two_breaks() -> None:
+    dive = built(
+        (0.0, 10),
+        (12.0, 600),
+        (0.0, 100),
+        (1.5, 150),
+        (0.0, 30),
+        (1.5, 150),
+        (0.0, 100),
+        (12.0, 600),
+        (0.0, 10),
+    )
+    assert surface_breaks_of(dive) == [(610, 700), (1040, 1130)]
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "found"),
+    [
+        (160, 600, []),
+        (170, 600, [(180, 300)]),
+        (600, 180, [(610, 730)]),
+        (600, 170, []),
+    ],
+)
+def test_only_interior_breaks_count(before: int, after: int, found: list[tuple[int, int]]) -> None:
+    dive = built((0.0, 10), (12.0, before), (0.0, 130), (12.0, after), (0.0, 10))
+    assert surface_breaks_of(dive) == found
+
+
+def test_the_surface_tail_is_never_a_break() -> None:
+    dive = built((0.0, 300), (12.0, 1200), (0.0, 1200))
+    assert surface_breaks_of(dive) == []
+    assert surface_breaks_of(built((0.0, 600))) == []
+
+
+def split_dive() -> ShearwaterDive:
+    """Two dives in one log: 20 min at 12 m, 8 min at the surface, 20 min at 15 m."""
+    temps = [26.0] * 121 + [28.0] * 49 + [22.0] * 120 + [27.0, 27.0]
+    return built(
+        (0.0, 10),
+        (12.0, 1200),
+        (0.0, 490),
+        (15.0, 1200),
+        (0.0, 20),
+        gas_switches=[[0, "32"], [600, "50"], [2000, "21"]],
+        temps=temps,
+    )
+
+
+def test_split_cuts_at_the_break_and_shifts_the_later_part() -> None:
+    dive = split_dive()
+    assert surface_breaks_of(dive) == [(1210, 1690)]
+    first, second = split_at(dive, [(1210, 1690)])
+    assert first.start == SPLIT_START and first.end == SPLIT_START + timedelta(seconds=1210)
+    assert first.t_s[0] == 0 and first.t_s[-1] == 1210 and first.depth_m[-1] == 0.0
+    assert second.start == SPLIT_START + timedelta(seconds=1690)
+    assert second.end == dive.end and second.time_in == "12:02"
+    assert second.t_s[:2] == [0, 10] and second.depth_m[0] == 0.0 and second.depth_m[1] == 15.0
+    assert second.t_s[-1] == dive.t_s[-1] - 1690
+    assert first.duration_min == 20.2 and second.duration_min == 20.3
+    assert (first.max_depth_m, second.max_depth_m) == (12.0, 15.0)
+    assert (first.avg_depth_m, second.avg_depth_m) == (12.0, 15.0)
+    assert (min(first.temp_c), max(first.temp_c)) == (26.0, 28.0)
+    assert (min(second.temp_c), max(second.temp_c)) == (22.0, 28.0)
+    assert first.gas_switches == [[0, "32"], [600, "50"]]
+    assert second.gas_switches == [[0, "50"], [310, "21"]]
+    for part in (first, second):
+        assert part.computer_records == [603] and part.surface_breaks == []
+        assert part.number == 603 and part.gf == "55/85" and part.serial == "344FDE85"
+        assert len(part.t_s) == len(part.depth_m) == len(part.temp_c) == len(part.ndl_min)
+        assert part.profile()["computer_records"] == [603]
+    assert len(dive.t_s) == 292 and dive.computer_records == []
+
+
+def test_split_at_two_breaks_gives_three_parts() -> None:
+    dive = built(
+        (0.0, 10), (10.0, 600), (0.0, 120), (11.0, 600), (0.0, 120), (12.0, 600), (0.0, 10)
+    )
+    breaks = surface_breaks_of(dive)
+    assert breaks == [(610, 720), (1330, 1440)]
+    parts = split_at(dive, list(reversed(breaks)))
+    assert [part.max_depth_m for part in parts] == [10.0, 11.0, 12.0]
+    assert [part.t_s[-1] for part in parts] == [610, 610, 610]
+    starts = [int((part.start - SPLIT_START).total_seconds()) for part in parts]
+    assert starts == [0, 720, 1440]
+    assert [part.gas_switches for part in parts] == [[[0, "32"]]] * 3
+
+
+def test_split_without_breaks_or_gases_keeps_the_dive() -> None:
+    dive = built((0.0, 10), (12.0, 600), (0.0, 10), gas_switches=[])
+    (whole,) = split_at(dive, [])
+    assert whole.t_s == dive.t_s and whole.end == dive.end and whole.gas_switches == []
+    assert whole.duration_min == dive.duration_min

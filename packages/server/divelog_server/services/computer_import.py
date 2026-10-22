@@ -40,7 +40,8 @@ def classify(
     owner split one log into several dives or joined several numbers into one. If one of them
     has a profile from this computer the dive is ``have``; otherwise the first is ``attach``.
     Without a number match, the dive on the same date starting nearest to it, within
-    ``MATCH_WINDOW``, is ``attach``, and anything else is ``new``.
+    ``MATCH_WINDOW`` and without a profile from this computer, is ``attach``, and anything
+    else is ``new``.
 
     Parameters
     ----------
@@ -66,14 +67,47 @@ def classify(
     for candidate in numbered:
         if not candidate.profiles:
             return Match("attach", candidate)
+    nearest = nearest_in_window(store, dive.start, serial=serial, legacy_serial=legacy_serial)
+    return Match("attach", nearest) if nearest is not None else Match("new")
+
+
+def nearest_in_window(
+    store: Store,
+    start: datetime,
+    *,
+    serial: str | None,
+    legacy_serial: str = "",
+    exclude: Collection[int] = (),
+) -> DiveRecord | None:
+    """The log dive starting nearest to ``start`` on its date, within ``MATCH_WINDOW``.
+
+    Parameters
+    ----------
+    store : Store
+        The log.
+    start : datetime
+        The computer dive's corrected start.
+    serial : str or None
+        The computer's serial: dives with a profile from it are left out.
+    legacy_serial : str
+        The serial assumed for profiles whose ``source`` names none.
+    exclude : collection of int
+        Log dive numbers to leave out, such as those other dives attach to.
+
+    Returns
+    -------
+    DiveRecord or None
+        The nearest dive, the lowest number on a tie, or None when none is in the window.
+    """
     window = [
         (apart, candidate.number, candidate)
-        for candidate, apart in _same_day(store, dive.start)
-        if apart is not None and apart <= MATCH_WINDOW
+        for candidate, apart in _same_day(store, start)
+        if apart is not None
+        and apart <= MATCH_WINDOW
+        and candidate.number not in exclude
+        and not has_profile_from(store, candidate, serial, legacy_serial)
     ]
-    if window:
-        return Match("attach", min(window, key=lambda item: item[:2])[2])
-    return Match("new")
+    return min(window, key=lambda item: item[:2])[2] if window else None
 
 
 def candidates(
@@ -112,6 +146,46 @@ def candidates(
         and not has_profile_from(store, candidate, serial, legacy_serial)
     ]
     return sorted(found, key=lambda item: (item[1] is None, item[1] or 0, item[0].number))
+
+
+def starting_between(
+    store: Store,
+    earliest: datetime,
+    latest: datetime,
+    *,
+    serial: str | None,
+    legacy_serial: str = "",
+    exclude: Collection[int] = (),
+) -> list[DiveRecord]:
+    """The log dives on ``earliest``'s date whose ``time_in`` lies in ``[earliest, latest]``.
+
+    Parameters
+    ----------
+    store : Store
+        The log.
+    earliest, latest : datetime
+        The corrected wall-clock bounds, both included.
+    serial : str or None
+        The computer's serial: dives with a profile from it are left out.
+    legacy_serial : str
+        The serial assumed for profiles whose ``source`` names none.
+    exclude : collection of int
+        Log dive numbers to leave out, such as those other dives attach to.
+
+    Returns
+    -------
+    list of DiveRecord
+        The dives in the log's order.
+    """
+    return [
+        candidate
+        for candidate in store.dives.values()
+        if candidate.date == earliest.date()
+        and candidate.number not in exclude
+        and (began := _began(candidate)) is not None
+        and earliest <= began <= latest
+        and not has_profile_from(store, candidate, serial, legacy_serial)
+    ]
 
 
 def has_profile_from(store: Store, dive: DiveRecord, serial: str | None, legacy: str) -> bool:
@@ -223,7 +297,8 @@ async def apply(
     dive : ShearwaterDive
         The computer dive.
     raw : sequence of bytes
-        The dive's logs as uploaded; more than one for a dive the computer split.
+        The dive's logs as uploaded; more than one for a dive the computer split, none when
+        another part of the same log already stored them.
     match : Match
         The result of ``classify``.
     import_id : str
@@ -256,7 +331,7 @@ async def apply(
         return match.dive.number if match.dive is not None else planned
 
     storage = get_storage()
-    for key, data in zip(part_keys(storage_key, len(raw)), raw, strict=True):
+    for key, data in zip(part_keys(storage_key, len(raw)) if raw else [], raw, strict=True):
         await storage.put(key, data, content_type)
     if match.status == "have" and match.dive is not None:
         return match.dive.number

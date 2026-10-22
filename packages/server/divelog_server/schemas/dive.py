@@ -879,6 +879,41 @@ class ImportCandidateOut(ApiModel):
     minutes_apart: int | None = None
 
 
+class ImportBreakOut(ApiModel):
+    """A surface interval inside a computer dive, where the owner may split it.
+
+    ``start_s`` and ``end_s`` are the seconds of its first and last surface sample; ``start_s``
+    names the break in ``split``. ``start`` and ``end`` are the corrected wall-clock times as
+    ``HH:MM``. ``suggested`` is true when a log dive without this computer's profile starts in
+    or just after the break.
+    """
+
+    start_s: int
+    end_s: int
+    minutes: int
+    start: str
+    end: str
+    suggested: bool = False
+
+
+class ImportPartOut(ApiModel):
+    """One part of a computer dive the request split, and the log dive it becomes.
+
+    ``part`` counts from 1; ``start`` is the corrected local start. ``dive_number`` is the
+    attach target, or the number a new dive gets (on a dry run) or got. A ``new`` part lists
+    its ``candidates`` and ``suggested`` as a row does.
+    """
+
+    part: int
+    start: str
+    duration_min: float
+    max_depth_m: float
+    status: Literal["new", "attach"]
+    dive_number: int | None = None
+    candidates: list[ImportCandidateOut] = Field(default_factory=list)
+    suggested: int | None = None
+
+
 class ImportDiveOut(ApiModel):
     """One dive of a dive computer export and how it relates to the log.
 
@@ -891,6 +926,8 @@ class ImportDiveOut(ApiModel):
     same-day log dives it may belong to in ``candidates`` and the one to pre-select in
     ``suggested``. ``surface_before_min`` is the time since the previous dive of the same
     computer that day ended. ``joined_to`` names the first dive of the join a row is part of.
+    ``breaks`` lists the dive's surface intervals (none for an error or a joined row) and
+    ``parts`` the parts of a dive the request split; the row's status then describes part 1.
     """
 
     computer_no: int
@@ -908,6 +945,8 @@ class ImportDiveOut(ApiModel):
     suggested: int | None = None
     surface_before_min: int | None = None
     joined_to: int | None = None
+    breaks: list[ImportBreakOut] = Field(default_factory=list)
+    parts: list[ImportPartOut] = Field(default_factory=list)
 
 
 class ImportResult(ApiModel):

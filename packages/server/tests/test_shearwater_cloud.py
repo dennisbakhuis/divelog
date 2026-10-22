@@ -981,6 +981,345 @@ async def test_join_follows_its_first_dive_in_only(
     assert body["created"] == [5] and store.dives[5].computer == computer
 
 
+# ── split ───────────────────────────────────────────────────────────────────
+
+SPLIT_DEPTHS = (0.0, *[12.0] * 120, *[0.0] * 49, *[15.0] * 120, 0.0, 0.0)
+BREAK = {"start_s": 1210, "end_s": 1690, "minutes": 8, "start": "09:50", "end": "09:58"}
+
+
+def split_log(number: int = 7, start: datetime = START) -> bytes:
+    """A dive with eight minutes at the surface after twenty: 09:30–09:50 and 09:58–10:18."""
+    return pnf_log(number=number, start=start, depths=SPLIT_DEPTHS)
+
+
+def part_summary(row: dict[str, Any]) -> list[tuple[int, str, str, int | None]]:
+    """``(part, start, status, dive_number)`` of each part of a row."""
+    return [(p["part"], p["start"], p["status"], p["dive_number"]) for p in row["parts"]]
+
+
+@pytest.mark.parametrize(
+    ("time_in", "profiles", "suggested"),
+    [
+        ("09:58", None, True),
+        ("09:50", None, True),
+        ("10:08", None, True),
+        ("09:49", None, False),
+        ("10:09", None, False),
+        (None, None, False),
+        ("09:58", {"p21.json": THIS}, False),
+        ("09:58", {"p21.json": OTHER}, True),
+    ],
+)
+async def test_breaks_are_listed_and_suggested_where_a_dive_was_logged(
+    owner_client: AsyncClient,
+    store: Store,
+    tmp_path: Path,
+    time_in: str | None,
+    profiles: dict[str, dict[str, Any]] | None,
+    suggested: bool,
+) -> None:
+    await add_dive(store, 20, time_in="09:31")
+    await add_dive(store, 21, time_in=time_in, profiles=profiles)
+    body = await preview(owner_client, cloud_db(tmp_path, [split_log()]))
+    row = body["dives"][0]
+    assert (row["status"], row["dive_number"]) == ("attach", 20)
+    assert row["breaks"] == [BREAK | {"suggested": suggested}] and row["parts"] == []
+
+
+async def test_a_dive_another_row_attaches_to_is_not_suggested(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    await add_dive(store, 21, time_in="09:58", computer=[8])
+    logs = [split_log(), pnf_log(number=8, start=at(3))]
+    rows = by_number(await preview(owner_client, cloud_db(tmp_path, logs)))
+    assert rows[8]["status"] == "attach" and rows[8]["breaks"] == []
+    assert rows[7]["breaks"] == [BREAK | {"suggested": False}]
+
+
+async def test_breaks_follow_the_clock_offset(owner_client: AsyncClient, tmp_path: Path) -> None:
+    body = await preview(owner_client, cloud_db(tmp_path, [split_log()]), clock_offset_min=-90)
+    shifted = BREAK | {"start": "08:20", "end": "08:28", "suggested": False}
+    assert body["dives"][0]["breaks"] == [shifted]
+
+
+async def test_joined_and_unreadable_rows_list_no_breaks(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    await add_dive(store, 30, computer=[9], profiles={"p30.json": THIS})
+    bad = Log(
+        pnf.blob([b"\xff\xff" + bytes(pnf.RECORD - 2)]),
+        file_name="Perdix AI[344FDE85]#6 2025-3-1 8-0-0.swlogzp",
+    )
+    logs = [
+        split_log(),
+        split_log(number=8, start=at(1)),
+        split_log(number=9, start=at(3)),
+        bad,
+    ]
+    rows = by_number(await preview(owner_client, cloud_db(tmp_path, logs), join="7+8"))
+    assert rows[7]["breaks"] == rows[8]["breaks"] == rows[6]["breaks"] == []
+    assert rows[9]["status"] == "have" and len(rows[9]["breaks"]) == 1
+
+
+async def test_dry_run_split_attaches_each_part_to_its_dive(
+    owner_client: AsyncClient, store: Store, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await add_dive(store, 20, time_in="09:31")
+    await add_dive(store, 21, time_in="09:58")
+    commits = record_commits(store, monkeypatch)
+    body = await preview(owner_client, cloud_db(tmp_path, [split_log()]), split="7@1210")
+    row = body["dives"][0]
+    assert part_summary(row) == [
+        (1, "2025-03-01T09:30:00", "attach", 20),
+        (2, "2025-03-01T09:58:10", "attach", 21),
+    ]
+    assert [(p["duration_min"], p["max_depth_m"]) for p in row["parts"]] == [
+        (20.2, 12.0),
+        (20.2, 15.0),
+    ]
+    assert all(p["candidates"] == [] and p["suggested"] is None for p in row["parts"])
+    assert (row["status"], row["dive_number"], row["selected"]) == ("attach", 20, True)
+    assert row["duration_min"] == 48.3 and row["max_depth_m"] == 15.0
+    assert row["breaks"] == [BREAK | {"suggested": True}]
+    assert body["updated"] == [20, 21] and body["created"] == [] and commits == []
+
+
+async def test_dry_run_split_offers_candidates_for_new_parts(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    await add_dive(store, 22, time_in="11:00")
+    body = await preview(owner_client, cloud_db(tmp_path, [split_log()]), split="7@1210")
+    row = body["dives"][0]
+    assert part_summary(row) == [
+        (1, "2025-03-01T09:30:00", "new", 23),
+        (2, "2025-03-01T09:58:10", "new", 24),
+    ]
+    for part, apart in zip(row["parts"], (90, 62), strict=True):
+        assert [(c["number"], c["minutes_apart"]) for c in part["candidates"]] == [(22, apart)]
+        assert part["suggested"] == 22
+    assert (row["status"], row["dive_number"]) == ("new", 23)
+    assert row["candidates"] == row["parts"][0]["candidates"] and row["suggested"] == 22
+    assert body["created"] == [23, 24]
+
+
+async def test_part_matching_uses_the_number_and_skips_taken_dives(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    await add_dive(store, 20, time_in="09:31")
+    await add_dive(store, 30, day=date(2025, 2, 1), computer=[7])
+    await add_dive(store, 31, day=date(2025, 2, 1), computer=[7])
+    body = await preview(
+        owner_client, cloud_db(tmp_path, [split_log()]), split="7@1210", link="7.2:20"
+    )
+    row = body["dives"][0]
+    assert [(p["status"], p["dive_number"]) for p in row["parts"]] == [
+        ("attach", 30),
+        ("attach", 20),
+    ]
+
+
+async def test_commit_writes_one_dive_and_profile_per_part(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    raw = split_log()
+    response = await upload(owner_client, cloud_db(tmp_path, [raw]), split="7@1210")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["created"] == [5, 6] and body["updated"] == [] and body["dives_in_file"] == 1
+    row = body["dives"][0]
+    assert (row["status"], row["dive_number"]) == ("new", 5)
+    assert [p["dive_number"] for p in row["parts"]] == [5, 6]
+    first, second = store.dives[5], store.dives[6]
+    assert first.computer == second.computer == [7]
+    assert (first.time_in, first.time_out, second.time_in, second.time_out) == (
+        "09:30",
+        "09:50",
+        "09:58",
+        "10:18",
+    )
+    assert (first.max_depth_m, second.max_depth_m) == (12.0, 15.0)
+    assert first.profiles == ["profiles/profile_00005.json"]
+    assert second.profiles == ["profiles/profile_00006.json"]
+    for dive in (first, second):
+        assert dive.visibility == "draft" and dive.import_id == body["import_id"]
+        profile = json.loads((store.root / dive.profiles[0]).read_text())
+        assert profile["computer_records"] == [7] and profile["log_dive_no"] == dive.number
+        assert profile["t_s"][0] == 0 and profile["surface_breaks"] == []
+        assert profile["time_in"] == dive.time_in
+    key = store.imports[body["import_id"]].storage_key
+    assert key.endswith("-344FDE85-7.swlog") and await get_storage().get(key) == raw
+    assert store.imports[body["import_id"]].created == [5, 6]
+
+
+async def test_commit_attaches_parts_and_fills_their_empty_fields(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    await add_dive(store, 20, time_in="09:31", time_out="09:49")
+    await add_dive(store, 21, time_in="09:58")
+    db = cloud_db(tmp_path, [split_log()])
+    body = (await upload(owner_client, db, split="7@1210", clock_offset_min=0)).json()
+    assert body["updated"] == [20, 21] and body["created"] == []
+    first, second = store.dives[20], store.dives[21]
+    assert (first.time_in, first.time_out) == ("09:31", "09:49")
+    assert (second.time_in, second.time_out) == ("09:58", "10:18")
+    assert first.avg_depth_m == 12.0 and second.avg_depth_m == 15.0
+    assert first.computer == second.computer == [7]
+    assert first.profiles == ["profiles/profile_00020.json"]
+    assert second.profiles == ["profiles/profile_00021.json"]
+    again = await preview(owner_client, db)
+    assert statuses(again) == {7: ("have", 20)} and again["dives"][0]["parts"] == []
+    assert again["dives"][0]["selected"] is False
+
+
+async def test_split_parts_carry_the_clock_flag(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    db = cloud_db(tmp_path, [split_log()])
+    body = (await upload(owner_client, db, split="7@1210", clock_offset_min=60)).json()
+    assert body["created"] == [5, 6]
+    assert store.dives[5].flags == ["time corrected by +1 h (was 09:30)"]
+    assert store.dives[6].flags == ["time corrected by +1 h (was 09:58)"]
+    assert store.dives[6].time_in == "10:58"
+
+
+async def test_part_links_choose_the_dives(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    await add_dive(store, 20, time_in="09:31")
+    await add_dive(store, 21, time_in="09:58")
+    await add_dive(store, 22, time_in="15:00")
+    db = cloud_db(tmp_path, [split_log()])
+    params = {"split": "7@1210", "link": "7.1:22,7.2:20"}
+    dry = await preview(owner_client, db, **params)
+    assert [p["dive_number"] for p in dry["dives"][0]["parts"]] == [22, 20]
+    body = (await upload(owner_client, db, **params)).json()
+    assert body["updated"] == [22, 20] and statuses(body) == {7: ("attach", 22)}
+    assert store.dives[22].computer == store.dives[20].computer == [7]
+    assert store.dives[21].computer == [] and store.dives[21].profiles == []
+
+
+async def test_second_upload_after_a_split_is_all_have(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    db = cloud_db(tmp_path, [split_log(), pnf_log(number=8, start=at(3))])
+    first = (await upload(owner_client, db, split="7@1210")).json()
+    assert first["created"] == [5, 6, 7]
+    second = await preview(owner_client, db)
+    assert statuses(second) == {7: ("have", 5), 8: ("have", 7)}
+    assert second["created"] == second["updated"] == [] and second["skipped"] == 2
+    assert not any(row["selected"] for row in second["dives"])
+
+
+@pytest.mark.parametrize(
+    ("params", "reason"),
+    [
+        ({"split": "42@1210"}, "Cannot split #42: it is not in this export"),
+        ({"split": "9@1210"}, "Cannot split #9: it is already dive #30"),
+        ({"split": "6@1210"}, "Cannot split #6: its log could not be read"),
+        ({"split": "7@1740"}, "Cannot split #7: no surface break at 29 min"),
+        ({"split": "7@1210,7@1690"}, "Cannot split #7: no surface break at 28 min"),
+        ({"split": "7@1210", "join": "7+8"}, "Cannot split #7: it is joined to #8"),
+        ({"split": "8@1210", "join": "7+8"}, "Cannot split #8: it is joined to #7"),
+        ({"split": "7@1210", "link": "7:20"}, "Cannot link #7: it is split, link its parts"),
+        ({"split": "7@1210", "link": "7.3:20"}, "Cannot link #7.3: the dive has 2 parts"),
+        ({"split": "7@1210", "link": "7.0:20"}, "Cannot link #7.0: the dive has 2 parts"),
+        ({"link": "7.2:20"}, "Cannot link #7.2: the dive is not split"),
+        ({"split": "7@1210", "link": "7.2:99"}, "Cannot link #7.2: dive #99 does not exist"),
+        (
+            {"split": "7@1210", "link": "7.2:31"},
+            "Cannot link #7.2: dive #31 already has a profile from this computer",
+        ),
+        (
+            {"split": "7@1210", "link": "7.1:20,7.2:20"},
+            "Cannot link #7.2: dive #20 is already linked to #7.1",
+        ),
+        (
+            {"split": "7@1210", "link": "7.2:20,7.2:21"},
+            "Cannot link #7.2: it is linked more than once",
+        ),
+    ],
+)
+async def test_impossible_splits_are_refused(
+    owner_client: AsyncClient,
+    store: Store,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    params: dict[str, str],
+    reason: str,
+) -> None:
+    await add_dive(store, 20, time_in="16:00")
+    await add_dive(store, 21, time_in="17:00")
+    await add_dive(store, 30, day=date(2025, 2, 1), computer=[9], profiles={"p30.json": THIS})
+    await add_dive(store, 31, time_in="18:00", computer=[50], profiles={"p31.json": THIS})
+    bad = Log(
+        pnf.blob([b"\xff\xff" + bytes(pnf.RECORD - 2)]),
+        file_name="Perdix AI[344FDE85]#6 2025-3-1 8-0-0.swlogzp",
+    )
+    logs = [split_log(), split_log(number=8, start=at(1)), split_log(number=9, start=at(3)), bad]
+    commits = record_commits(store, monkeypatch)
+    response = await upload(owner_client, cloud_db(tmp_path, logs), **params)
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"] == reason
+    assert commits == [] and store.imports == {}
+
+
+@pytest.mark.parametrize(
+    ("param", "value"),
+    [
+        ("split", "7"),
+        ("split", "7@"),
+        ("split", "@1210"),
+        ("split", "7@1210,"),
+        ("split", "7@a"),
+        ("split", "7:1210"),
+        ("split", "7@1210 "),
+        ("split", "7@-1210"),
+        ("link", "7.:20"),
+        ("link", ".2:20"),
+        ("link", "7..2:20"),
+        ("link", "7.2.1:20"),
+    ],
+)
+async def test_malformed_splits_and_part_links_are_refused(
+    owner_client: AsyncClient, tmp_path: Path, param: str, value: str
+) -> None:
+    response = await upload(owner_client, cloud_db(tmp_path, [split_log()]), **{param: value})
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"split": "7@1210"},
+        {"split": "7@99"},
+        {"split": "42@1"},
+        {"split": "7@1210", "link": "7.3:99"},
+        {"split": "7@1210", "join": "7+8"},
+    ],
+)
+async def test_split_outside_only_is_ignored(
+    owner_client: AsyncClient, store: Store, tmp_path: Path, params: dict[str, str]
+) -> None:
+    logs = [split_log(), split_log(number=8, start=at(1)), pnf_log(number=9, start=at(3))]
+    response = await upload(owner_client, cloud_db(tmp_path, logs), only="9", **params)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["created"] == [5] and all(row["parts"] == [] for row in body["dives"])
+    assert store.dives[5].computer == [9] and sorted(store.dives) == [1, 2, 3, 4, 5]
+
+
+async def test_time_match_skips_a_dive_with_a_profile_from_this_computer(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    await add_dive(store, 20, time_in="09:31", profiles={"p20.json": THIS})
+    body = await preview(owner_client, cloud_db(tmp_path, [pnf_log()]))
+    assert statuses(body) == {7: ("new", 21)} and body["dives"][0]["candidates"] == []
+    await add_dive(store, 22, time_in="09:33", profiles={"p22.json": OTHER})
+    body = await preview(owner_client, cloud_db(tmp_path, [pnf_log()]))
+    assert statuses(body) == {7: ("attach", 22)}
+    assert len(store.dives[20].profiles) == 1
+
+
 # ── auth and limits ─────────────────────────────────────────────────────────
 
 

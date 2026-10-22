@@ -5,13 +5,15 @@ log repository that already holds every dive of that database. The log's dives, 
 the records they refer to are copied into the test's temporary directory, so the original is
 never written. The dry run must create nothing; every dive that is not ``have`` is printed
 with the reason. The scenarios then take dives out of the copy and import them again: two
-hand-logged dives that lost their profiles, and a dive the computer split into #13 and #14.
+hand-logged dives that lost their profiles, a dive the computer split into #13 and #14, and
+computer dives the owner logged as several dives (603, 610 and 614).
 """
 
 import json
 import os
 import shutil
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -179,3 +181,75 @@ async def test_split_dive_is_joined_again(
             f"profile_00013: max {original['max_depth_m']} m, {original['duration_min']} min, "
             f"breaks {original['surface_breaks']}"
         )
+
+
+SPLIT_LOGS = {603: [599, 600], 610: [606, 607], 614: [611, 612, 613]}
+CLOSE_MIN = 2
+
+
+def minutes_between(earlier: str, later: str) -> int:
+    """Whole minutes from one ``HH:MM`` to another."""
+    apart = datetime.strptime(later, "%H:%M") - datetime.strptime(earlier, "%H:%M")
+    return round(apart.total_seconds() / 60)
+
+
+@pytest.mark.parametrize("computer_no", sorted(SPLIT_LOGS))
+async def test_dive_logged_as_several_dives_is_split_again(
+    content_copy: Path,
+    owner_client: AsyncClient,
+    capsys: pytest.CaptureFixture[str],
+    computer_no: int,
+) -> None:
+    """Strip the parts' profiles and computer number, then split the computer dive again.
+
+    The stored profiles were cut by hand: each part ends at the last sample before the break
+    and the last one keeps the computer's surface tail, so its ``time_out`` is later than the
+    dive's end, which the import uses.
+    """
+    store = deps.get_store()
+    numbers = SPLIT_LOGS[computer_no]
+    old = {}
+    for number in numbers:
+        relative = store.dives[number].profiles[0]
+        old[number] = json.loads((content_copy / relative).read_text())
+        await strip_computer(store, number)
+
+    dry = await cloud_import(owner_client, dry_run="true")
+    rows = {row["computer_no"]: row for row in dry["dives"]}
+    row = rows[computer_no]
+    assert row["status"] in ("new", "attach") and row["selected"]
+    suggested = [b for b in row["breaks"] if b["suggested"]]
+    assert len(suggested) == len(numbers) - 1
+    others = [r for n, r in rows.items() if n != computer_no]
+    assert {r["status"] for r in others} == {"have"}
+
+    split = ",".join(f"{computer_no}@{b['start_s']}" for b in suggested)
+    planned = await cloud_import(owner_client, dry_run="true", split=split)
+    parts = {row["computer_no"]: row for row in planned["dives"]}[computer_no]["parts"]
+    assert [(p["status"], p["dive_number"]) for p in parts] == [("attach", n) for n in numbers]
+
+    body = await cloud_import(owner_client, split=split, only=str(computer_no))
+    assert body["created"] == [] and body["updated"] == numbers
+    store = deps.get_store()
+    lines = [f"\n#{computer_no} {row['start']}: breaks {row['breaks']}"]
+    for number in numbers:
+        dive = store.dives[number]
+        assert dive.computer == [computer_no] and len(dive.profiles) == 1
+        profile = json.loads((content_copy / dive.profiles[0]).read_text())
+        assert profile["computer_records"] == [computer_no]
+        before = old[number]
+        assert abs(minutes_between(before["time_in"], profile["time_in"])) <= CLOSE_MIN
+        if number != numbers[-1]:
+            assert abs(minutes_between(before["time_out"], profile["time_out"])) <= CLOSE_MIN
+        else:
+            assert minutes_between(profile["time_out"], before["time_out"]) >= -CLOSE_MIN
+        lines.append(
+            f"  dive #{number}: {profile['time_in']}-{profile['time_out']} "
+            f"{profile['duration_min']} min {profile['max_depth_m']} m; stored profile "
+            f"{before['time_in']}-{before['time_out']} {before['duration_min']} min "
+            f"{before['max_depth_m']} m"
+        )
+    again = await cloud_import(owner_client, dry_run="true")
+    assert {row["status"] for row in again["dives"]} == {"have"}
+    with capsys.disabled():
+        print("\n".join(lines))

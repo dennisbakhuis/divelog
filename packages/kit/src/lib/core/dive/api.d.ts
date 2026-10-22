@@ -1334,9 +1334,11 @@ export interface paths {
      *     ``clock_offset_min`` corrects the computer's clock before matching and writing, and the
      *     dives written with it carry a flag naming the correction. ``link`` (``673:675,672:680``)
      *     attaches ``new`` dives to the log dives the owner chose, and ``join`` (``13+14,37+38+39``)
-     *     imports each group of computer dives as one dive. An attached profile fills the log dive's
-     *     empty times, average depth and water temperature. Each imported dive's raw logs are kept
-     *     in storage. With ``dry_run=true`` nothing is stored or written.
+     *     imports each group of computer dives as one dive. ``split`` (``614@1740,614@3970``) cuts a
+     *     dive at the surface breaks starting at those seconds into parts, each its own log dive,
+     *     with its own profile; ``link=614.2:612`` attaches a part. An attached profile fills the
+     *     log dive's empty times, average depth and water temperature. Each imported dive's raw logs
+     *     are kept in storage. With ``dry_run=true`` nothing is stored or written.
      */
     post: operations['admin_import_shearwater_cloud_api_v1_admin_import_shearwater_cloud_post'];
     delete?: never;
@@ -2825,6 +2827,32 @@ export interface components {
       detail?: components['schemas']['ValidationError'][];
     };
     /**
+     * ImportBreakOut
+     * @description A surface interval inside a computer dive, where the owner may split it.
+     *
+     *     ``start_s`` and ``end_s`` are the seconds of its first and last surface sample; ``start_s``
+     *     names the break in ``split``. ``start`` and ``end`` are the corrected wall-clock times as
+     *     ``HH:MM``. ``suggested`` is true when a log dive without this computer's profile starts in
+     *     or just after the break.
+     */
+    ImportBreakOut: {
+      /** Start S */
+      start_s: number;
+      /** End S */
+      end_s: number;
+      /** Minutes */
+      minutes: number;
+      /** Start */
+      start: string;
+      /** End */
+      end: string;
+      /**
+       * Suggested
+       * @default false
+       */
+      suggested: boolean;
+    };
+    /**
      * ImportCandidateOut
      * @description A log dive a new computer dive may belong to: same date, no profile from this computer.
      *
@@ -2862,6 +2890,8 @@ export interface components {
      *     same-day log dives it may belong to in ``candidates`` and the one to pre-select in
      *     ``suggested``. ``surface_before_min`` is the time since the previous dive of the same
      *     computer that day ended. ``joined_to`` names the first dive of the join a row is part of.
+     *     ``breaks`` lists the dive's surface intervals (none for an error or a joined row) and
+     *     ``parts`` the parts of a dive the request split; the row's status then describes part 1.
      */
     ImportDiveOut: {
       /** Computer No */
@@ -2900,6 +2930,39 @@ export interface components {
       surface_before_min: number | null;
       /** Joined To */
       joined_to: number | null;
+      /** Breaks */
+      breaks: components['schemas']['ImportBreakOut'][];
+      /** Parts */
+      parts: components['schemas']['ImportPartOut'][];
+    };
+    /**
+     * ImportPartOut
+     * @description One part of a computer dive the request split, and the log dive it becomes.
+     *
+     *     ``part`` counts from 1; ``start`` is the corrected local start. ``dive_number`` is the
+     *     attach target, or the number a new dive gets (on a dry run) or got. A ``new`` part lists
+     *     its ``candidates`` and ``suggested`` as a row does.
+     */
+    ImportPartOut: {
+      /** Part */
+      part: number;
+      /** Start */
+      start: string;
+      /** Duration Min */
+      duration_min: number;
+      /** Max Depth M */
+      max_depth_m: number;
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: 'new' | 'attach';
+      /** Dive Number */
+      dive_number: number | null;
+      /** Candidates */
+      candidates: components['schemas']['ImportCandidateOut'][];
+      /** Suggested */
+      suggested: number | null;
     };
     /**
      * ImportRecordOut
@@ -7505,6 +7568,7 @@ export interface operations {
         clock_offset_min?: number;
         link?: string | null;
         join?: string | null;
+        split?: string | null;
       };
       header?: never;
       path?: never;
