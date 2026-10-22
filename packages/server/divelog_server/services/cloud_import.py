@@ -127,7 +127,6 @@ def plan(
     only: Collection[int] | None,
     links: dict[LinkKey, int],
     joins: Sequence[Sequence[int]],
-    legacy_serial: str,
     splits: dict[int, list[int]] | None = None,
 ) -> Plan:
     """Classify the export's dives and apply the links, joins and splits to them.
@@ -149,8 +148,6 @@ def plan(
         of split dives to attach to a chosen dive.
     joins : sequence of sequence of int
         Groups of computer numbers to import as one dive each.
-    legacy_serial : str
-        The serial assumed for profiles whose ``source`` names none.
     splits : dict, optional
         ``{computer_no: [start_s, ...]}``: the dives to cut at the surface breaks starting there.
 
@@ -165,7 +162,7 @@ def plan(
         With the response's detail, when a link, join or split cannot be honoured.
     """
     own = {
-        index: classify(store, entry.dive, serial=entry.serial, legacy_serial=legacy_serial)
+        index: classify(store, entry.dive, serial=entry.serial)
         for index, entry in enumerate(entries)
         if entry.dive is not None
     }
@@ -173,7 +170,7 @@ def plan(
     cuts = _cuts(entries, own, splits or {}, active, only)
     whole = {number: target for (number, part), target in links.items() if part is None}
     split_numbers = {entries[index].computer_no for index in cuts}
-    linked = _linked(store, entries, own, whole, only, legacy_serial, split_numbers)
+    linked = _linked(store, entries, own, whole, only, split_numbers)
     units = _joined(entries, own, linked, joins, only)
     grouped = {index for unit in units for index in unit.indices}
     units += [
@@ -182,7 +179,7 @@ def plan(
         if index not in grouped and index not in cuts and (dive := entries[index].dive) is not None
     ]
     part_links = {key: target for key, target in links.items() if key[1] is not None}
-    units += _parts(store, entries, cuts, part_links, _targets(units), only, legacy_serial)
+    units += _parts(store, entries, cuts, part_links, _targets(units), only)
     units.sort(key=lambda unit: (unit.head, unit.part))
     for unit in units:
         unit.imported = only is None or entries[unit.head].computer_no in only
@@ -192,7 +189,7 @@ def plan(
         if match.status == "attach" and match.dive and index not in cuts
     }
     attached |= {unit.match.dive.number for unit in units if unit.part and unit.match.dive}
-    rows = _rows(store, entries, units, attached, legacy_serial, offset)
+    rows = _rows(store, entries, units, attached, offset)
     return Plan(units, rows)
 
 
@@ -242,7 +239,6 @@ def _linked(
     own: dict[int, Match],
     links: dict[int, int],
     only: Collection[int] | None,
-    legacy: str,
     split: Collection[int] = (),
 ) -> dict[int, DiveRecord]:
     """The log dive each linked ``new`` dive attaches to, by its index in ``entries``."""
@@ -261,7 +257,7 @@ def _linked(
         if target is None:
             raise PlanError(f"{refused}: dive #{target_no} does not exist")
         for index in new:
-            if has_profile_from(store, target, entries[index].serial, legacy):
+            if has_profile_from(store, target, entries[index].serial):
                 raise PlanError(
                     f"{refused}: dive #{target_no} already has a profile from this computer"
                 )
@@ -325,7 +321,6 @@ def _parts(
     links: dict[LinkKey, int],
     taken: set[int],
     only: Collection[int] | None,
-    legacy: str,
 ) -> list[Unit]:
     """One unit per part of each split dive, matched in time order.
 
@@ -333,7 +328,7 @@ def _parts(
     ``MATCH_WINDOW`` of its start, else to a dive with the computer number and no profile;
     dives other dives or earlier parts attach to are not offered again.
     """
-    chosen = _part_links(store, entries, cuts, links, only, legacy)
+    chosen = _part_links(store, entries, cuts, links, only)
     taken = taken | {target.number for target in chosen.values()}
     units: list[Unit] = []
     for index in sorted(cuts):
@@ -342,7 +337,7 @@ def _parts(
             continue
         for part, piece in enumerate(split_at(entry.dive, cuts[index]), start=1):
             target = chosen.get((entry.computer_no, part)) or _part_match(
-                store, piece, entry.serial, legacy, taken
+                store, piece, entry.serial, taken
             )
             if target is not None:
                 taken.add(target.number)
@@ -357,7 +352,6 @@ def _part_links(
     cuts: dict[int, list[Cut]],
     links: dict[LinkKey, int],
     only: Collection[int] | None,
-    legacy: str,
 ) -> dict[LinkKey, DiveRecord]:
     """The log dive each linked part attaches to, by ``(computer_no, part)``."""
     split = {entries[index].computer_no: index for index in cuts}
@@ -376,7 +370,7 @@ def _part_links(
         target = store.dives.get(target_no)
         if target is None:
             raise PlanError(f"{refused}: dive #{target_no} does not exist")
-        if has_profile_from(store, target, entries[index].serial, legacy):
+        if has_profile_from(store, target, entries[index].serial):
             raise PlanError(
                 f"{refused}: dive #{target_no} already has a profile from this computer"
             )
@@ -390,12 +384,10 @@ def _part_links(
 
 
 def _part_match(
-    store: Store, piece: ShearwaterDive, serial: str, legacy: str, taken: set[int]
+    store: Store, piece: ShearwaterDive, serial: str, taken: set[int]
 ) -> DiveRecord | None:
     """The log dive a part of a split dive belongs to, or None for a new dive."""
-    nearest = nearest_in_window(
-        store, piece.start, serial=serial, legacy_serial=legacy, exclude=taken
-    )
+    nearest = nearest_in_window(store, piece.start, serial=serial, exclude=taken)
     if nearest is not None:
         return nearest
     numbered = [
@@ -433,7 +425,6 @@ def _rows(
     entries: Sequence[CloudDive],
     units: list[Unit],
     attached: set[int],
-    legacy: str,
     offset: timedelta,
 ) -> list[ImportDiveOut]:
     """The preview row of every dive of the export."""
@@ -452,9 +443,7 @@ def _rows(
         number = unit.match.dive.number if unit.match.dive else None
         found: list[ImportCandidateOut] = []
         if status == "new":
-            nearby = candidates(
-                store, unit.dive.start, serial=head.serial, legacy_serial=legacy, exclude=attached
-            )
+            nearby = candidates(store, unit.dive.start, serial=head.serial, exclude=attached)
             found = [_candidate(store, dive, minutes) for dive, minutes in nearby]
         if unit.part:
             row.parts.append(_part_row(unit, found))
@@ -480,9 +469,7 @@ def _rows(
         dive = entries[unit.head].dive
         if len(unit.indices) == 1 and unit.part <= 1 and dive is not None:
             exclude = {n for head, n in targets if head != unit.head}
-            rows[unit.head].breaks = _breaks(
-                store, dive, entries[unit.head].serial, legacy, exclude
-            )
+            rows[unit.head].breaks = _breaks(store, dive, entries[unit.head].serial, exclude)
     return rows
 
 
@@ -511,7 +498,7 @@ def _row_targets(units: Sequence[Unit]) -> set[tuple[int, int]]:
 
 
 def _breaks(
-    store: Store, dive: ShearwaterDive, serial: str, legacy: str, exclude: Collection[int]
+    store: Store, dive: ShearwaterDive, serial: str, exclude: Collection[int]
 ) -> list[ImportBreakOut]:
     """The surface breaks of a computer dive, suggested where a logged dive starts after one.
 
@@ -528,7 +515,6 @@ def _breaks(
             began - BREAK_LEAD,
             ended + MATCH_WINDOW,
             serial=serial,
-            legacy_serial=legacy,
             exclude=exclude,
         )
         found.append(

@@ -159,12 +159,6 @@ def statuses(body: dict[str, Any]) -> dict[int, tuple[str, int | None]]:
     return {row["computer_no"]: (row["status"], row["dive_number"]) for row in body["dives"]}
 
 
-def use_legacy_serial(monkeypatch: pytest.MonkeyPatch, serial: str) -> None:
-    """Set ``SHEARWATER_LEGACY_SERIAL`` for this test."""
-    monkeypatch.setenv("SHEARWATER_LEGACY_SERIAL", serial)
-    get_settings.cache_clear()
-
-
 # ── container ───────────────────────────────────────────────────────────────
 
 
@@ -343,20 +337,30 @@ async def test_same_number_from_another_computer_is_new(
 
 
 @pytest.mark.parametrize(
-    ("legacy", "status"), [("", "have"), ("344FDE85", "have"), ("DEADBEEF", "new")]
+    "profile",
+    [{"computer_no": 7}, {"source": "Perdix"}, {"source": ""}, {"source": "Perdix 344fde85"}],
 )
-async def test_profiles_without_a_serial_use_the_legacy_serial(
+async def test_same_number_with_a_profile_naming_no_other_serial_is_have(
+    owner_client: AsyncClient, store: Store, tmp_path: Path, profile: dict[str, Any]
+) -> None:
+    await add_dive(store, 20, computer=[7], profiles={"profile_00020.json": profile})
+    body = await preview(owner_client, cloud_db(tmp_path, [pnf_log()]))
+    assert statuses(body) == {7: ("have", 20)}
+
+
+@pytest.mark.parametrize(
+    ("source", "status"), [("Perdix", ("new", 21)), ("Perdix DEADBEEF", ("attach", 20))]
+)
+async def test_a_nearby_dive_with_a_profile_from_this_computer_is_not_attached_to(
     owner_client: AsyncClient,
     store: Store,
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    legacy: str,
-    status: str,
+    source: str,
+    status: tuple[str, int],
 ) -> None:
-    use_legacy_serial(monkeypatch, legacy)
-    await add_dive(store, 20, computer=[7], profiles={"profile_00020.json": {"computer_no": 7}})
+    await add_dive(store, 20, time_in="09:32", profiles={"profile_00020.json": {"source": source}})
     body = await preview(owner_client, cloud_db(tmp_path, [pnf_log()]))
-    assert body["dives"][0]["status"] == status
+    assert statuses(body) == {7: status}
 
 
 # ── import ──────────────────────────────────────────────────────────────────

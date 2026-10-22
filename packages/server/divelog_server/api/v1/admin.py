@@ -1697,7 +1697,6 @@ async def admin_import_shearwater_cloud(
             only=_dive_numbers(only),
             links=cloud_import.parse_links(link),
             joins=cloud_import.parse_joins(join),
-            legacy_serial=get_settings().SHEARWATER_LEGACY_SERIAL,
             splits=cloud_import.parse_splits(split),
         )
     except cloud_import.PlanError as exc:

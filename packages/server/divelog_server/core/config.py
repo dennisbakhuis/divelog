@@ -55,7 +55,6 @@ class Settings(BaseSettings):
     S3_SECRET_KEY: str = ""
     S3_REGION: str = "us-east-1"
     MAX_UPLOAD_BYTES: int = 50 * 1024 * 1024
-    SHEARWATER_LEGACY_SERIAL: str = ""
 
     BACKEND_SMTP_HOST: str = "localhost"
     BACKEND_SMTP_PORT: int = 1325

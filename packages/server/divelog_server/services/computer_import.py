@@ -31,9 +31,7 @@ class Match:
     dive: DiveRecord | None = None
 
 
-def classify(
-    store: Store, dive: ShearwaterDive, *, serial: str | None, legacy_serial: str = ""
-) -> Match:
+def classify(store: Store, dive: ShearwaterDive, *, serial: str | None) -> Match:
     """Find the log dive a computer dive belongs to.
 
     A log dive whose ``computer`` list holds the dive number matches; several can, when the
@@ -52,8 +50,6 @@ def classify(
     serial : str or None
         The computer's serial. A profiled dive with this number only counts as ``have`` when
         its profile names the same serial or none; None skips that check.
-    legacy_serial : str
-        The serial assumed for profiles whose ``source`` names none.
 
     Returns
     -------
@@ -62,12 +58,12 @@ def classify(
     """
     numbered = [d for d in store.dives.values() if dive.number in d.computer]
     for candidate in numbered:
-        if candidate.profiles and _same_computer(store, candidate, serial, legacy_serial):
+        if candidate.profiles and _same_computer(store, candidate, serial):
             return Match("have", candidate)
     for candidate in numbered:
         if not candidate.profiles:
             return Match("attach", candidate)
-    nearest = nearest_in_window(store, dive.start, serial=serial, legacy_serial=legacy_serial)
+    nearest = nearest_in_window(store, dive.start, serial=serial)
     return Match("attach", nearest) if nearest is not None else Match("new")
 
 
@@ -76,7 +72,6 @@ def nearest_in_window(
     start: datetime,
     *,
     serial: str | None,
-    legacy_serial: str = "",
     exclude: Collection[int] = (),
 ) -> DiveRecord | None:
     """The log dive starting nearest to ``start`` on its date, within ``MATCH_WINDOW``.
@@ -89,8 +84,6 @@ def nearest_in_window(
         The computer dive's corrected start.
     serial : str or None
         The computer's serial: dives with a profile from it are left out.
-    legacy_serial : str
-        The serial assumed for profiles whose ``source`` names none.
     exclude : collection of int
         Log dive numbers to leave out, such as those other dives attach to.
 
@@ -105,7 +98,7 @@ def nearest_in_window(
         if apart is not None
         and apart <= MATCH_WINDOW
         and candidate.number not in exclude
-        and not has_profile_from(store, candidate, serial, legacy_serial)
+        and not has_profile_from(store, candidate, serial)
     ]
     return min(window, key=lambda item: item[:2])[2] if window else None
 
@@ -115,7 +108,6 @@ def candidates(
     start: datetime,
     *,
     serial: str | None,
-    legacy_serial: str = "",
     exclude: Collection[int] = (),
 ) -> list[tuple[DiveRecord, int | None]]:
     """The log dives a new computer dive may belong to, nearest first.
@@ -128,8 +120,6 @@ def candidates(
         The computer dive's corrected start.
     serial : str or None
         The computer's serial: dives with a profile from it are left out.
-    legacy_serial : str
-        The serial assumed for profiles whose ``source`` names none.
     exclude : collection of int
         Log dive numbers to leave out, such as those other dives attach to.
 
@@ -142,8 +132,7 @@ def candidates(
     found = [
         (candidate, None if apart is None else round(apart.total_seconds() / 60))
         for candidate, apart in _same_day(store, start)
-        if candidate.number not in exclude
-        and not has_profile_from(store, candidate, serial, legacy_serial)
+        if candidate.number not in exclude and not has_profile_from(store, candidate, serial)
     ]
     return sorted(found, key=lambda item: (item[1] is None, item[1] or 0, item[0].number))
 
@@ -154,7 +143,6 @@ def starting_between(
     latest: datetime,
     *,
     serial: str | None,
-    legacy_serial: str = "",
     exclude: Collection[int] = (),
 ) -> list[DiveRecord]:
     """The log dives on ``earliest``'s date whose ``time_in`` lies in ``[earliest, latest]``.
@@ -167,8 +155,6 @@ def starting_between(
         The corrected wall-clock bounds, both included.
     serial : str or None
         The computer's serial: dives with a profile from it are left out.
-    legacy_serial : str
-        The serial assumed for profiles whose ``source`` names none.
     exclude : collection of int
         Log dive numbers to leave out, such as those other dives attach to.
 
@@ -184,13 +170,13 @@ def starting_between(
         and candidate.number not in exclude
         and (began := _began(candidate)) is not None
         and earliest <= began <= latest
-        and not has_profile_from(store, candidate, serial, legacy_serial)
+        and not has_profile_from(store, candidate, serial)
     ]
 
 
-def has_profile_from(store: Store, dive: DiveRecord, serial: str | None, legacy: str) -> bool:
+def has_profile_from(store: Store, dive: DiveRecord, serial: str | None) -> bool:
     """Whether the dive holds a profile from the computer with ``serial``, as ``have`` means."""
-    return bool(dive.profiles) and _same_computer(store, dive, serial, legacy)
+    return bool(dive.profiles) and _same_computer(store, dive, serial)
 
 
 def _same_day(store: Store, start: datetime) -> list[tuple[DiveRecord, timedelta | None]]:
@@ -218,16 +204,17 @@ def computer_numbers(dive: ShearwaterDive) -> list[int]:
     return list(dict.fromkeys(dive.computer_records or [dive.number]))
 
 
-def _same_computer(store: Store, dive: DiveRecord, serial: str | None, legacy: str) -> bool:
+def _same_computer(store: Store, dive: DiveRecord, serial: str | None) -> bool:
     """Whether one of the dive's profiles came from the computer with ``serial``.
 
-    A profile's serial is the last word of its ``source`` when that is eight hex digits, else
-    ``legacy``; an unknown serial on either side agrees.
+    A profile's serial is the last word of its ``source`` when that is eight hex digits. An
+    unknown serial on either side agrees: a profile whose ``source`` names none counts as this
+    computer's, and so does every profile when ``serial`` is empty.
     """
     if not serial:
         return True
     for relative in dive.profiles:
-        theirs = _profile_serial(store, relative) or legacy
+        theirs = _profile_serial(store, relative)
         if not theirs or theirs.upper() == serial.upper():
             return True
     return False
