@@ -1,5 +1,6 @@
 import gzip
 import json
+from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -310,6 +311,29 @@ def test_merge_drops_a_repeated_gas_and_keeps_one_part_unchanged() -> None:
 def test_profile_keys_match_the_xml_importer() -> None:
     xml = parse_shearwater((FIXTURES / "perdix_sample.xml").read_bytes())
     assert list(parse(dive_records()).profile()) == list(xml.profile())
+    assert "source_ids" not in xml.profile()
+
+
+def test_source_ids_follow_the_source_when_there_are_any() -> None:
+    dive = parse(dive_records())
+    assert dive.source_ids == [] and "source_ids" not in dive.profile()
+    plain = list(dive.profile())
+    dive.source_ids = ["723431761740821400"]
+    profile = dive.profile()
+    assert profile["source_ids"] == ["723431761740821400"]
+    after = plain.index("source") + 1
+    assert list(profile) == [*plain[:after], "source_ids", *plain[after:]]
+
+
+def test_merge_parts_concatenates_the_source_ids_in_start_order() -> None:
+    first = parse(part(datetime(2020, 5, 18, 19, 5, 42), [2.0, 13.3, 1.0, 0.0, 0.0]))
+    second = parse(part(datetime(2020, 5, 18, 19, 23, 49), [1.1, 21.7, 0.0]))
+    first.source_ids, second.source_ids = ["1"], ["2"]
+    assert merge_parts([second, first]).source_ids == ["1", "2"]
+    assert merge_parts([second, first]).profile()["source_ids"] == ["1", "2"]
+    joined = merge_parts([merge_parts([first, second]), replace(second, source_ids=["3"])])
+    assert joined.source_ids == ["1", "2", "3"]
+    assert merge_parts([first]).source_ids == ["1"] and first.source_ids == ["1"]
 
 
 def golden_parts() -> dict[str, list[Path]]:
@@ -444,6 +468,7 @@ def split_dive() -> ShearwaterDive:
 
 def test_split_cuts_at_the_break_and_shifts_the_later_part() -> None:
     dive = split_dive()
+    dive.source_ids = ["7", "8"]
     assert surface_breaks_of(dive) == [(1210, 1690)]
     first, second = split_at(dive, [(1210, 1690)])
     assert first.start == SPLIT_START and first.end == SPLIT_START + timedelta(seconds=1210)
@@ -459,6 +484,9 @@ def test_split_cuts_at_the_break_and_shifts_the_later_part() -> None:
     assert (min(second.temp_c), max(second.temp_c)) == (22.0, 28.0)
     assert first.gas_switches == [[0, "32"], [600, "50"]]
     assert second.gas_switches == [[0, "50"], [310, "21"]]
+    assert first.source_ids == second.source_ids == dive.source_ids == ["7", "8"]
+    first.source_ids.append("9")
+    assert dive.source_ids == second.source_ids == ["7", "8"]
     for part in (first, second):
         assert part.computer_records == [603] and part.surface_breaks == []
         assert part.number == 603 and part.gf == "55/85" and part.serial == "344FDE85"

@@ -252,6 +252,7 @@ def merge_parts(parts: list[ShearwaterDive]) -> ShearwaterDive:
     ShearwaterDive
         One dive on the first part's time axis: later samples are offset by their start, each
         join is a surface break, the dive time is the sum of the parts' and the end is the last.
+        Its ``source_ids`` are the parts' in start order.
 
     Raises
     ------
@@ -273,6 +274,7 @@ def merge_parts(parts: list[ShearwaterDive]) -> ShearwaterDive:
         gas_switches=[],
         computer_records=[],
         surface_breaks=[],
+        source_ids=list(dict.fromkeys(i for part in ordered for i in part.source_ids)),
     )
     for part in ordered:
         offset = int((part.start - head.start).total_seconds())
@@ -358,7 +360,8 @@ def split_at(dive: ShearwaterDive, breaks: list[tuple[int, int]]) -> list[Shearw
     Returns
     -------
     list of ShearwaterDive
-        The parts in time order, each with ``computer_records`` naming the computer dive.
+        The parts in time order, each with ``computer_records`` naming the computer dive and
+        the dive's ``source_ids``.
     """
     cuts = sorted(breaks)
     edges = [0, *(t for cut in cuts for t in cut)]
@@ -388,6 +391,7 @@ def _part(dive: ShearwaterDive, lo: int, hi: int | None) -> ShearwaterDive:
         stop_depth_m=_picked(dive.stop_depth_m, keep),
         gas_switches=_switches_within(dive.gas_switches, lo, hi),
         computer_records=[dive.number],
+        source_ids=list(dive.source_ids),
         surface_breaks=[
             [a - lo, b - lo] for a, b in dive.surface_breaks if a >= lo and (hi is None or b <= hi)
         ],

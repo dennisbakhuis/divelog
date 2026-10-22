@@ -1586,6 +1586,7 @@ async def admin_import_shearwater(
     skipped = 0
     planned = store.next_dive_number()
     first_key: str | None = None
+    profiles = computer_import.Profiles(store)
     for file in files:
         data = await file.read()
         if len(data) > get_settings().MAX_UPLOAD_BYTES:
@@ -1597,7 +1598,7 @@ async def admin_import_shearwater(
                 status_code=400, detail=f"{file.filename}: could not parse export: {exc}"
             ) from exc
         dates.append(computer.start.date())
-        match = computer_import.classify(store, computer, serial=None)
+        match = computer_import.classify(store, computer, serial=None, profiles=profiles)
         key = f"imports/{computer_import.import_month()}/{import_id}-{computer.number}.xml"
         if not dry_run:
             first_key = first_key or key

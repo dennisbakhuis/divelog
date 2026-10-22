@@ -6,7 +6,7 @@ the owner chose, a ``join`` imports several computer dives as one, a ``split`` c
 surface breaks into several dives, each matched on its own. The resulting ``Unit``s are what
 the import writes; ``ImportDiveOut`` rows describe every dive of the export for the preview,
 with the default tick, the log dives a new dive may belong to, a suggestion, the dive's
-surface breaks and the parts of a split dive.
+surface breaks and the parts of a split dive. The log's profiles are read once per plan.
 """
 
 from collections.abc import Collection, Sequence
@@ -25,10 +25,12 @@ from divelog_server.schemas.dive import (
 from divelog_server.services.computer_import import (
     MATCH_WINDOW,
     Match,
+    Profiles,
     candidates,
     classify,
     has_profile_from,
     nearest_in_window,
+    numbered_dives,
     starting_between,
 )
 from divelog_server.store.models import DiveRecord
@@ -161,8 +163,9 @@ def plan(
     PlanError
         With the response's detail, when a link, join or split cannot be honoured.
     """
+    profiles = Profiles(store)
     own = {
-        index: classify(store, entry.dive, serial=entry.serial)
+        index: classify(store, entry.dive, serial=entry.serial, profiles=profiles)
         for index, entry in enumerate(entries)
         if entry.dive is not None
     }
@@ -170,7 +173,7 @@ def plan(
     cuts = _cuts(entries, own, splits or {}, active, only)
     whole = {number: target for (number, part), target in links.items() if part is None}
     split_numbers = {entries[index].computer_no for index in cuts}
-    linked = _linked(store, entries, own, whole, only, split_numbers)
+    linked = _linked(profiles, entries, own, whole, only, split_numbers)
     units = _joined(entries, own, linked, joins, only)
     grouped = {index for unit in units for index in unit.indices}
     units += [
@@ -179,7 +182,7 @@ def plan(
         if index not in grouped and index not in cuts and (dive := entries[index].dive) is not None
     ]
     part_links = {key: target for key, target in links.items() if key[1] is not None}
-    units += _parts(store, entries, cuts, part_links, _targets(units), only)
+    units += _parts(profiles, entries, cuts, part_links, _targets(units), only)
     units.sort(key=lambda unit: (unit.head, unit.part))
     for unit in units:
         unit.imported = only is None or entries[unit.head].computer_no in only
@@ -189,7 +192,7 @@ def plan(
         if match.status == "attach" and match.dive and index not in cuts
     }
     attached |= {unit.match.dive.number for unit in units if unit.part and unit.match.dive}
-    rows = _rows(store, entries, units, attached, offset)
+    rows = _rows(profiles, entries, units, attached, offset)
     return Plan(units, rows)
 
 
@@ -234,7 +237,7 @@ def _cuts(
 
 
 def _linked(
-    store: Store,
+    profiles: Profiles,
     entries: Sequence[CloudDive],
     own: dict[int, Match],
     links: dict[int, int],
@@ -253,11 +256,11 @@ def _linked(
         new = [i for i in indices if i in own and own[i].status == "new"]
         if not new:
             raise PlanError(f"{refused}: {_not_new(indices, own)}")
-        target = store.dives.get(target_no)
+        target = profiles.store.dives.get(target_no)
         if target is None:
             raise PlanError(f"{refused}: dive #{target_no} does not exist")
         for index in new:
-            if has_profile_from(store, target, entries[index].serial):
+            if has_profile_from(profiles.store, target, entries[index].serial, profiles=profiles):
                 raise PlanError(
                     f"{refused}: dive #{target_no} already has a profile from this computer"
                 )
@@ -315,7 +318,7 @@ def _joined(
 
 
 def _parts(
-    store: Store,
+    profiles: Profiles,
     entries: Sequence[CloudDive],
     cuts: dict[int, list[Cut]],
     links: dict[LinkKey, int],
@@ -325,10 +328,10 @@ def _parts(
     """One unit per part of each split dive, matched in time order.
 
     A part attaches to the dive it is linked to, else to the nearest dive within
-    ``MATCH_WINDOW`` of its start, else to a dive with the computer number and no profile;
-    dives other dives or earlier parts attach to are not offered again.
+    ``MATCH_WINDOW`` of its start, else to a dive near its date with the computer number and
+    no profile; dives other dives or earlier parts attach to are not offered again.
     """
-    chosen = _part_links(store, entries, cuts, links, only)
+    chosen = _part_links(profiles, entries, cuts, links, only)
     taken = taken | {target.number for target in chosen.values()}
     units: list[Unit] = []
     for index in sorted(cuts):
@@ -337,7 +340,7 @@ def _parts(
             continue
         for part, piece in enumerate(split_at(entry.dive, cuts[index]), start=1):
             target = chosen.get((entry.computer_no, part)) or _part_match(
-                store, piece, entry.serial, taken
+                profiles, piece, entry.serial, taken
             )
             if target is not None:
                 taken.add(target.number)
@@ -347,7 +350,7 @@ def _parts(
 
 
 def _part_links(
-    store: Store,
+    profiles: Profiles,
     entries: Sequence[CloudDive],
     cuts: dict[int, list[Cut]],
     links: dict[LinkKey, int],
@@ -367,10 +370,10 @@ def _part_links(
         count = len(cuts[index]) + 1
         if part is None or not 1 <= part <= count:
             raise PlanError(f"{refused}: the dive has {count} parts")
-        target = store.dives.get(target_no)
+        target = profiles.store.dives.get(target_no)
         if target is None:
             raise PlanError(f"{refused}: dive #{target_no} does not exist")
-        if has_profile_from(store, target, entries[index].serial):
+        if has_profile_from(profiles.store, target, entries[index].serial, profiles=profiles):
             raise PlanError(
                 f"{refused}: dive #{target_no} already has a profile from this computer"
             )
@@ -384,16 +387,17 @@ def _part_links(
 
 
 def _part_match(
-    store: Store, piece: ShearwaterDive, serial: str, taken: set[int]
+    profiles: Profiles, piece: ShearwaterDive, serial: str, taken: set[int]
 ) -> DiveRecord | None:
     """The log dive a part of a split dive belongs to, or None for a new dive."""
-    nearest = nearest_in_window(store, piece.start, serial=serial, exclude=taken)
+    store = profiles.store
+    nearest = nearest_in_window(store, piece.start, serial=serial, exclude=taken, profiles=profiles)
     if nearest is not None:
         return nearest
     numbered = [
         dive
-        for dive in store.dives.values()
-        if piece.number in dive.computer and not dive.profiles and dive.number not in taken
+        for dive in numbered_dives(store, piece.number, piece.start)
+        if not dive.profiles and dive.number not in taken
     ]
     return min(numbered, key=lambda dive: dive.number) if numbered else None
 
@@ -421,7 +425,7 @@ def _member(entries: Sequence[CloudDive], own: dict[int, Match], number: int, re
 
 
 def _rows(
-    store: Store,
+    profiles: Profiles,
     entries: Sequence[CloudDive],
     units: list[Unit],
     attached: set[int],
@@ -443,8 +447,14 @@ def _rows(
         number = unit.match.dive.number if unit.match.dive else None
         found: list[ImportCandidateOut] = []
         if status == "new":
-            nearby = candidates(store, unit.dive.start, serial=head.serial, exclude=attached)
-            found = [_candidate(store, dive, minutes) for dive, minutes in nearby]
+            nearby = candidates(
+                profiles.store,
+                unit.dive.start,
+                serial=head.serial,
+                exclude=attached,
+                profiles=profiles,
+            )
+            found = [_candidate(profiles.store, dive, minutes) for dive, minutes in nearby]
         if unit.part:
             row.parts.append(_part_row(unit, found))
         if unit.part > 1:
@@ -469,7 +479,7 @@ def _rows(
         dive = entries[unit.head].dive
         if len(unit.indices) == 1 and unit.part <= 1 and dive is not None:
             exclude = {n for head, n in targets if head != unit.head}
-            rows[unit.head].breaks = _breaks(store, dive, entries[unit.head].serial, exclude)
+            rows[unit.head].breaks = _breaks(profiles, dive, entries[unit.head].serial, exclude)
     return rows
 
 
@@ -498,7 +508,7 @@ def _row_targets(units: Sequence[Unit]) -> set[tuple[int, int]]:
 
 
 def _breaks(
-    store: Store, dive: ShearwaterDive, serial: str, exclude: Collection[int]
+    profiles: Profiles, dive: ShearwaterDive, serial: str, exclude: Collection[int]
 ) -> list[ImportBreakOut]:
     """The surface breaks of a computer dive, suggested where a logged dive starts after one.
 
@@ -511,11 +521,12 @@ def _breaks(
         began = dive.start + timedelta(seconds=start_s)
         ended = dive.start + timedelta(seconds=end_s)
         logged = starting_between(
-            store,
+            profiles.store,
             began - BREAK_LEAD,
             ended + MATCH_WINDOW,
             serial=serial,
             exclude=exclude,
+            profiles=profiles,
         )
         found.append(
             ImportBreakOut(

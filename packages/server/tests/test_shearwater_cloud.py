@@ -4,6 +4,8 @@ import io
 import json
 import sqlite3
 import zipfile
+import zlib
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -17,6 +19,8 @@ from httpx import AsyncClient, Response
 from divelog_server.core.config import get_settings
 from divelog_server.importers import shearwater_cloud
 from divelog_server.importers.shearwater_cloud import open_export
+from divelog_server.importers.shearwater_pnf import unwrap
+from divelog_server.services import computer_import
 from divelog_server.services.storage import get_storage
 from divelog_server.store.models import DiveRecord
 from divelog_server.store.store import Store
@@ -25,6 +29,7 @@ from tests.test_editor_dives import record_commits
 
 URL = "/api/v1/admin/import/shearwater-cloud"
 SERIAL = 0x344FDE85
+ID_PREFIX = 72343176
 START = datetime(2025, 3, 1, 9, 30)
 DAY = START.date()
 PERDIX_XML = Path(__file__).parent / "fixtures" / "perdix_sample.xml"
@@ -32,13 +37,26 @@ PERDIX_XML = Path(__file__).parent / "fixtures" / "perdix_sample.xml"
 
 @dataclass
 class Log:
-    """One ``log_data`` row of a test database."""
+    """One ``log_data`` row of a test database; ``log_id`` defaults to ``dive_id(blob)``."""
 
     blob: bytes
     serial: str = "344FDE85"
     file_name: str = ""
     logged_at: datetime = START
     format: str = "sw-pnf"
+    log_id: str = ""
+
+
+def dive_id(blob: bytes) -> str:
+    """The Shearwater Cloud ``DiveId`` of a log: a prefix and the start in epoch seconds.
+
+    A log without a readable start gets a checksum of its bytes instead.
+    """
+    try:
+        seconds = int.from_bytes(unwrap(blob)[12:16], "big")
+    except ValueError:
+        seconds = 0
+    return str(ID_PREFIX * 10**10 + (seconds or zlib.crc32(blob)))
 
 
 def pnf_log(
@@ -87,7 +105,7 @@ def cloud_db(tmp_path: Path, dives: Sequence[bytes | Log] = (), *, tables: bool 
             connection.execute("CREATE TABLE notes (id integer primary key, body text)")
         for index, entry in enumerate(dives):
             log = entry if isinstance(entry, Log) else Log(entry)
-            log_id = str(723431761786175000 + index)
+            log_id = log.log_id or dive_id(log.blob)
             connection.execute(
                 "INSERT INTO log_data VALUES (?, ?, ?, ?)",
                 (log_id, log.file_name or f"Perdix AI[{log.serial}]#{index}", log.format, log.blob),
@@ -170,6 +188,21 @@ def test_reader_lists_the_dives_of_a_database(tmp_path: Path) -> None:
         ("344FDE85", 8, "Perdix AI"),
     ]
     assert all(d.dive is not None and d.error is None for d in dives)
+    assert [d.source_ids for d in dives] == [["723431761740821400"], ["723431761740832200"]]
+    assert [d.dive.source_ids for d in dives if d.dive] == [d.source_ids for d in dives]
+
+
+def test_reader_keeps_the_id_of_every_log_of_a_dive(tmp_path: Path) -> None:
+    second = pnf_log(start=START + timedelta(minutes=5), depths=(0.0, 9.0, 3.0, 0.0))
+    bad = Log(
+        pnf.blob([b"\xff\xff" + bytes(pnf.RECORD - 2)]),
+        file_name="Perdix AI[344FDE85]#6 2025-2-28 9-0-0.swlogzp",
+        log_id="723431761740733200",
+    )
+    broken, split = open_export(cloud_db(tmp_path, [second, pnf_log(), bad])).dives()
+    assert split.source_ids == ["723431761740821400", "723431761740821700"]
+    assert split.dive is not None and split.dive.source_ids == split.source_ids
+    assert broken.dive is None and broken.source_ids == ["723431761740733200"]
 
 
 def test_reader_skips_other_formats(tmp_path: Path) -> None:
@@ -260,12 +293,59 @@ async def test_unknown_dive_is_new(owner_client: AsyncClient, tmp_path: Path) ->
     assert body["created"] == [5] and body["first_date"] == body["last_date"] == "2025-03-01"
 
 
+@pytest.mark.parametrize("day", [date(2025, 2, 28), DAY, date(2025, 3, 2)])
 async def test_dive_with_the_number_but_no_profile_is_attach(
-    owner_client: AsyncClient, store: Store, tmp_path: Path
+    owner_client: AsyncClient, store: Store, tmp_path: Path, day: date
 ) -> None:
-    await add_dive(store, 20, day=date(2025, 2, 1), computer=[7])
+    await add_dive(store, 20, day=day, computer=[7])
     body = await preview(owner_client, cloud_db(tmp_path, [pnf_log()]))
     assert statuses(body) == {7: ("attach", 20)} and body["updated"] == [20]
+
+
+@pytest.mark.parametrize(
+    ("day", "profiles"),
+    [
+        (date(2025, 2, 27), None),
+        (date(2025, 3, 3), None),
+        (date(2019, 3, 1), None),
+        (date(2025, 2, 27), {"profile_00020.json": {"source": "Perdix AI 344FDE85"}}),
+    ],
+)
+async def test_the_number_on_a_far_date_is_no_match(
+    owner_client: AsyncClient,
+    store: Store,
+    tmp_path: Path,
+    day: date,
+    profiles: dict[str, dict[str, Any]] | None,
+) -> None:
+    await add_dive(store, 20, day=day, time_in="09:30", computer=[7], profiles=profiles)
+    body = await preview(owner_client, cloud_db(tmp_path, [pnf_log()]))
+    assert statuses(body) == {7: ("new", 21)}
+    assert store.dives[20].computer == [7]
+
+
+async def test_the_number_on_a_far_date_falls_through_to_the_time_match(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    await add_dive(store, 20, day=date(2019, 3, 1), computer=[7])
+    await add_dive(store, 21, time_in="09:33")
+    body = await preview(owner_client, cloud_db(tmp_path, [pnf_log()]))
+    assert statuses(body) == {7: ("attach", 21)}
+
+
+@pytest.mark.parametrize("profiles", [None, {"profile_00020.json": {"source": "Perdix 344FDE85"}}])
+async def test_a_new_computer_restarting_its_numbers_is_new(
+    owner_client: AsyncClient,
+    store: Store,
+    tmp_path: Path,
+    profiles: dict[str, dict[str, Any]] | None,
+) -> None:
+    await add_dive(store, 20, day=date(2019, 6, 1), computer=[14], profiles=profiles)
+    log = Log(pnf_log(number=14, serial=0xDEADBEEF), serial="DEADBEEF")
+    body = await upload(owner_client, cloud_db(tmp_path, [log]))
+    assert statuses(body.json()) == {14: ("new", 21)}
+    assert store.dives[20].computer == [14] and store.dives[21].computer == [14]
+    assert len(store.dives[20].profiles) == (1 if profiles else 0)
 
 
 async def test_dive_at_the_same_time_is_attach(
@@ -363,6 +443,93 @@ async def test_a_nearby_dive_with_a_profile_from_this_computer_is_not_attached_t
     assert statuses(body) == {7: status}
 
 
+# ── Cloud dive ids ──────────────────────────────────────────────────────────
+
+
+async def imported(client: AsyncClient, tmp_path: Path, logs: Sequence[bytes]) -> bytes:
+    """Import ``logs`` as new dives and return the database, for importing it again."""
+    db = cloud_db(tmp_path, logs)
+    response = await upload(client, db)
+    assert response.status_code == 200, response.text
+    return db
+
+
+async def test_a_dive_whose_profile_has_its_id_is_have_without_its_number(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    db = await imported(owner_client, tmp_path, [pnf_log()])
+    dive = store.dives[5]
+    await store.save_dive(
+        dive.model_copy(update={"computer": [], "date": date(2019, 1, 1)}), "forget the number"
+    )
+    await add_dive(store, 20, computer=[7])
+    await add_dive(store, 21, time_in="09:31")
+    body = await preview(owner_client, db)
+    assert statuses(body) == {7: ("have", 5)} and body["skipped"] == 1
+    assert body["dives"][0]["selected"] is False
+
+
+@pytest.mark.parametrize(
+    ("params", "reason"),
+    [
+        ({"link": "7:20"}, "Cannot link #7: it is already dive #5"),
+        ({"join": "7+8"}, "Cannot join 7+8: #7 is already dive #5"),
+        ({"split": "7@1210"}, "Cannot split #7: it is already dive #5"),
+    ],
+)
+async def test_a_dive_recognised_by_its_id_cannot_be_linked_joined_or_split(
+    owner_client: AsyncClient,
+    store: Store,
+    tmp_path: Path,
+    params: dict[str, str],
+    reason: str,
+) -> None:
+    await imported(owner_client, tmp_path, [split_log()])
+    dive = store.dives[5]
+    await store.save_dive(dive.model_copy(update={"computer": []}), "forget the number")
+    await add_dive(store, 20, time_in="16:00")
+    logs = [split_log(), pnf_log(number=8, start=at(2))]
+    response = await upload(owner_client, cloud_db(tmp_path, logs), **params)
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"] == reason
+
+
+async def test_ids_of_split_parts_and_joins_are_recognised(
+    owner_client: AsyncClient, store: Store, tmp_path: Path
+) -> None:
+    logs = [split_log(), pnf_log(number=13, start=at(2)), pnf_log(number=14, start=at(3))]
+    db = cloud_db(tmp_path, logs)
+    body = (await upload(owner_client, db, split="7@1210", join="13+14")).json()
+    assert body["created"] == [5, 6, 7]
+    for number in (5, 6, 7):
+        dive = store.dives[number]
+        await store.save_dive(dive.model_copy(update={"computer": []}), "forget the number")
+    again = await preview(owner_client, db)
+    assert statuses(again) == {7: ("have", 5), 13: ("have", 7), 14: ("have", 7)}
+
+
+async def test_every_profile_is_read_at_most_once(
+    owner_client: AsyncClient, store: Store, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await add_dive(store, 20, time_in="09:31", computer=[7], profiles={"p20.json": THIS})
+    await add_dive(store, 21, time_in="10:10", profiles={"p21.json": OTHER})
+    await add_dive(store, 22, time_in="11:40", profiles={"p22.json": OTHER, "p22b.json": {}})
+    await add_dive(store, 23, time_in="13:30")
+    reads: Counter[str] = Counter()
+    original = computer_import.read_json
+
+    def counted(path: Path) -> Any:
+        reads[path.name] += 1
+        return original(path)
+
+    monkeypatch.setattr(computer_import, "read_json", counted)
+    logs = [pnf_log(), pnf_log(number=8, start=at(2)), split_log(number=9, start=at(4))]
+    body = await preview(owner_client, cloud_db(tmp_path, logs))
+    assert statuses(body) == {7: ("have", 20), 8: ("new", 24), 9: ("attach", 23)}
+    assert {"p20.json", "p21.json", "p22.json", "p22b.json"} <= set(reads)
+    assert set(reads.values()) == {1}
+
+
 # ── import ──────────────────────────────────────────────────────────────────
 
 
@@ -404,6 +571,9 @@ async def test_import_creates_a_draft_with_profile_flag_and_raw_log(
     profile = json.loads((store.root / dive.profiles[0]).read_text())
     assert profile["log_dive_no"] == 5 and profile["time_in"] == "08:00"
     assert profile["source"] == "Perdix AI 344FDE85" and profile["sample_interval_s"] == 10
+    assert profile["source_ids"] == [dive_id(raw)] == ["723431761740821400"]
+    keys = list(profile)
+    assert keys[keys.index("source") + 1] == "source_ids"
     record = store.imports[body["import_id"]]
     assert record.format == "shearwater-cloud" and record.original_name == "export.zip"
     assert record.storage_key.startswith("imports/")
@@ -514,6 +684,7 @@ async def test_split_dive_imports_as_one_dive(
     assert body["dives"][0]["duration_min"] == 1.1
     profile = json.loads((store.root / store.dives[5].profiles[0]).read_text())
     assert profile["computer_records"] == [7, 7] and profile["surface_breaks"] == [[50, 300]]
+    assert profile["source_ids"] == [dive_id(parts[1]), dive_id(parts[0])]
     key = store.imports[body["import_id"]].storage_key
     assert key.endswith("-344FDE85-7-1.swlog")
     assert await get_storage().get(key) == parts[1]
@@ -805,6 +976,29 @@ async def test_xml_attach_fills_nothing(owner_client: AsyncClient, store: Store)
     dive = store.dives[20]
     assert dive.computer == [11] and dive.profiles and dive.time_in == "10:05"
     assert dive.time_out is None and dive.avg_depth_m is None and dive.water_temp_c is None
+    profile = json.loads((store.root / dive.profiles[0]).read_text())
+    assert "source_ids" not in profile
+
+
+@pytest.mark.parametrize(
+    ("day", "status"),
+    [
+        (date(2019, 5, 13), "updated"),
+        (date(2019, 5, 15), "updated"),
+        (date(2019, 5, 12), "created"),
+    ],
+)
+async def test_xml_number_match_needs_a_near_date(
+    owner_client: AsyncClient, store: Store, day: date, status: str
+) -> None:
+    await add_dive(store, 20, day=day, time_in=None, computer=[11])
+    files = [("files", ("perdix_sample.xml", PERDIX_XML.read_bytes(), "application/xml"))]
+    params = {"dry_run": "true"}
+    response = await owner_client.post(
+        "/api/v1/admin/import/shearwater", files=files, params=params
+    )
+    body = response.json()
+    assert body[status] == ([20] if status == "updated" else [21])
 
 
 # ── join ────────────────────────────────────────────────────────────────────
@@ -837,6 +1031,7 @@ async def test_join_creates_one_draft_with_one_profile(
     assert sorted(store.dives) == [1, 2, 3, 4, 5]
     profile = json.loads((store.root / dive.profiles[0]).read_text())
     assert profile["computer_records"] == [13, 14] and profile["surface_breaks"] == [[50, 900]]
+    assert profile["source_ids"] == [dive_id(log) for log in joined_logs()]
     key = store.imports[body["import_id"]].storage_key
     assert key.endswith("-344FDE85-13-1.swlog")
     assert await get_storage().get(key.replace("-1.swlog", "-2.swlog")) == joined_logs()[1]
@@ -913,7 +1108,7 @@ async def test_impossible_joins_are_refused(
 ) -> None:
     await add_dive(store, 20, time_in="16:00")
     await add_dive(store, 21, time_in="17:00")
-    await add_dive(store, 30, day=date(2025, 2, 1), computer=[17], profiles={"p30.json": THIS})
+    await add_dive(store, 30, computer=[17], profiles={"p30.json": THIS})
     bad = Log(
         pnf.blob([b"\xff\xff" + bytes(pnf.RECORD - 2)]),
         file_name="Perdix AI[344FDE85]#16 2025-3-1 8-0-0.swlogzp",
@@ -1110,8 +1305,9 @@ async def test_part_matching_uses_the_number_and_skips_taken_dives(
     owner_client: AsyncClient, store: Store, tmp_path: Path
 ) -> None:
     await add_dive(store, 20, time_in="09:31")
-    await add_dive(store, 30, day=date(2025, 2, 1), computer=[7])
-    await add_dive(store, 31, day=date(2025, 2, 1), computer=[7])
+    await add_dive(store, 25, day=date(2024, 3, 1), computer=[7])
+    await add_dive(store, 30, day=date(2025, 3, 2), computer=[7])
+    await add_dive(store, 31, computer=[7])
     body = await preview(
         owner_client, cloud_db(tmp_path, [split_log()]), split="7@1210", link="7.2:20"
     )
@@ -1148,6 +1344,7 @@ async def test_commit_writes_one_dive_and_profile_per_part(
         assert dive.visibility == "draft" and dive.import_id == body["import_id"]
         profile = json.loads((store.root / dive.profiles[0]).read_text())
         assert profile["computer_records"] == [7] and profile["log_dive_no"] == dive.number
+        assert profile["source_ids"] == [dive_id(raw)]
         assert profile["t_s"][0] == 0 and profile["surface_breaks"] == []
         assert profile["time_in"] == dive.time_in
     key = store.imports[body["import_id"]].storage_key
@@ -1253,7 +1450,7 @@ async def test_impossible_splits_are_refused(
 ) -> None:
     await add_dive(store, 20, time_in="16:00")
     await add_dive(store, 21, time_in="17:00")
-    await add_dive(store, 30, day=date(2025, 2, 1), computer=[9], profiles={"p30.json": THIS})
+    await add_dive(store, 30, computer=[9], profiles={"p30.json": THIS})
     await add_dive(store, 31, time_in="18:00", computer=[50], profiles={"p31.json": THIS})
     bad = Log(
         pnf.blob([b"\xff\xff" + bytes(pnf.RECORD - 2)]),
