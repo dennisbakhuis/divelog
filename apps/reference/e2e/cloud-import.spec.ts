@@ -217,26 +217,60 @@ test.describe('on a phone', () => {
 test.describe('the previous imports on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 } });
 
-  test('fit the screen with the download link in full', async ({ page }) => {
+  test('show each import as a card with the file name on top', async ({ page }) => {
     await open(page);
     const table = page.getByRole('table', { name: 'Previous imports, newest first' });
-    await expect(table).toContainText('Shearwater Cloud (owner@example.com) 2026-10-21.db');
+    const name = 'Shearwater Cloud (owner@example.com) 2026-10-21.db';
+    const file = table.locator('td.file');
+    await expect(file).toHaveText(name);
+    await expect(table.locator('thead')).toBeAttached();
+    const lines = await file.evaluate((el) => {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
+    });
+    expect(lines).toBeLessThanOrEqual(2);
+    expect((await file.boundingBox())!.width).toBeGreaterThanOrEqual(250);
+
     const link = table.getByRole('link', { name: /^download/ });
     await link.scrollIntoViewIfNeeded();
     await expect(link).toBeInViewport({ ratio: 1 });
-    const box = (await link.boundingBox())!;
     const width = await page.evaluate(() => window.innerWidth);
+    const box = (await link.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(width);
+
+    const when = table.locator('td.when');
+    const counts = table.locator('td.count');
+    await expect(when).toHaveText('2026-10-22 11:57');
+    await expect(counts).toHaveText(['2 created', '1 updated']);
+    const fileBox = (await file.boundingBox())!;
+    const tops = await Promise.all(
+      [when, counts.nth(0), counts.nth(1), link].map(async (l) => (await l.boundingBox())!.y),
+    );
+    for (const top of tops) {
+      expect(top).toBeGreaterThanOrEqual(fileBox.y + fileBox.height);
+      expect(Math.abs(top - tops[0])).toBeLessThan(6);
+    }
+
     expect(
       await table.evaluate((t) => t.parentElement!.scrollWidth - t.parentElement!.clientWidth),
     ).toBeLessThanOrEqual(0);
     expect(await overflow(page)).toBeLessThanOrEqual(0);
-    const when = table.locator('td.when span');
-    await expect(when).toHaveText(['2026-10-22', '11:57']);
-    for (const part of await when.all())
-      expect(await part.evaluate((el) => el.getClientRects().length)).toBe(1);
   });
+});
+
+test('the previous imports stay a table on a wide screen', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await open(page);
+  const table = page.getByRole('table', { name: 'Previous imports, newest first' });
+  await expect(table.getByRole('columnheader', { name: 'Created' })).toBeVisible();
+  await expect(table.locator('.count-label').first()).toBeHidden();
+  const [when, file] = await Promise.all(
+    ['td.when', 'td.file'].map(async (cell) => (await table.locator(cell).boundingBox())!),
+  );
+  expect(file.x).toBeGreaterThan(when.x + when.width - 1);
+  expect(Math.abs(file.y - when.y)).toBeLessThan(2);
 });
 
 test('works by keyboard alone', async ({ page }) => {

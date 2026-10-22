@@ -627,8 +627,12 @@
               <span>{row.created_at.slice(11, 16)}</span>
             </td>
             <td class="file">{row.original_name}</td>
-            <td class="dl-num">{row.created.length}</td>
-            <td class="dl-num">{row.updated.length}</td>
+            <td class="dl-num count"
+              >{row.created.length}<span class="count-label">&nbsp;created</span></td
+            >
+            <td class="dl-num count updated"
+              >{row.updated.length}<span class="count-label">&nbsp;updated</span></td
+            >
             <td class="download"
               ><a href={row.url}
                 >download<span class="dl-visually-hidden"> {row.original_name}</span></a
@@ -854,12 +858,49 @@
   .file {
     overflow-wrap: anywhere;
   }
+  .count-label {
+    display: none;
+  }
   @media (max-width: 479.98px) {
-    .table-wrap :is(th, td) {
-      padding-inline: 6px;
+    .table-wrap :is(table, tbody, tr, td) {
+      display: block;
     }
-    .table-wrap :is(th, td):first-child {
-      padding-left: 0;
+    .table-wrap thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }
+    .table-wrap tbody tr {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: var(--dl-space-1) var(--dl-space-2);
+      padding: var(--dl-space-2) 0;
+      border-bottom: 1px solid var(--dl-color-border);
+    }
+    .table-wrap tbody td {
+      padding: 0;
+      border: none;
+      font-size: var(--dl-text-md);
+      color: var(--dl-color-text-muted);
+    }
+    .table-wrap td.file {
+      order: -1;
+      flex-basis: 100%;
+      font-size: var(--dl-text-base);
+      color: var(--dl-color-text);
+    }
+    .table-wrap td.count {
+      font-family: inherit;
+    }
+    .count-label {
+      display: inline;
+    }
+    .updated::before {
+      content: '· ';
     }
   }
   h2 {
