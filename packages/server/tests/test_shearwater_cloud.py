@@ -1033,8 +1033,9 @@ async def test_join_creates_one_draft_with_one_profile(
     assert profile["computer_records"] == [13, 14] and profile["surface_breaks"] == [[50, 900]]
     assert profile["source_ids"] == [dive_id(log) for log in joined_logs()]
     key = store.imports[body["import_id"]].storage_key
-    assert key.endswith("-344FDE85-13-1.swlog")
-    assert await get_storage().get(key.replace("-1.swlog", "-2.swlog")) == joined_logs()[1]
+    assert key.endswith(f"/{body['import_id']}-344FDE85-13.swlog")
+    assert await get_storage().get(key) == joined_logs()[0]
+    assert await get_storage().get(key.replace("-13.swlog", "-14.swlog")) == joined_logs()[1]
 
 
 async def test_join_attaches_to_the_dive_the_first_matches(
@@ -1081,6 +1082,26 @@ async def test_join_chains_three_dives(
     assert profile["computer_records"] == [37, 38, 39]
     assert profile["surface_breaks"] == [[50, 600], [650, 1200]]
     assert store.dives[5].computer == [37, 38, 39]
+    key = store.imports[body["import_id"]].storage_key
+    assert key.endswith(f"/{body['import_id']}-344FDE85-37.swlog")
+    for number, log in zip((37, 38, 39), logs, strict=True):
+        assert await get_storage().get(key.replace("-37.swlog", f"-{number}.swlog")) == log
+
+
+@pytest.mark.parametrize(
+    ("numbers", "names"),
+    [
+        ([7], ["7"]),
+        ([902, 903], ["902", "903"]),
+        ([458, 458], ["458-1", "458-2"]),
+        ([7, 7, 8], ["7-1", "7-2", "8"]),
+    ],
+)
+def test_raw_keys_name_each_log_after_its_computer_dive(
+    numbers: list[int], names: list[str]
+) -> None:
+    keys = computer_import.raw_keys("imports/2026/10/abc-344FDE85", numbers, "swlog")
+    assert keys == [f"imports/2026/10/abc-344FDE85-{name}.swlog" for name in names]
 
 
 @pytest.mark.parametrize(
