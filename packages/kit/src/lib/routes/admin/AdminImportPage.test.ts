@@ -183,6 +183,9 @@ describe('AdminImportPage', () => {
     expect(card.textContent).toContain('Shearwater Cloud export');
     expect(card.textContent).toContain('Choose the exported .db file');
     expect(card.textContent).not.toContain('Export account');
+    expect(target.querySelector('p.muted')?.textContent).toMatch(
+      /^\s*Pick the Shearwater Cloud export, or Perdix XML files, or a Subsurface file\./,
+    );
     const steps = document.getElementById(cloud.getAttribute('aria-describedby')!);
     expect(steps?.textContent).toBe(CLOUD_EXPORT_HELP);
     unmount(app);
@@ -391,7 +394,8 @@ describe('AdminImportPage', () => {
     }
 
     function stubCloud(
-      answer: (url: URL) => Response = (url) => new Response(JSON.stringify(exportReport(url))),
+      answer: (url: URL) => Response | Promise<Response> = (url) =>
+        new Response(JSON.stringify(exportReport(url))),
     ) {
       rich = false;
       cave = false;
@@ -892,6 +896,57 @@ describe('AdminImportPage', () => {
         importButton(target).click();
         await settle();
         expect(query(cloudCalls[4])).toEqual({ link: '676:662' });
+        unmount(app);
+      });
+
+      it('keeps the rows, busy and without draft numbers, while a split re-run is out', async () => {
+        let hold: Promise<void> | null = null;
+        let release = () => {};
+        stubCloud(async (url) => {
+          if (hold) await hold;
+          return new Response(JSON.stringify(exportReport(url)));
+        });
+        cave = true;
+        const { target, app } = await preview();
+        await settle();
+        const section = target.querySelector<HTMLElement>('.preview')!;
+        expect(section.hasAttribute('aria-busy')).toBe(false);
+        expect(item(target, 677).textContent).toContain('new draft #657');
+        hold = new Promise((resolve) => (release = resolve));
+        const box = splitBoxes(target)[1];
+        box.focus();
+        box.click();
+        flushSync();
+        expect(section.getAttribute('aria-busy')).toBe('true');
+        await new Promise((r) => setTimeout(r, 450));
+        await settle();
+        expect(query(cloudCalls[2])).toEqual({ dry_run: 'true', split: '676@1740,676@3970' });
+        expect(section.getAttribute('aria-busy')).toBe('true');
+        expect(target.querySelector('[role=status]')?.textContent?.trim()).toBe(
+          'Splitting the dive…',
+        );
+        expect(importButton(target).disabled).toBe(true);
+        expect(item(target, 676).textContent).toContain('split into 3 dives');
+        expect(parts(target)).toHaveLength(0);
+        expect(item(target, 676).querySelector('.parts.pending')?.textContent).toBe(
+          'Working out the parts…',
+        );
+        expect(section.textContent).not.toMatch(/new draft #/);
+        expect(item(target, 677).textContent).toContain('new draft');
+        expect(item(target, 674).textContent).toContain('new draft');
+        expect(document.activeElement).toBe(box);
+
+        hold = null;
+        release();
+        await settle();
+        expect(section.hasAttribute('aria-busy')).toBe(false);
+        expect(item(target, 676).querySelector('.pending')).toBeNull();
+        expect(parts(target)).toHaveLength(3);
+        expect(parts(target)[0].textContent).toContain('new draft #654');
+        expect(item(target, 677).textContent).toContain('new draft #657');
+        expect(importButton(target).disabled).toBe(false);
+        expect(spoken.at(-1)).toMatch(/^Split applied: .*Perdix AI #676 split into 3 dives$/);
+        expect(document.activeElement).toBe(box);
         unmount(app);
       });
 

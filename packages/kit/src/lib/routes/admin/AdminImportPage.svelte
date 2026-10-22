@@ -83,7 +83,10 @@
   const rows = $derived(cloud ? applySplits(cloud.rows, splits, choices) : []);
   const shown = $derived<CloudPreview | null>(cloud ? { ...cloud, rows } : null);
   const splitDirty = $derived(needsSplitRun(rows));
-  const cloudViews = $derived(cloud ? cloudSections(viewRows(rows, choices, partChoices)) : null);
+  const settling = $derived(!!cloud && (!!checking || splitDirty));
+  const cloudViews = $derived(
+    cloud ? cloudSections(viewRows(rows, choices, partChoices, !settling)) : null,
+  );
 
   $effect(() => () => {
     clearTimeout(offsetTimer);
@@ -280,10 +283,11 @@
 
 <h1>Import from a dive computer</h1>
 <p class="muted">
-  Drop the XML files Shearwater Cloud exports for the Perdix, one per dive. A file whose start time
-  is within ten minutes of a logged dive attaches its profile to that dive; anything else becomes a
-  <strong>draft</strong> dive with the numbers filled in, for you to give a site, buddies and a story.
-  Subsurface exports work the same way. You see what would happen before anything is written.
+  Pick the Shearwater Cloud export, or Perdix XML files, or a Subsurface file. A dive that starts
+  within ten minutes of a logged dive, or that the log knows by its computer number, gets its
+  profile attached to that dive. Anything else becomes a <strong>draft</strong> dive with the numbers
+  filled in, for you to give a site, buddies and a story. You see what would happen before anything is
+  written.
 </p>
 
 <div class="drops">
@@ -345,6 +349,7 @@
   <section
     class="dl-card summary preview"
     aria-labelledby="dl-import-preview"
+    aria-busy={settling || undefined}
     tabindex="-1"
     bind:this={outcome}
   >
@@ -377,7 +382,7 @@
         class="dl-btn dl-btn-solid dl-btn-sm"
         disabled={busy ||
           (cloud
-            ? !!checking || offsetDirty || splitDirty || !tickedCount(rows, ticked, choices)
+            ? settling || offsetDirty || !tickedCount(rows, ticked, choices)
             : !preview.created.length && !preview.updated.length)}
         onclick={commit}>Import</button
       >
@@ -532,6 +537,8 @@
           </li>
         {/each}
       </ol>
+    {:else if view.partsPending && !error}
+      <p class="parts pending">Working out the parts…</p>
     {/if}
   </li>
 {/snippet}
@@ -615,11 +622,18 @@
       <tbody>
         {#each data.imports as row (row.id)}
           <tr>
-            <td class="dl-num">{row.created_at.slice(0, 16).replace('T', ' ')}</td>
-            <td>{row.original_name}</td>
-            <td class="dl-num">{row.created.length}</td>
-            <td class="dl-num">{row.updated.length}</td>
-            <td
+            <td class="dl-num when">
+              <span>{row.created_at.slice(0, 10)}</span>
+              <span>{row.created_at.slice(11, 16)}</span>
+            </td>
+            <td class="file">{row.original_name}</td>
+            <td class="dl-num count"
+              >{row.created.length}<span class="count-label">&nbsp;created</span></td
+            >
+            <td class="dl-num count updated"
+              >{row.updated.length}<span class="count-label">&nbsp;updated</span></td
+            >
+            <td class="download"
               ><a href={row.url}
                 >download<span class="dl-visually-hidden"> {row.original_name}</span></a
               ></td
@@ -755,6 +769,11 @@
   .parts .part + .part {
     border-top: 1px solid var(--dl-color-border);
   }
+  .summary .parts.pending {
+    padding: 8px 0 8px 12px;
+    margin: 0 0 10px calc(1em + 10px);
+    color: var(--dl-color-text-muted);
+  }
   .part .dive-text {
     padding: 8px 0 6px;
   }
@@ -831,6 +850,58 @@
   .table-wrap {
     position: relative;
     overflow-x: auto;
+  }
+  .when span,
+  .download {
+    white-space: nowrap;
+  }
+  .file {
+    overflow-wrap: anywhere;
+  }
+  .count-label {
+    display: none;
+  }
+  @media (max-width: 479.98px) {
+    .table-wrap :is(table, tbody, tr, td) {
+      display: block;
+    }
+    .table-wrap thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+    }
+    .table-wrap tbody tr {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: var(--dl-space-1) var(--dl-space-2);
+      padding: var(--dl-space-2) 0;
+      border-bottom: 1px solid var(--dl-color-border);
+    }
+    .table-wrap tbody td {
+      padding: 0;
+      border: none;
+      font-size: var(--dl-text-md);
+      color: var(--dl-color-text-muted);
+    }
+    .table-wrap td.file {
+      order: -1;
+      flex-basis: 100%;
+      font-size: var(--dl-text-base);
+      color: var(--dl-color-text);
+    }
+    .table-wrap td.count {
+      font-family: inherit;
+    }
+    .count-label {
+      display: inline;
+    }
+    .updated::before {
+      content: '· ';
+    }
   }
   h2 {
     font-size: var(--dl-text-xl);
