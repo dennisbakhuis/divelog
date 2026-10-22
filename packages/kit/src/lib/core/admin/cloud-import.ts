@@ -208,6 +208,8 @@ export interface CloudRowView {
   breaks: CloudBreakView[];
   /** Its parts when the preview shows the dive split as chosen. */
   parts: CloudPartView[];
+  /** Split otherwise than the dry run cut it: its parts come with the next one. */
+  partsPending: boolean;
 }
 
 const day = (iso: string) => iso.slice(0, 10);
@@ -579,22 +581,30 @@ export function carryChoices(rows: CloudRow[], choices: CloudChoices): CloudChoi
   return kept;
 }
 
+/** What a row or part becomes as itself; a draft's number only once the dry run is up to date. */
+const ownOutcome = (b: CloudRow | CloudPart, settled: boolean) =>
+  settled || b.status !== 'new' ? b.outcome : 'new draft';
+
 /** A part's sub-row with the current choices. */
-function partView(p: CloudPart, choices: CloudPartChoices): CloudPartView {
+function partView(p: CloudPart, choices: CloudPartChoices, settled: boolean): CloudPartView {
   const choice = partChoiceOf(p, choices);
   return {
     part: p,
     value: String(choice),
     options: rowOptions(p),
-    outcome: typeof choice === 'number' ? `add profile to dive #${choice}` : p.outcome,
+    outcome: typeof choice === 'number' ? `add profile to dive #${choice}` : ownOutcome(p, settled),
   };
 }
 
-/** The rows as the preview shows them with the current choices, newest first. */
+/**
+ * The rows as the preview shows them with the current choices, newest first. While a dry run is
+ * on its way (`settled` false) the new drafts' numbers are left out: the next one may change them.
+ */
 export function viewRows(
   rows: CloudRow[],
   choices: CloudChoices,
   partChoices: CloudPartChoices = {},
+  settled = true,
 ): CloudRowView[] {
   const head = heads(rows, choices);
   const byNo = new Map(rows.map((r) => [r.computerNo, r]));
@@ -622,7 +632,7 @@ export function viewRows(
           ? `split into ${pluralize(row.split.length + 1, 'dive')}`
           : typeof choice === 'number'
             ? `add profile to dive #${choice}`
-            : row.outcome;
+            : ownOutcome(row, settled);
     const alone = first === row.computerNo && !joined;
     return {
       row,
@@ -635,7 +645,8 @@ export function viewRows(
       outcome: said,
       label: `${title}, ${row.when}, ${groupFacts}: ${said}`,
       breaks: alone ? row.breaks.map((b) => ({ ...b, checked: row.split.includes(b.startS) })) : [],
-      parts: partsOf(row).map((p) => partView(p, partChoices)),
+      parts: partsOf(row).map((p) => partView(p, partChoices, settled)),
+      partsPending: row.split.length > 0 && !sameList(row.split, row.cut),
     };
   });
 }

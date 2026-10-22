@@ -214,6 +214,31 @@ test.describe('on a phone', () => {
   });
 });
 
+test.describe('the previous imports on a phone', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('fit the screen with the download link in full', async ({ page }) => {
+    await open(page);
+    const table = page.getByRole('table', { name: 'Previous imports, newest first' });
+    await expect(table).toContainText('Shearwater Cloud (owner@example.com) 2026-10-21.db');
+    const link = table.getByRole('link', { name: /^download/ });
+    await link.scrollIntoViewIfNeeded();
+    await expect(link).toBeInViewport({ ratio: 1 });
+    const box = (await link.boundingBox())!;
+    const width = await page.evaluate(() => window.innerWidth);
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(width);
+    expect(
+      await table.evaluate((t) => t.parentElement!.scrollWidth - t.parentElement!.clientWidth),
+    ).toBeLessThanOrEqual(0);
+    expect(await overflow(page)).toBeLessThanOrEqual(0);
+    const when = table.locator('td.when span');
+    await expect(when).toHaveText(['2026-10-22', '11:57']);
+    for (const part of await when.all())
+      expect(await part.evaluate((el) => el.getClientRects().length)).toBe(1);
+  });
+});
+
 test('works by keyboard alone', async ({ page }) => {
   await open(page);
   let focused: string | null = null;

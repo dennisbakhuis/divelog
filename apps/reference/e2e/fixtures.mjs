@@ -79,6 +79,19 @@ const TRIP = {
   end_date: '2025-03-08',
 };
 
+/** One earlier import on the owner's import page, its file named the way the Cloud app names it. */
+const PREVIOUS_IMPORTS = [
+  {
+    id: 'imp-cloud-1',
+    format: 'shearwater-cloud',
+    original_name: 'Shearwater Cloud (owner@example.com) 2026-10-21.db',
+    created_at: '2026-10-22T11:57:03',
+    created: [6, 7],
+    updated: [5],
+    url: '/media/imports/imp-cloud-1.db',
+  },
+];
+
 const DIVES = [
   {
     number: 1,
@@ -1354,7 +1367,7 @@ export function ownerEditor() {
     handle(method, path, query, body) {
       const ok = (value, status = 200) => ({ status, body: value });
       const key = `${method} ${path}`;
-      if (key === 'GET /admin/imports') return ok([]);
+      if (key === 'GET /admin/imports') return ok(PREVIOUS_IMPORTS);
       if (key === 'POST /admin/import/shearwater-cloud') {
         const [status, value] = cloudImport(query, Math.max(...all().map((d) => d.number)) + 1);
         return ok(value, status);
