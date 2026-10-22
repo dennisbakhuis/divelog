@@ -1606,10 +1606,9 @@ async def admin_import_shearwater(
         number = await computer_import.apply(
             store,
             computer,
-            [data],
+            [(key, data)],
             match,
             import_id=import_id,
-            storage_key=key,
             profile_name=profile_name,
             dry_run=dry_run,
             planned=planned,
@@ -1718,18 +1717,19 @@ async def admin_import_shearwater_cloud(
         if not unit.imported:
             continue
         head = entries[unit.head]
-        members = [entries[index] for index in unit.indices]
-        blobs = [blob for member in members for blob in member.blobs] if unit.part <= 1 else []
-        key = f"imports/{month}/{import_id}-{head.serial}-{head.computer_no}.swlog"
+        members = [entries[index] for index in unit.indices] if unit.part <= 1 else []
+        stem = f"imports/{month}/{import_id}-{head.serial}"
+        numbers = [member.computer_no for member in members for _ in member.blobs]
+        keys = computer_import.raw_keys(stem, numbers, "swlog")
+        raw = list(zip(keys, [blob for member in members for blob in member.blobs], strict=True))
         computer_start = unit.dive.start - offset
         flags = [_clock_flag(clock_offset_min, computer_start)] if clock_offset_min else []
         number = await computer_import.apply(
             store,
             unit.dive,
-            blobs,
+            raw,
             unit.match,
             import_id=import_id,
-            storage_key=key,
             profile_name=_cloud_profile_name(store, head.computer_no),
             dry_run=dry_run,
             planned=planned,
@@ -1748,8 +1748,8 @@ async def admin_import_shearwater_cloud(
         else:
             created.append(number)
             planned += 1
-        if not dry_run and blobs:
-            first_key = first_key or computer_import.part_keys(key, len(blobs))[0]
+        if not dry_run and raw:
+            first_key = first_key or raw[0][0]
 
     dates = [date.fromisoformat(row.start[:10]) for row in rows if row.start]
     report = ImportResult(

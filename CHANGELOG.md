@@ -3,6 +3,17 @@
 `@divelog/kit` and `divelog-server` share version numbers. API major and data format stay at 1
 unless a section says otherwise.
 
+## 0.6.2 — import page on the phone (22 October 2026)
+
+- While a split, join or clock offset is being worked out, the Shearwater Cloud preview is
+  marked busy, leaves out the planned draft numbers until the server answers and says "Working
+  out the parts…" where a newly split dive's parts will appear, so no half-updated preview shows.
+- Previous imports read as cards on a phone, with the file name in full; the table stays from
+  480 px up.
+- The import page's introduction starts from the Shearwater Cloud export.
+- A joined Cloud dive stores each computer dive's raw log under its own number
+  (`<id>-<serial>-902.swlog`, `-903.swlog`); `-1`, `-2` stay for logs that share a number.
+
 ## 0.6.1 — dives recognised by computer and date (22 October 2026)
 
 - A computer dive number only matches a logged dive dated within a day of the computer dive, so

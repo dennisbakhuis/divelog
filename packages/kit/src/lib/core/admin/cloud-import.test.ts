@@ -893,6 +893,27 @@ describe('splitting a dive', () => {
     expect(views.find((v) => v.row.computerNo === 616)!.breaks).toEqual([]);
   });
 
+  it('marks the parts pending and leaves out draft numbers while a dry run is on its way', () => {
+    const view = (rows: CloudRow[], n: number, settled = true) =>
+      viewRows(rows, {}, {}, settled).find((v) => v.row.computerNo === n)!;
+    const ticked = applySplits(cutAt('614@1740'), { 614: [1740, 3970] }, {});
+    expect(view(ticked, 614)).toMatchObject({ outcome: 'split into 3 dives', partsPending: true });
+    expect(view(ticked, 614).parts).toEqual([]);
+    expect(view(ticked, 615, false).outcome).toBe('new draft');
+    expect(view(ticked, 615).outcome).toBe('new draft #651');
+    const settled = applySplits(cutAt('614@1740'), {}, {});
+    expect(view(settled, 614).partsPending).toBe(false);
+    expect(view(settled, 614, false).parts.map((p) => p.outcome)).toEqual([
+      'add profile to dive #611',
+      'add profile to dive #612',
+    ]);
+    const own = viewRows(settled, {}, { '614.2': 'own' }, false).find(
+      (v) => v.row.computerNo === 614,
+    )!;
+    expect(own.parts[1].outcome).toBe('new draft');
+    expect(view(applySplits(cutAt('614@1740'), { 614: [] }, {}), 614).partsPending).toBe(false);
+  });
+
   it('links the parts of a split dive instead of the dive', () => {
     const rows = applySplits(cutAt('614@1740'), {}, {});
     expect(linkParam(rows, { 614: 611 })).toBe('614.2:612');
