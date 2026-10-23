@@ -128,6 +128,20 @@
     }
   }
 
+  const INTERACTIVE = 'a, button, input, label, select, textarea, summary';
+
+  function openRow(e: MouseEvent, number: number) {
+    if (e.defaultPrevented || e.button > 1) return;
+    if (e.target instanceof Element && e.target.closest(INTERACTIVE)) return;
+    if (getSelection()?.toString()) return;
+    const href = urls.admin.dive(number);
+    if (e.button === 1 || e.metaKey || e.ctrlKey || e.shiftKey) {
+      window.open(href, '_blank', 'noopener');
+    } else {
+      void goto(href);
+    }
+  }
+
   const arrow = (sort: DiveSortKey) =>
     data.query.sort === sort ? (data.query.asc ? '▲' : '▼') : '';
 </script>
@@ -252,7 +266,8 @@
       <tbody>
         {#each rows as dive (dive.number)}
           {@const siteLink = !!(dive.title && dive.site_name && dive.site_id)}
-          <tr>
+          <!-- The row is a bigger target for the title link, which keyboards and screen readers use. -->
+          <tr onclick={(e) => openRow(e, dive.number)} onauxclick={(e) => openRow(e, dive.number)}>
             <td class="pick" class:blank={dive.visibility !== 'draft'}>
               {#if dive.visibility === 'draft'}
                 <input
@@ -386,7 +401,7 @@
     overflow-x: auto;
   }
   tbody tr {
-    position: relative;
+    cursor: pointer;
   }
   tbody tr:hover {
     background: var(--dl-color-surface);
@@ -397,17 +412,6 @@
     display: inline-flex;
     align-items: center;
     min-height: 24px;
-  }
-  .row-link::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-  }
-  .secondary,
-  .pick input,
-  .view {
-    position: relative;
-    z-index: 1;
   }
   .secondary {
     display: block;

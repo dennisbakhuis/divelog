@@ -3,6 +3,13 @@
 `@divelog/kit` and `divelog-server` share version numbers. API major and data format stay at 1
 unless a section says otherwise.
 
+## 0.6.3 — unreleased
+
+- On the admin dives list in Safari, the status filters, the search and the other controls
+  opened the last dive on the page. Rows stay clickable without the overlay that caused it: a
+  click anywhere on a row that is not a link or control opens the dive, with Cmd, Ctrl, Shift
+  or the middle button in a new tab, and selecting text in a row does not open it.
+
 ## 0.6.2 — import page on the phone (22 October 2026)
 
 - While a split, join or clock offset is being worked out, the Shearwater Cloud preview is
