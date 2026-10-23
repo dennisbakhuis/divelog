@@ -3,7 +3,7 @@
 `@divelog/kit` and `divelog-server` share version numbers. API major and data format stay at 1
 unless a section says otherwise.
 
-## 0.6.3 — unreleased
+## 0.6.3 — dives list in Safari (23 October 2026)
 
 - On the admin dives list in Safari, the status filters, the search and the other controls
   opened the last dive on the page. Rows stay clickable without the overlay that caused it: a
