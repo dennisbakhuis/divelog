@@ -211,6 +211,37 @@ test.describe('logging a dive', () => {
   });
 });
 
+test.describe('the dive list', () => {
+  test.beforeEach(async ({ context, baseURL }) => {
+    await context.addCookies([{ name: OWNER_COOKIE, value: '1', url: baseURL! }]);
+  });
+
+  test('the status chips filter the list and stay on it', async ({ page }) => {
+    for (const [from, chip, to] of [
+      ['/admin/dives', 'Public', /\/admin\/dives\?status=public$/],
+      ['/admin/dives', 'Drafts', /\/admin\/dives\?status=draft$/],
+      ['/admin/dives', 'Private', /\/admin\/dives\?status=private$/],
+      ['/admin/dives?status=public', 'All', /\/admin\/dives$/],
+    ] as const) {
+      await page.goto(from);
+      await page.waitForLoadState('networkidle');
+      expect(await page.locator('tbody tr').count()).toBeGreaterThan(1);
+      await page.getByRole('button', { name: chip, exact: true }).click();
+      await expect(page).toHaveURL(to);
+      await expect(page.getByRole('heading', { level: 1, name: /^Dives/ })).toBeVisible();
+    }
+  });
+
+  test("a row's date opens that dive", async ({ page }) => {
+    await page.goto('/admin/dives');
+    await page.waitForLoadState('networkidle');
+    const row = page.locator('tbody tr').nth(1);
+    const number = (await row.locator('td').nth(1).textContent())!.trim();
+    await row.locator('td').nth(2).click();
+    await expect(page).toHaveURL(new RegExp(`/admin/dives/${number}$`));
+  });
+});
+
 test.describe('the dive pages on a phone', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
