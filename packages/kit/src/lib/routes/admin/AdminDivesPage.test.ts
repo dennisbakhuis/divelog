@@ -204,6 +204,74 @@ describe('AdminDivesPage', () => {
     unmount(app);
   });
 
+  it('opens the dive from anywhere on its row', () => {
+    const { target, app } = render();
+    const open = vi.fn();
+    vi.stubGlobal('open', open);
+    const [first, second] = target.querySelectorAll<HTMLTableRowElement>('tbody tr');
+    first.querySelectorAll('td')[2].click();
+    expect(goto).toHaveBeenLastCalledWith('/admin/dives/12');
+    second.querySelector<HTMLElement>('.status')!.click();
+    expect(goto).toHaveBeenLastCalledWith('/admin/dives/11');
+    expect(open).not.toHaveBeenCalled();
+    unmount(app);
+  });
+
+  it('opens the row in a new tab with a modifier or the middle button', () => {
+    const { target, app } = render();
+    const open = vi.fn();
+    vi.stubGlobal('open', open);
+    const date = target.querySelectorAll('tbody tr')[0].querySelectorAll('td')[2];
+    date.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
+    date.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ctrlKey: true }));
+    date.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 }));
+    date.dispatchEvent(new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 2 }));
+    expect(open).toHaveBeenCalledTimes(3);
+    expect(open).toHaveBeenCalledWith('/admin/dives/12', '_blank', 'noopener');
+    expect(goto).not.toHaveBeenCalled();
+    unmount(app);
+  });
+
+  it('leaves the controls on and around a row to themselves', () => {
+    const { target, app } = render();
+    const open = vi.fn();
+    vi.stubGlobal('open', open);
+    for (const [chip, url] of [
+      ['Public', '/admin?status=public'],
+      ['Drafts', '/admin?status=draft'],
+      ['Private', '/admin?status=private'],
+      ['All', '/admin'],
+    ]) {
+      button(target, chip).click();
+      expect(goto).toHaveBeenLastCalledWith(url, expect.anything());
+    }
+    vi.mocked(goto).mockClear();
+    const [first, second] = target.querySelectorAll<HTMLTableRowElement>('tbody tr');
+    const draft = second.querySelector<HTMLInputElement>('input[type=checkbox]')!;
+    draft.click();
+    flushSync();
+    expect(draft.checked).toBe(true);
+    const stay = (e: Event) => e.preventDefault();
+    document.addEventListener('click', stay);
+    first.querySelector<HTMLElement>('.secondary a')!.click();
+    first.querySelector<HTMLElement>('.view')!.click();
+    first.querySelector<HTMLElement>('.row-link')!.click();
+    expect(goto).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+    document.removeEventListener('click', stay);
+    unmount(app);
+  });
+
+  it('does not open the row when its text is being selected', () => {
+    const { target, app } = render();
+    const date = target.querySelectorAll('tbody tr')[0].querySelectorAll('td')[2];
+    getSelection()!.selectAllChildren(date);
+    date.click();
+    expect(goto).not.toHaveBeenCalled();
+    getSelection()!.removeAllRanges();
+    unmount(app);
+  });
+
   it('says when nothing matches, and invites the first dive', () => {
     const filtered = render({ rows: [], total: 0, query: { ...DEFAULT_LIST_QUERY, q: 'zzz' } });
     expect(filtered.target.textContent).toContain('No dives match');
